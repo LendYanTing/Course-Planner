@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
   CalendarRange,
+  LayoutGrid,
   ListTodo,
   Settings,
   Upload,
@@ -27,6 +28,7 @@ import { SyncBadge } from "@/features/sync/ui/sync-badge";
 
 const NAV = [
   { href: "/week", label: "Week", icon: CalendarDays },
+  { href: "/table", label: "Grid", icon: LayoutGrid },
   { href: "/month", label: "Month", icon: CalendarRange },
   { href: "/todos", label: "Todos", icon: ListTodo },
   { href: "/import/courses", label: "Import", icon: Upload },
