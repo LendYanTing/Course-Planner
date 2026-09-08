@@ -2,21 +2,25 @@
  * Foldable time segments (docs/ui-interaction.md §3).
  *
  * Folding is purely VISUAL compression: real times never change. Dead spans of
- * the day (凌晨 / 午休 / 夜间) collapse into short labelled strips; everything
- * else keeps the linear PX_PER_MINUTE scale. A band is only foldable when no
- * event (course / recurring / todo block / deadline) and not the current time
- * fall inside it, so content is never hidden.
+ * the day — 凌晨 / 午休 / 夜间 and short 课间 gaps between consecutive periods
+ * — collapse into thin labelled strips; everything else keeps the linear
+ * PX_PER_MINUTE scale. A band is only foldable when no event (course /
+ * recurring / todo block / deadline) and not the current time fall inside it,
+ * so real content is never hidden.
  */
 
 import { DAY_MINUTES, PX_PER_MINUTE } from "@/features/week-view/geometry";
 
 export const FOLD_HEIGHT_PX = 34;
+export const GAP_FOLD_HEIGHT_PX = 14;
 
 export interface FoldBand {
   id: string;
   label: string;
   from: number; // minute-of-day, inclusive
   to: number; // minute-of-day, exclusive
+  /** Visual collapsed height in px; defaults to FOLD_HEIGHT_PX. */
+  height?: number;
 }
 
 export interface DayScale {
@@ -39,20 +43,24 @@ export const LINEAR_SCALE: DayScale = {
   insideBand: () => false,
 };
 
+function bandHeight(b: FoldBand): number {
+  return b.height ?? FOLD_HEIGHT_PX;
+}
+
 /** Build the piecewise scale for a (sorted, non-overlapping) band list. */
 export function buildScale(bands: FoldBand[]): DayScale {
   if (!bands.length) return LINEAR_SCALE;
   const sorted = [...bands].sort((a, b) => a.from - b.from);
 
   // Piecewise anchor points: between bands linear at PX_PER_MINUTE, inside a
-  // band compressed to FOLD_HEIGHT_PX over the band's real span.
+  // band compressed to its collapsed height over the band's real span.
   const anchors: { m: number; y: number }[] = [{ m: 0, y: 0 }];
   let m = 0;
   let y = 0;
   for (const band of sorted) {
     if (band.from > m) y += (band.from - m) * PX_PER_MINUTE;
     anchors.push({ m: band.from, y });
-    y += FOLD_HEIGHT_PX;
+    y += bandHeight(band);
     m = band.to;
     anchors.push({ m: band.to, y });
   }
@@ -74,7 +82,7 @@ export function buildScale(bands: FoldBand[]): DayScale {
       const a = anchors.find((p) => p.m === band.from);
       const baseY = a ? a.y : 0;
       const ratio = (v - band.from) / Math.max(1, band.to - band.from);
-      return Math.round(baseY + ratio * FOLD_HEIGHT_PX);
+      return Math.round(baseY + ratio * bandHeight(band));
     }
     // Linear segment: find anchor pair around v.
     let prev = anchors[0];
@@ -92,8 +100,8 @@ export function buildScale(bands: FoldBand[]): DayScale {
     for (const band of sorted) {
       const a = anchors.find((p) => p.m === band.from);
       const baseY = a ? a.y : 0;
-      if (v >= baseY && v < baseY + FOLD_HEIGHT_PX) {
-        const ratio = (v - baseY) / FOLD_HEIGHT_PX;
+      if (v >= baseY && v < baseY + bandHeight(band)) {
+        const ratio = (v - baseY) / bandHeight(band);
         return Math.round(band.from + ratio * (band.to - band.from));
       }
     }
@@ -115,34 +123,44 @@ export function buildScale(bands: FoldBand[]): DayScale {
   };
 }
 
+function clockOf(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 /**
  * Propose fold bands from the period template of the active semester(s):
  * - 凌晨 0:00 up to the first period (≥ 4h of emptiness)
  * - 午休 the biggest midday gap between periods that contains 12:00–13:00
+ * - 课间 every short gap between two consecutive periods (≥ 6 and < 150 min,
+ *   excluding the band already chosen as 午休). 课间 gaps fold even when a
+ *   merged course (连堂课) spans across them — that gap is a real break — but
+ *   never when a todo block / deadline sits inside, so scheduled work is
+ *   never hidden.
  * - 夜间 after the last period to 24:00 (≥ 3h of emptiness)
- * Bands that contain any event/now are dropped so real content stays visible.
+ * Long bands (凌晨/午休/夜间) are only folded when completely empty for the
+ * whole week and not under the current time.
  */
 export function proposeFoldBands(opts: {
   periodStarts: { no: number; start: number; end: number }[];
+  /** Any event: long bands never hide these. */
   occupied: { from: number; to: number }[];
+  /** todo blocks / deadlines: even 10-min gap bands must not hide these. */
+  gapForbidden: { from: number; to: number }[];
   nowMin: number | null;
 }): FoldBand[] {
-  const { periodStarts, occupied, nowMin } = opts;
+  const { periodStarts, occupied, gapForbidden, nowMin } = opts;
   if (!periodStarts.length) return [];
 
   const sorted = [...periodStarts].sort((a, b) => a.start - b.start);
   const candidates: FoldBand[] = [];
-  const fmt = (min: number) => {
-    const h = Math.floor(min / 60);
-    const m = Math.round(min % 60);
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  };
 
   const first = sorted[0];
   if (first.start >= 4 * 60) {
     candidates.push({
       id: "night",
-      label: `凌晨折叠 00:00–${fmt(first.start)}`,
+      label: `凌晨折叠 00:00–${clockOf(first.start)}`,
       from: 0,
       to: first.start,
     });
@@ -152,7 +170,11 @@ export function proposeFoldBands(opts: {
   let lunchGap: { from: number; to: number } | null = null;
   for (let i = 0; i < sorted.length - 1; i++) {
     const gap = { from: sorted[i].end, to: sorted[i + 1].start };
-    if (gap.to - gap.from >= 60 && gap.from < 13 * 60 && gap.to > 11 * 60) {
+    if (
+      gap.to - gap.from >= 60 &&
+      gap.from < 13 * 60 &&
+      gap.to > 11 * 60
+    ) {
       if (!lunchGap || gap.to - gap.from > lunchGap.to - lunchGap.from) {
         lunchGap = gap;
       }
@@ -161,9 +183,31 @@ export function proposeFoldBands(opts: {
   if (lunchGap) {
     candidates.push({
       id: "lunch",
-      label: `午休折叠 ${fmt(lunchGap.from)}–${fmt(lunchGap.to)}`,
+      label: `午休折叠 ${clockOf(lunchGap.from)}–${clockOf(lunchGap.to)}`,
       from: lunchGap.from,
       to: lunchGap.to,
+    });
+  }
+
+  // 课间: short free gaps between consecutive periods (10-min breaks etc).
+  const lunchFrom = lunchGap?.from ?? -1;
+  const lunchTo = lunchGap?.to ?? -1;
+  const forbidsBand = (from: number, to: number) =>
+    gapForbidden.some((o) => o.from < to && o.to > from);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gap = { from: sorted[i].end, to: sorted[i + 1].start };
+    const len = gap.to - gap.from;
+    if (len < 6 || len >= 150) continue;
+    // Already covered by the 午休 band?
+    if (lunchGap && gap.from === lunchFrom && gap.to === lunchTo) continue;
+    if (forbidsBand(gap.from, gap.to)) continue;
+    if (nowMin !== null && nowMin >= gap.from && nowMin < gap.to) continue;
+    candidates.push({
+      id: `gap-${gap.from}-${gap.to}`,
+      label: `课间 ${clockOf(gap.from)}–${clockOf(gap.to)}`,
+      from: gap.from,
+      to: gap.to,
+      height: GAP_FOLD_HEIGHT_PX,
     });
   }
 
@@ -171,21 +215,25 @@ export function proposeFoldBands(opts: {
   if (DAY_MINUTES - last.end >= 3 * 60) {
     candidates.push({
       id: "evening",
-      label: `夜间折叠 ${fmt(last.end)}–24:00`,
+      label: `夜间折叠 ${clockOf(last.end)}–24:00`,
       from: last.end,
       to: DAY_MINUTES,
     });
   }
 
-  // Drop bands that would hide content.
-  return candidates.filter((band) => {
-    const hasEvent = occupied.some(
-      (o) => o.from < band.to && o.to > band.from
-    );
-    if (hasEvent) return false;
-    if (nowMin !== null && nowMin >= band.from && nowMin < band.to) return false;
-    return true;
-  });
+  // Long bands only fold when completely empty this week (and not now).
+  return candidates
+    .filter((band) => {
+      if (band.id.startsWith("gap-")) return true; // already vetted above
+      const hasEvent = occupied.some(
+        (o) => o.from < band.to && o.to > band.from
+      );
+      if (hasEvent) return false;
+      if (nowMin !== null && nowMin >= band.from && nowMin < band.to)
+        return false;
+      return true;
+    })
+    .sort((a, b) => a.from - b.from);
 }
 
 /** Clip [from,to) into sub-ranges that are not inside folded bands. */

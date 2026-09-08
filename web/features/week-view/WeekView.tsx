@@ -100,17 +100,31 @@ export function WeekView() {
   const calendarsQuery = useAllPeriods();
 
   // Period template of every calendar: {no, start, end} minute-of-day.
+  // If a template contains duplicated start times (dirty data), keep the first
+  // (smallest periodNo) so labels/lines stay unambiguous.
   const periodSlots = React.useMemo(() => {
-    const out: { no: number; start: number; end: number }[] = [];
+    const flat: { no: number; start: number; end: number }[] = [];
     for (const g of calendarsQuery.data ?? []) {
       for (const p of g.periods) {
-        out.push({ no: p.periodNo, start: minFromClock(p.startLocal), end: minFromClock(p.endLocal) });
+        flat.push({
+          no: p.periodNo,
+          start: minFromClock(p.startLocal),
+          end: minFromClock(p.endLocal),
+        });
       }
     }
-    return out.sort((a, b) => a.start - b.start || a.no - b.no);
+    flat.sort((a, b) => a.start - b.start || a.no - b.no);
+    const merged = new Map<number, { no: number; start: number; end: number }>();
+    for (const p of flat) {
+      if (!merged.has(p.start)) merged.set(p.start, p);
+    }
+    return [...merged.values()].sort((a, b) => a.start - b.start || a.no - b.no);
   }, [calendarsQuery.data]);
   const boundaries = React.useMemo(
-    () => [...new Set(periodSlots.flatMap((p) => [p.start, p.end]))].sort((a, b) => a - b),
+    () =>
+      [...new Set(periodSlots.flatMap((p) => [p.start, p.end]))].sort(
+        (a, b) => a - b
+      ),
     [periodSlots]
   );
 
@@ -130,8 +144,9 @@ export function WeekView() {
 
   const events = eventsQuery.data ?? [];
 
-  // Which fold bands apply this week (a band that would hide any event or the
-  // current time is never folded).
+  // Which fold bands apply this week. 课间 gaps fold even inside merged
+  // classes (they are real breaks) unless a todo block/deadline is scheduled
+  // there; long bands (凌晨/午休/夜间) need the week empty.
   const foldBands = React.useMemo(() => {
     if (foldMode === "none" || !events.length || !periodSlots.length) return [];
     const occupied = events.map((ev) => {
@@ -139,9 +154,19 @@ export function WeekView() {
       const dur = Math.max(eventDurationMinutes(ev), 1);
       return { from: s, to: Math.min(DAY_MINUTES, s + dur) };
     });
+    const gapForbidden = events
+      .filter(
+        (ev) => ev.type === "todo_block" || ev.type === "deadline"
+      )
+      .map((ev) => {
+        const s = eventStartMinutes(ev, tz);
+        const dur = Math.max(eventDurationMinutes(ev), 1);
+        return { from: s, to: Math.min(DAY_MINUTES, s + dur) };
+      });
     const bands = proposeFoldBands({
       periodStarts: periodSlots,
       occupied,
+      gapForbidden,
       nowMin,
     });
     return bands.filter((b) => !removedFolds.includes(b.id));
@@ -245,17 +270,37 @@ export function WeekView() {
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
             折叠
           </span>
-          {scale.bands.map((b) => (
+          {scale.bands
+            .filter((b) => !b.id.startsWith("gap-"))
+            .map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setRemovedFolds((cur) => [...cur, b.id])}
+                className="rounded-full border border-dashed px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
+                title="Click to expand this segment"
+              >
+                {b.label}
+              </button>
+            ))}
+          {scale.bands.filter((b) => b.id.startsWith("gap-")).length > 0 && (
             <button
-              key={b.id}
               type="button"
-              onClick={() => setRemovedFolds((cur) => [...cur, b.id])}
+              onClick={() =>
+                setRemovedFolds((cur) => [
+                  ...cur,
+                  ...scale.bands
+                    .filter((b) => b.id.startsWith("gap-"))
+                    .map((b) => b.id),
+                ])
+              }
               className="rounded-full border border-dashed px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
-              title="Click to expand this segment"
+              title="Expand all short breaks"
             >
-              {b.label}
+              课间 ×
+              {scale.bands.filter((b) => b.id.startsWith("gap-")).length}
             </button>
-          ))}
+          )}
           {removedFolds.length > 0 && (
             <button
               type="button"
@@ -291,16 +336,25 @@ export function WeekView() {
                 </div>
               );
             })}
-            {/* period number tags ("第1节" start marks) */}
+            {/* period start markers: which 节 begins at this line */}
             {periodSlots.map((p) => {
               if (p.start === 0 || scale.insideBand(p.start)) return null;
               return (
                 <div
                   key={`${p.no}-${p.start}`}
-                  className="absolute right-0.5 text-[9px] font-semibold leading-none text-primary/80"
-                  style={{ top: scale.yOf(p.start) + 8 }}
+                  className="absolute right-0.5 flex flex-col items-end text-[9px] leading-none"
+                  style={{ top: scale.yOf(p.start) + 10 }}
+                  title={`第${p.no}节 ${clockFromMin(p.start)}–${clockFromMin(p.end)}`}
                 >
-                  {p.no}
+                  <span
+                    className="rounded-sm px-0.5 font-semibold"
+                    style={{
+                      color: "color-mix(in srgb, var(--foreground) 68%, transparent)",
+                      background: "color-mix(in srgb, var(--muted-foreground) 12%, transparent)",
+                    }}
+                  >
+                    第{p.no}节
+                  </span>
                 </div>
               );
             })}
@@ -520,30 +574,33 @@ function DayColumn({
       })}
 
       {/* Collapsed fold strips (visual compression markers) */}
-      {scale.bands.map((b) => (
-        <button
-          type="button"
-          key={b.id}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleBand(b.id);
-          }}
-          className="absolute inset-x-0 z-20 flex items-center overflow-hidden border-y border-dashed text-muted-foreground hover:bg-accent/60"
-          style={{
-            top: scale.yOf(b.from),
-            height: FOLD_HEIGHT_PX,
-            backgroundImage:
-              "repeating-linear-gradient(-45deg, transparent, transparent 6px, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 6px, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 12px)",
-          }}
-          title={`${b.label} — click to expand`}
-        >
-          {idx === 0 ? (
-            <span className="px-1 text-[9px]">{b.label} ⇅</span>
-          ) : (
-            <span className="mx-auto text-[10px]">···</span>
-          )}
-        </button>
-      ))}
+      {scale.bands.map((b) => {
+        const stripH = b.height ?? FOLD_HEIGHT_PX;
+        return (
+          <button
+            type="button"
+            key={b.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBand(b.id);
+            }}
+            className="absolute inset-x-0 z-20 flex items-center overflow-hidden border-y border-dashed text-muted-foreground hover:bg-accent/60"
+            style={{
+              top: scale.yOf(b.from),
+              height: stripH,
+              backgroundImage:
+                "repeating-linear-gradient(-45deg, transparent, transparent 6px, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 6px, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 12px)",
+            }}
+            title={`${b.label} — click to expand`}
+          >
+            {idx === 0 && stripH >= 20 ? (
+              <span className="truncate px-1 text-[9px]">{b.label} ⇅</span>
+            ) : (
+              <span className="mx-auto text-[10px]">···</span>
+            )}
+          </button>
+        );
+      })}
 
       {/* Course + recurring lanes */}
       {bundle.lanes.map((l) => (
