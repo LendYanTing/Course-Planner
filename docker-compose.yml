@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: courseplanner-postgres
+    environment:
+      POSTGRES_USER: courseplanner
+      POSTGRES_PASSWORD: courseplanner
+      POSTGRES_DB: courseplanner
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U courseplanner -d courseplanner"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: courseplanner-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://courseplanner:courseplanner@postgres:5432/courseplanner?sslmode=disable
+      PORT: "8080"
+      JWT_SECRET: dev-only-secret-change-me
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

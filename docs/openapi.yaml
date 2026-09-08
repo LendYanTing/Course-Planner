@@ -1,0 +1,838 @@
+openapi: 3.1.0
+info:
+  title: Course Planner API
+  version: 1.0.0
+  description: |
+    Shared HTTP contract for the Course Planner system.
+    All absolute datetimes are RFC3339 UTC. User-facing local time is interpreted
+    in the authenticated user's immutable IANA timezone.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      security: []
+      operationId: register
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+  /auth/login:
+    post:
+      security: []
+      operationId: login
+      summary: Login
+      responses:
+        '200':
+          description: Login result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+  /auth/refresh:
+    post:
+      security: []
+      operationId: refresh
+      summary: Refresh access token
+      responses:
+        '200':
+          description: Refreshed session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Logout
+      responses:
+        '204':
+          description: Logged out
+  /me:
+    get:
+      operationId: getCurrentUser
+      responses:
+        '200':
+          $ref: '#/components/responses/UserResponse'
+  /meta/time:
+    get:
+      operationId: getServerTime
+      responses:
+        '200':
+          description: Server time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerTimeResponse'
+  /calendar/events:
+    get:
+      operationId: getCalendarEvents
+      parameters:
+        - { $ref: '#/components/parameters/Start' }
+        - { $ref: '#/components/parameters/End' }
+        - name: includeCourses
+          in: query
+          schema: { type: boolean, default: true }
+        - name: includeRecurringSchedules
+          in: query
+          schema: { type: boolean, default: true }
+        - name: includeTodoBlocks
+          in: query
+          schema: { type: boolean, default: true }
+        - name: includeDeadlines
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Calendar events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarEventListResponse'
+  /free-slots:
+    get:
+      operationId: getFreeSlots
+      parameters:
+        - { $ref: '#/components/parameters/Start' }
+        - { $ref: '#/components/parameters/End' }
+        - name: durationMinutes
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: alignment
+          in: query
+          schema:
+            type: string
+            enum: [period, 5_minutes, free]
+            default: period
+      responses:
+        '200':
+          description: Free time slots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FreeSlotListResponse'
+  /sync/state:
+    get:
+      operationId: getSyncState
+      responses:
+        '200':
+          description: Sync state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStateResponse'
+  /sync/changes:
+    get:
+      operationId: getSyncChanges
+      parameters:
+        - name: after
+          in: query
+          required: true
+          schema: { type: integer, minimum: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        '200':
+          description: Sync changes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncChangesResponse'
+  /sync/push:
+    post:
+      operationId: pushSyncOperations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: Push result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushResponse'
+
+  /calendars:
+    get:
+      operationId: listCalendars
+      responses:
+        '200': { description: Calendar list }
+    post:
+      operationId: createCalendar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CalendarRequest' }
+      responses:
+        '200': { description: Created calendar }
+  /calendars/{calendarId}:
+    get:
+      operationId: getCalendar
+      parameters:
+        - { $ref: '#/components/parameters/CalendarId' }
+      responses:
+        '200': { description: Calendar }
+    patch:
+      operationId: updateCalendar
+      parameters:
+        - { $ref: '#/components/parameters/CalendarId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CalendarRequest' }
+      responses:
+        '200': { description: Updated calendar }
+    delete:
+      operationId: deleteCalendar
+      parameters:
+        - { $ref: '#/components/parameters/CalendarId' }
+      responses:
+        '204': { description: Deleted }
+  /calendars/{calendarId}/periods:
+    get:
+      operationId: listPeriods
+      parameters:
+        - { $ref: '#/components/parameters/CalendarId' }
+      responses:
+        '200': { description: Period list }
+    post:
+      operationId: createPeriod
+      parameters:
+        - { $ref: '#/components/parameters/CalendarId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PeriodRequest' }
+      responses:
+        '200': { description: Created period }
+  /calendars/{calendarId}/periods/{periodId}:
+    patch:
+      operationId: updatePeriod
+      parameters:
+        - { $ref: '#/components/parameters/CalendarId' }
+        - { $ref: '#/components/parameters/PeriodId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PeriodRequest' }
+      responses:
+        '200': { description: Updated period }
+    delete:
+      operationId: deletePeriod
+      parameters:
+        - { $ref: '#/components/parameters/CalendarId' }
+        - { $ref: '#/components/parameters/PeriodId' }
+      responses:
+        '204': { description: Deleted }
+  /courses:
+    get:
+      operationId: listCourses
+      responses:
+        '200': { description: Course list }
+    post:
+      operationId: createCourse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CourseRequest' }
+      responses:
+        '200': { description: Created course }
+  /courses/{courseId}:
+    get:
+      operationId: getCourse
+      parameters:
+        - { $ref: '#/components/parameters/CourseId' }
+      responses:
+        '200': { description: Course }
+    patch:
+      operationId: updateCourse
+      parameters:
+        - { $ref: '#/components/parameters/CourseId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CourseRequest' }
+      responses:
+        '200': { description: Updated course }
+    delete:
+      operationId: deleteCourse
+      parameters:
+        - { $ref: '#/components/parameters/CourseId' }
+      responses:
+        '204': { description: Deleted }
+  /courses/{courseId}/meetings:
+    get:
+      operationId: listCourseMeetings
+      parameters:
+        - { $ref: '#/components/parameters/CourseId' }
+      responses:
+        '200': { description: Meeting list }
+    post:
+      operationId: createCourseMeeting
+      parameters:
+        - { $ref: '#/components/parameters/CourseId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CourseMeetingRequest' }
+      responses:
+        '200': { description: Created meeting }
+  /todos:
+    get:
+      operationId: listTodos
+      responses:
+        '200': { description: Todo list }
+    post:
+      operationId: createTodo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TodoRequest' }
+      responses:
+        '200': { description: Created todo }
+  /todos/{todoId}:
+    get:
+      operationId: getTodo
+      parameters:
+        - { $ref: '#/components/parameters/TodoId' }
+      responses:
+        '200': { description: Todo }
+    patch:
+      operationId: updateTodo
+      parameters:
+        - { $ref: '#/components/parameters/TodoId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TodoRequest' }
+      responses:
+        '200': { description: Updated todo }
+    delete:
+      operationId: deleteTodo
+      parameters:
+        - { $ref: '#/components/parameters/TodoId' }
+      responses:
+        '204': { description: Deleted }
+  /todos/{todoId}/blocks:
+    get:
+      operationId: listTodoBlocks
+      parameters:
+        - { $ref: '#/components/parameters/TodoId' }
+      responses:
+        '200': { description: Block list }
+    post:
+      operationId: createTodoBlock
+      parameters:
+        - { $ref: '#/components/parameters/TodoId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TodoBlockRequest' }
+      responses:
+        '200': { description: Created block }
+  /todo-blocks/{blockId}:
+    patch:
+      operationId: updateTodoBlock
+      parameters:
+        - { $ref: '#/components/parameters/BlockId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TodoBlockRequest' }
+      responses:
+        '200': { description: Updated block }
+    delete:
+      operationId: deleteTodoBlock
+      parameters:
+        - { $ref: '#/components/parameters/BlockId' }
+      responses:
+        '204': { description: Deleted }
+  /recurring-schedules:
+    get:
+      operationId: listRecurringSchedules
+      responses:
+        '200': { description: Recurring schedule list }
+    post:
+      operationId: createRecurringSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecurringScheduleRequest' }
+      responses:
+        '200': { description: Created schedule }
+  /recurring-schedules/{scheduleId}:
+    get:
+      operationId: getRecurringSchedule
+      parameters:
+        - { $ref: '#/components/parameters/ScheduleId' }
+      responses:
+        '200': { description: Recurring schedule }
+    patch:
+      operationId: updateRecurringSchedule
+      parameters:
+        - { $ref: '#/components/parameters/ScheduleId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecurringScheduleRequest' }
+      responses:
+        '200': { description: Updated schedule }
+    delete:
+      operationId: deleteRecurringSchedule
+      parameters:
+        - { $ref: '#/components/parameters/ScheduleId' }
+      responses:
+        '204': { description: Deleted }
+  /series/{seriesType}/{seriesId}/apply:
+    post:
+      operationId: applySeriesOccurrenceChange
+      parameters:
+        - name: seriesType
+          in: path
+          required: true
+          schema: { type: string, enum: [course_meeting, recurring_schedule] }
+        - name: seriesId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeriesApplyRequest' }
+      responses:
+        '200': { description: Applied occurrence change }
+  /tags:
+    get:
+      operationId: listTags
+      responses:
+        '200': { description: Tag list }
+    post:
+      operationId: createTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NamedColorRequest' }
+      responses:
+        '200': { description: Created tag }
+  /todo-categories:
+    get:
+      operationId: listTodoCategories
+      responses:
+        '200': { description: Category list }
+    post:
+      operationId: createTodoCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NamedColorRequest' }
+      responses:
+        '200': { description: Created category }
+  /import/courses/preview:
+    post:
+      operationId: previewCourseCsv
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: { type: string }
+      responses:
+        '200': { description: CSV preview }
+  /import/courses/commit:
+    post:
+      operationId: commitCourseCsv
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: CSV import committed }
+  /agent/changes/preview:
+    post:
+      operationId: previewChanges
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeSet' }
+      responses:
+        '200': { description: Change set preview }
+  /agent/changes/apply:
+    post:
+      operationId: applyChanges
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmationId]
+              properties:
+                confirmationId: { type: string, format: uuid }
+      responses:
+        '200': { description: Change set applied }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+
+    CalendarId:
+      name: calendarId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PeriodId:
+      name: periodId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CourseId:
+      name: courseId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TodoId:
+      name: todoId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BlockId:
+      name: blockId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ScheduleId:
+      name: scheduleId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Start:
+      name: start
+      in: query
+      required: true
+      schema: { type: string, format: date-time }
+    End:
+      name: end
+      in: query
+      required: true
+      schema: { type: string, format: date-time }
+  responses:
+    UserResponse:
+      description: Current user
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: '#/components/schemas/User'
+    ErrorResponse:
+      description: Structured error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+
+    CalendarRequest:
+      type: object
+      required: [name, firstDay, totalWeeks]
+      properties:
+        name: { type: string }
+        firstDay: { type: string, format: date }
+        totalWeeks: { type: integer, minimum: 1 }
+    PeriodRequest:
+      type: object
+      required: [periodNo, startLocal, endLocal]
+      properties:
+        periodNo: { type: integer, minimum: 1 }
+        startLocal: { type: string, pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }
+        endLocal: { type: string, pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }
+    CourseRequest:
+      type: object
+      required: [calendarId, name]
+      properties:
+        calendarId: { type: string, format: uuid }
+        name: { type: string }
+        teacher: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        color: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+    CourseMeetingRequest:
+      type: object
+      required: [weekday, periodStart, periodEnd, weekRule]
+      properties:
+        weekday: { type: integer, minimum: 1, maximum: 7 }
+        periodStart: { type: integer, minimum: 1 }
+        periodEnd: { type: integer, minimum: 1 }
+        weekRule: { type: object, additionalProperties: true }
+    TodoRequest:
+      type: object
+      required: [title, type]
+      properties:
+        title: { type: string }
+        type: { type: string, enum: [one_off, project] }
+        description: { type: string, nullable: true }
+        categoryId: { type: string, format: uuid, nullable: true }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        status: { type: string, enum: [todo, in_progress, completed, cancelled] }
+        estimatedMinutes: { type: integer, minimum: 0, nullable: true }
+        deadlineAt: { type: string, format: date-time, nullable: true }
+    TodoBlockRequest:
+      type: object
+      required: [startAt, endAt]
+      properties:
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        blockNote: { type: string, nullable: true }
+        status: { type: string, enum: [scheduled, in_progress, completed, skipped] }
+    RecurringScheduleRequest:
+      type: object
+      required: [title, rule]
+      properties:
+        title: { type: string }
+        color: { type: string, nullable: true }
+        rule: { type: object, additionalProperties: true }
+        notes: { type: string, nullable: true }
+    SeriesApplyRequest:
+      type: object
+      required: [scope, occurrenceDateLocal, operation]
+      properties:
+        scope: { type: string, enum: [THIS, THIS_AND_FUTURE, ALL] }
+        occurrenceDateLocal: { type: string, format: date }
+        operation: { type: object, additionalProperties: true }
+    NamedColorRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        color: { type: string, nullable: true }
+    ChangeSet:
+      type: object
+      required: [changes]
+      properties:
+        changes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    RegisterRequest:
+      type: object
+      required: [username, password, timezone]
+      properties:
+        username: { type: string, minLength: 1, maxLength: 100 }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        timezone: { type: string, example: Asia/Shanghai }
+    User:
+      type: object
+      required: [id, username, timezone]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email, nullable: true }
+        timezone: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    LoginResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [accessToken, expiresIn]
+          properties:
+            accessToken: { type: string }
+            expiresIn: { type: integer }
+    ServerTimeResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [serverTimeUtc]
+          properties:
+            serverTimeUtc: { type: string, format: date-time }
+    CalendarEvent:
+      type: object
+      required: [id, type, title, startAt, source, conflictState]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [course, recurring_schedule, todo_block, deadline]
+        title: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time, nullable: true }
+        source:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string }
+            id: { type: string, format: uuid }
+        conflictState:
+          type: string
+          enum: [none, soft_conflict, hard_conflict]
+        metadata:
+          type: object
+          additionalProperties: true
+    CalendarEventListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarEvent'
+    FreeSlot:
+      type: object
+      required: [startAt, endAt]
+      properties:
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+    FreeSlotListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FreeSlot'
+    SyncStateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [serverCursor]
+          properties:
+            serverCursor: { type: integer, minimum: 0 }
+    SyncChange:
+      type: object
+      required: [syncSeq, entityType, entityId, operation, revision]
+      properties:
+        syncSeq: { type: integer }
+        entityType: { type: string }
+        entityId: { type: string, format: uuid }
+        operation: { type: string, enum: [create, update, delete] }
+        revision: { type: integer }
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+    SyncChangesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [changes, nextCursor, hasMore]
+          properties:
+            changes:
+              type: array
+              items:
+                $ref: '#/components/schemas/SyncChange'
+            nextCursor: { type: integer }
+            hasMore: { type: boolean }
+    SyncOperation:
+      type: object
+      required: [operationId, entityType, entityId, operation, baseRevision]
+      properties:
+        operationId: { type: string, format: uuid }
+        entityType: { type: string }
+        entityId: { type: string, format: uuid }
+        operation: { type: string, enum: [create, update, delete] }
+        baseRevision: { type: integer, minimum: 0 }
+        changes:
+          type: object
+          additionalProperties: true
+    SyncPushRequest:
+      type: object
+      required: [baseCursor, operations]
+      properties:
+        baseCursor: { type: integer, minimum: 0 }
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperation'
+    SyncConflict:
+      type: object
+      required: [operationId, entityType, entityId]
+      properties:
+        operationId: { type: string, format: uuid }
+        entityType: { type: string }
+        entityId: { type: string, format: uuid }
+        base: { type: object, additionalProperties: true }
+        local: { type: object, additionalProperties: true }
+        server: { type: object, additionalProperties: true }
+        conflictingFields:
+          type: array
+          items: { type: string }
+    SyncPushResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [accepted, merged, conflicts, serverCursor]
+          properties:
+            accepted:
+              type: array
+              items: { type: string, format: uuid }
+            merged:
+              type: array
+              items: { type: string, format: uuid }
+            conflicts:
+              type: array
+              items:
+                $ref: '#/components/schemas/SyncConflict'
+            serverCursor: { type: integer }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: true

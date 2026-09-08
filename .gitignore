@@ -1,0 +1,46 @@
+# === Local toolchains & caches (sandboxed dev machines) ===
+.tools/
+*.local/
+
+# === Environment / secrets ===
+.env
+.env.*
+!.env.example
+
+# === Go (server) ===
+server/server
+server/server.exe
+server/bin/
+*.test
+*.out
+coverage.txt
+
+# === Node / Web ===
+node_modules/
+.next/
+out/
+build/
+.turbo/
+*.tsbuildinfo
+
+# === Flutter ===
+.flutter-plugins*
+.flutter-plugins-dependencies*
+.dart_tool/
+build/
+**/ephemeral/
+**/doc/api/
+.dart_flavor
+.fvm/
+pubspec.lock
+
+# === Database ===
+*.sqlite3
+*.db
+
+# === IDE / OS ===
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
