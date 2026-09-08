@@ -1,0 +1,767 @@
+[
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-07T03:40:00Z",
+    "id": "course:b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd:2026-09-07",
+    "metadata": {
+      "color": null,
+      "courseId": "86381c87-05eb-4f15-af3e-dbaeeea879d6",
+      "displayDate": "2026-09-07",
+      "location": "12-209",
+      "meetingId": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "overridden": true,
+      "periodEnd": 2,
+      "periodStart": 1,
+      "teacher": null,
+      "week": 1
+    },
+    "source": {
+      "id": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-07T00:00:00Z",
+    "title": "中国近现代史纲要",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-07T07:30:00Z",
+    "id": "course:0ef0a6c9-860d-4a54-9084-0558dd8b660f:2026-09-07",
+    "metadata": {
+      "color": null,
+      "courseId": "b5e297ee-c311-411f-8f99-3d99a76545a4",
+      "displayDate": "2026-09-07",
+      "location": "12-209",
+      "meetingId": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 1
+    },
+    "source": {
+      "id": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-07T06:00:00Z",
+    "title": "毛泽东思想和中国特色社会主义理论体系概论",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-08T02:30:00Z",
+    "id": "todo_block:dc67f528-9ed1-4e43-bdde-890be0246da8",
+    "metadata": {
+      "blockId": "dc67f528-9ed1-4e43-bdde-890be0246da8",
+      "blockNote": "查资料和整理文献",
+      "color": null,
+      "status": "scheduled",
+      "todoId": "2b119d4d-7183-45e2-b5ba-97c77f6fb398"
+    },
+    "source": {
+      "id": "dc67f528-9ed1-4e43-bdde-890be0246da8",
+      "type": "todo_block"
+    },
+    "startAt": "2026-09-08T00:30:00Z",
+    "title": "生化大作业",
+    "type": "todo_block"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-08T08:20:00Z",
+    "id": "course:4b44d9ba-a47a-46df-93a3-da78409b2f21:2026-09-08",
+    "metadata": {
+      "color": null,
+      "courseId": "1e30d873-e236-4656-a896-841609bd2d94",
+      "displayDate": "2026-09-08",
+      "location": "12-107",
+      "meetingId": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+      "overridden": false,
+      "periodEnd": 8,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 1
+    },
+    "source": {
+      "id": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-08T06:00:00Z",
+    "title": "生理学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "soft_conflict",
+    "endAt": "2026-09-09T05:10:00Z",
+    "id": "todo_block:445acb8e-40fe-41fd-a5ae-7f00d317b170",
+    "metadata": {
+      "blockId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "blockNote": "probe overlap with Wednesday course",
+      "color": null,
+      "status": "scheduled",
+      "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1"
+    },
+    "source": {
+      "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "type": "todo_block"
+    },
+    "startAt": "2026-09-09T02:00:00Z",
+    "title": "整理笔记",
+    "type": "todo_block"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-09T04:00:00Z",
+    "id": "course:64807224-42f6-4884-915c-34842ff1a90e:2026-09-09",
+    "metadata": {
+      "color": null,
+      "courseId": "6b0bc9a7-2c72-4f6d-b1f2-66ba8c512ba5",
+      "displayDate": "2026-09-09",
+      "location": "12-109",
+      "meetingId": "64807224-42f6-4884-915c-34842ff1a90e",
+      "overridden": false,
+      "periodEnd": 5,
+      "periodStart": 4,
+      "teacher": null,
+      "week": 1
+    },
+    "source": {
+      "id": "64807224-42f6-4884-915c-34842ff1a90e",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-09T02:30:00Z",
+    "title": "生物化学与分子生物学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-10T07:30:00Z",
+    "id": "course:aff140d3-02e0-44fc-bf4d-5fe9acc64430:2026-09-10",
+    "metadata": {
+      "color": null,
+      "courseId": "a654bd23-c301-49c9-b7de-8f8f5ca61ebc",
+      "displayDate": "2026-09-10",
+      "location": "12-107",
+      "meetingId": "aff140d3-02e0-44fc-bf4d-5fe9acc64430",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 1
+    },
+    "source": {
+      "id": "aff140d3-02e0-44fc-bf4d-5fe9acc64430",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-10T06:00:00Z",
+    "title": "生理学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-10T09:10:00Z",
+    "id": "course:14776b10-f90a-4eac-816d-6a39d4225d19:2026-09-10",
+    "metadata": {
+      "color": null,
+      "courseId": "1f22e920-09ba-49b7-995a-3aaa60511230",
+      "displayDate": "2026-09-10",
+      "location": "12-107",
+      "meetingId": "14776b10-f90a-4eac-816d-6a39d4225d19",
+      "overridden": false,
+      "periodEnd": 9,
+      "periodStart": 8,
+      "teacher": null,
+      "week": 1
+    },
+    "source": {
+      "id": "14776b10-f90a-4eac-816d-6a39d4225d19",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-10T07:40:00Z",
+    "title": "习近平新时代中国特色社会主义思想概论",
+    "type": "course"
+  },
+  {
+    "conflictState": "soft_conflict",
+    "endAt": "2026-09-10T09:30:00Z",
+    "id": "todo_block:c7ca66ae-153c-407f-bdba-c1f6731e0734",
+    "metadata": {
+      "blockId": "c7ca66ae-153c-407f-bdba-c1f6731e0734",
+      "blockNote": "分析实验数据",
+      "color": null,
+      "status": "scheduled",
+      "todoId": "2b119d4d-7183-45e2-b5ba-97c77f6fb398"
+    },
+    "source": {
+      "id": "c7ca66ae-153c-407f-bdba-c1f6731e0734",
+      "type": "todo_block"
+    },
+    "startAt": "2026-09-10T08:00:00Z",
+    "title": "生化大作业",
+    "type": "todo_block"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-11T04:00:00Z",
+    "id": "course:513445d6-1286-45ea-b8d4-de091de22bfe:2026-09-11",
+    "metadata": {
+      "color": null,
+      "courseId": "a6381ea8-e402-4771-bd02-264884065eee",
+      "displayDate": "2026-09-11",
+      "location": "12-205",
+      "meetingId": "513445d6-1286-45ea-b8d4-de091de22bfe",
+      "overridden": false,
+      "periodEnd": 5,
+      "periodStart": 3,
+      "teacher": null,
+      "week": 1
+    },
+    "source": {
+      "id": "513445d6-1286-45ea-b8d4-de091de22bfe",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-11T01:40:00Z",
+    "title": "生物化学与分子生物学（A）",
+    "type": "course"
+  },
+  {
+    "allDay": false,
+    "conflictState": "none",
+    "endAt": null,
+    "id": "deadline:2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+    "metadata": {
+      "deadlineAt": "2026-09-12T08:00:00Z",
+      "priority": "high",
+      "todoId": "2b119d4d-7183-45e2-b5ba-97c77f6fb398"
+    },
+    "source": {
+      "id": "2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+      "type": "todo"
+    },
+    "startAt": "2026-09-12T08:00:00Z",
+    "title": "生化大作业",
+    "type": "deadline"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-14T01:30:00Z",
+    "id": "course:b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd:2026-09-14",
+    "metadata": {
+      "color": null,
+      "courseId": "86381c87-05eb-4f15-af3e-dbaeeea879d6",
+      "displayDate": "2026-09-14",
+      "location": "12-209",
+      "meetingId": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "overridden": false,
+      "periodEnd": 2,
+      "periodStart": 1,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-14T00:00:00Z",
+    "title": "中国近现代史纲要",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-14T07:30:00Z",
+    "id": "course:0ef0a6c9-860d-4a54-9084-0558dd8b660f:2026-09-14",
+    "metadata": {
+      "color": null,
+      "courseId": "b5e297ee-c311-411f-8f99-3d99a76545a4",
+      "displayDate": "2026-09-14",
+      "location": "12-209",
+      "meetingId": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-14T06:00:00Z",
+    "title": "毛泽东思想和中国特色社会主义理论体系概论",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-15T08:20:00Z",
+    "id": "course:4b44d9ba-a47a-46df-93a3-da78409b2f21:2026-09-15",
+    "metadata": {
+      "color": null,
+      "courseId": "1e30d873-e236-4656-a896-841609bd2d94",
+      "displayDate": "2026-09-15",
+      "location": "12-107",
+      "meetingId": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+      "overridden": false,
+      "periodEnd": 8,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-15T06:00:00Z",
+    "title": "生理学（A）",
+    "type": "course"
+  },
+  {
+    "allDay": false,
+    "conflictState": "none",
+    "endAt": null,
+    "id": "deadline:150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+    "metadata": {
+      "deadlineAt": "2026-09-15T08:00:00Z",
+      "priority": "normal",
+      "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1"
+    },
+    "source": {
+      "id": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+      "type": "todo"
+    },
+    "startAt": "2026-09-15T08:00:00Z",
+    "title": "整理笔记",
+    "type": "deadline"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-16T04:00:00Z",
+    "id": "course:64807224-42f6-4884-915c-34842ff1a90e:2026-09-16",
+    "metadata": {
+      "color": null,
+      "courseId": "6b0bc9a7-2c72-4f6d-b1f2-66ba8c512ba5",
+      "displayDate": "2026-09-16",
+      "location": "12-109",
+      "meetingId": "64807224-42f6-4884-915c-34842ff1a90e",
+      "overridden": false,
+      "periodEnd": 5,
+      "periodStart": 4,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "64807224-42f6-4884-915c-34842ff1a90e",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-16T02:30:00Z",
+    "title": "生物化学与分子生物学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-16T09:10:00Z",
+    "id": "course:d99a6fad-ef20-475d-98bb-ac2c1d2e786f:2026-09-16",
+    "metadata": {
+      "color": null,
+      "courseId": "59705841-fd65-45a3-9d84-8fb0df03658f",
+      "displayDate": "2026-09-16",
+      "location": "未排地点",
+      "meetingId": "d99a6fad-ef20-475d-98bb-ac2c1d2e786f",
+      "overridden": false,
+      "periodEnd": 9,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "d99a6fad-ef20-475d-98bb-ac2c1d2e786f",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-16T06:00:00Z",
+    "title": "初级临床实践",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-17T07:30:00Z",
+    "id": "course:aff140d3-02e0-44fc-bf4d-5fe9acc64430:2026-09-17",
+    "metadata": {
+      "color": null,
+      "courseId": "a654bd23-c301-49c9-b7de-8f8f5ca61ebc",
+      "displayDate": "2026-09-17",
+      "location": "12-107",
+      "meetingId": "aff140d3-02e0-44fc-bf4d-5fe9acc64430",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "aff140d3-02e0-44fc-bf4d-5fe9acc64430",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-17T06:00:00Z",
+    "title": "生理学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-17T09:10:00Z",
+    "id": "course:14776b10-f90a-4eac-816d-6a39d4225d19:2026-09-17",
+    "metadata": {
+      "color": null,
+      "courseId": "1f22e920-09ba-49b7-995a-3aaa60511230",
+      "displayDate": "2026-09-17",
+      "location": "12-107",
+      "meetingId": "14776b10-f90a-4eac-816d-6a39d4225d19",
+      "overridden": false,
+      "periodEnd": 9,
+      "periodStart": 8,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "14776b10-f90a-4eac-816d-6a39d4225d19",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-17T07:40:00Z",
+    "title": "习近平新时代中国特色社会主义思想概论",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-18T04:00:00Z",
+    "id": "course:513445d6-1286-45ea-b8d4-de091de22bfe:2026-09-18",
+    "metadata": {
+      "color": null,
+      "courseId": "a6381ea8-e402-4771-bd02-264884065eee",
+      "displayDate": "2026-09-18",
+      "location": "12-205",
+      "meetingId": "513445d6-1286-45ea-b8d4-de091de22bfe",
+      "overridden": false,
+      "periodEnd": 5,
+      "periodStart": 3,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "513445d6-1286-45ea-b8d4-de091de22bfe",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-18T01:40:00Z",
+    "title": "生物化学与分子生物学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-20T04:00:00Z",
+    "id": "course:91edc14b-f95d-420f-be1a-b8177cf96698:2026-09-20",
+    "metadata": {
+      "color": null,
+      "courseId": "8e088844-06c2-4b97-a4b0-442482c2b589",
+      "displayDate": "2026-09-20",
+      "location": "12-205",
+      "meetingId": "91edc14b-f95d-420f-be1a-b8177cf96698",
+      "overridden": false,
+      "periodEnd": 5,
+      "periodStart": 3,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "91edc14b-f95d-420f-be1a-b8177cf96698",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-20T01:40:00Z",
+    "title": "生物化学与分子生物学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-20T07:30:00Z",
+    "id": "course:a2fe629b-53bf-4310-b0f6-04f6e8cd5d32:2026-09-20",
+    "metadata": {
+      "color": null,
+      "courseId": "7996df55-0733-4fce-89ec-44d23ef5f064",
+      "displayDate": "2026-09-20",
+      "location": "12-309",
+      "meetingId": "a2fe629b-53bf-4310-b0f6-04f6e8cd5d32",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 2
+    },
+    "source": {
+      "id": "a2fe629b-53bf-4310-b0f6-04f6e8cd5d32",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-20T06:00:00Z",
+    "title": "生理学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-21T01:30:00Z",
+    "id": "course:b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd:2026-09-21",
+    "metadata": {
+      "color": null,
+      "courseId": "86381c87-05eb-4f15-af3e-dbaeeea879d6",
+      "displayDate": "2026-09-21",
+      "location": "12-209",
+      "meetingId": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "overridden": false,
+      "periodEnd": 2,
+      "periodStart": 1,
+      "teacher": null,
+      "week": 3
+    },
+    "source": {
+      "id": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-21T00:00:00Z",
+    "title": "中国近现代史纲要",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-21T07:30:00Z",
+    "id": "course:0ef0a6c9-860d-4a54-9084-0558dd8b660f:2026-09-21",
+    "metadata": {
+      "color": null,
+      "courseId": "b5e297ee-c311-411f-8f99-3d99a76545a4",
+      "displayDate": "2026-09-21",
+      "location": "12-209",
+      "meetingId": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 3
+    },
+    "source": {
+      "id": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-21T06:00:00Z",
+    "title": "毛泽东思想和中国特色社会主义理论体系概论",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-22T08:20:00Z",
+    "id": "course:4b44d9ba-a47a-46df-93a3-da78409b2f21:2026-09-22",
+    "metadata": {
+      "color": null,
+      "courseId": "1e30d873-e236-4656-a896-841609bd2d94",
+      "displayDate": "2026-09-22",
+      "location": "12-107",
+      "meetingId": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+      "overridden": false,
+      "periodEnd": 8,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 3
+    },
+    "source": {
+      "id": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-22T06:00:00Z",
+    "title": "生理学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-23T04:00:00Z",
+    "id": "course:64807224-42f6-4884-915c-34842ff1a90e:2026-09-23",
+    "metadata": {
+      "color": null,
+      "courseId": "6b0bc9a7-2c72-4f6d-b1f2-66ba8c512ba5",
+      "displayDate": "2026-09-23",
+      "location": "12-109",
+      "meetingId": "64807224-42f6-4884-915c-34842ff1a90e",
+      "overridden": false,
+      "periodEnd": 5,
+      "periodStart": 4,
+      "teacher": null,
+      "week": 3
+    },
+    "source": {
+      "id": "64807224-42f6-4884-915c-34842ff1a90e",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-23T02:30:00Z",
+    "title": "生物化学与分子生物学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-23T09:10:00Z",
+    "id": "course:7f68baa2-e178-44f4-9312-562c2654a4f6:2026-09-23",
+    "metadata": {
+      "color": null,
+      "courseId": "b00acfd7-32e1-4ea6-9dc5-f01e0fc0edb4",
+      "displayDate": "2026-09-23",
+      "location": "未排地点",
+      "meetingId": "7f68baa2-e178-44f4-9312-562c2654a4f6",
+      "overridden": false,
+      "periodEnd": 9,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 3
+    },
+    "source": {
+      "id": "7f68baa2-e178-44f4-9312-562c2654a4f6",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-23T06:00:00Z",
+    "title": "初级临床实践",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-24T09:10:00Z",
+    "id": "course:14776b10-f90a-4eac-816d-6a39d4225d19:2026-09-24",
+    "metadata": {
+      "color": null,
+      "courseId": "1f22e920-09ba-49b7-995a-3aaa60511230",
+      "displayDate": "2026-09-24",
+      "location": "12-107",
+      "meetingId": "14776b10-f90a-4eac-816d-6a39d4225d19",
+      "overridden": false,
+      "periodEnd": 9,
+      "periodStart": 8,
+      "teacher": null,
+      "week": 3
+    },
+    "source": {
+      "id": "14776b10-f90a-4eac-816d-6a39d4225d19",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-24T07:40:00Z",
+    "title": "习近平新时代中国特色社会主义思想概论",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-28T01:30:00Z",
+    "id": "course:b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd:2026-09-28",
+    "metadata": {
+      "color": null,
+      "courseId": "86381c87-05eb-4f15-af3e-dbaeeea879d6",
+      "displayDate": "2026-09-28",
+      "location": "12-209",
+      "meetingId": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "overridden": false,
+      "periodEnd": 2,
+      "periodStart": 1,
+      "teacher": null,
+      "week": 4
+    },
+    "source": {
+      "id": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-28T00:00:00Z",
+    "title": "中国近现代史纲要",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-28T07:30:00Z",
+    "id": "course:0ef0a6c9-860d-4a54-9084-0558dd8b660f:2026-09-28",
+    "metadata": {
+      "color": null,
+      "courseId": "b5e297ee-c311-411f-8f99-3d99a76545a4",
+      "displayDate": "2026-09-28",
+      "location": "12-209",
+      "meetingId": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 4
+    },
+    "source": {
+      "id": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-28T06:00:00Z",
+    "title": "毛泽东思想和中国特色社会主义理论体系概论",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-29T07:30:00Z",
+    "id": "course:6ec948ff-e051-4dfe-b0a8-79f5f3e516ed:2026-09-29",
+    "metadata": {
+      "color": null,
+      "courseId": "a5cb8aa3-3056-4163-8306-c2c11b79ed5f",
+      "displayDate": "2026-09-29",
+      "location": "12-107",
+      "meetingId": "6ec948ff-e051-4dfe-b0a8-79f5f3e516ed",
+      "overridden": false,
+      "periodEnd": 7,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 4
+    },
+    "source": {
+      "id": "6ec948ff-e051-4dfe-b0a8-79f5f3e516ed",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-29T06:00:00Z",
+    "title": "生理学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-30T04:00:00Z",
+    "id": "course:64807224-42f6-4884-915c-34842ff1a90e:2026-09-30",
+    "metadata": {
+      "color": null,
+      "courseId": "6b0bc9a7-2c72-4f6d-b1f2-66ba8c512ba5",
+      "displayDate": "2026-09-30",
+      "location": "12-109",
+      "meetingId": "64807224-42f6-4884-915c-34842ff1a90e",
+      "overridden": false,
+      "periodEnd": 5,
+      "periodStart": 4,
+      "teacher": null,
+      "week": 4
+    },
+    "source": {
+      "id": "64807224-42f6-4884-915c-34842ff1a90e",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-30T02:30:00Z",
+    "title": "生物化学与分子生物学（A）",
+    "type": "course"
+  },
+  {
+    "conflictState": "none",
+    "endAt": "2026-09-30T09:10:00Z",
+    "id": "course:9f4fed55-bfb7-4365-8c73-7b9bd66e77d7:2026-09-30",
+    "metadata": {
+      "color": null,
+      "courseId": "bd9b6974-e861-45cc-bf5c-476db869c0db",
+      "displayDate": "2026-09-30",
+      "location": "未排地点",
+      "meetingId": "9f4fed55-bfb7-4365-8c73-7b9bd66e77d7",
+      "overridden": false,
+      "periodEnd": 9,
+      "periodStart": 6,
+      "teacher": null,
+      "week": 4
+    },
+    "source": {
+      "id": "9f4fed55-bfb7-4365-8c73-7b9bd66e77d7",
+      "type": "course_meeting"
+    },
+    "startAt": "2026-09-30T06:00:00Z",
+    "title": "初级临床实践",
+    "type": "course"
+  }
+]

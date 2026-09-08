@@ -1,0 +1,2297 @@
+{
+  "nextCursor": 105,
+  "changes": [
+    {
+      "syncSeq": 1,
+      "entityType": "academic_calendar",
+      "entityId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "createdAt": "2026-09-08T14:01:10Z",
+        "firstDay": "2026-09-07",
+        "id": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "name": "2026 Autumn",
+        "revision": 1,
+        "totalWeeks": 16,
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 2,
+      "entityType": "period_template",
+      "entityId": "ec1189ad-3f4b-460b-a6c2-c5cc6aef6361",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "09:40",
+        "id": "ec1189ad-3f4b-460b-a6c2-c5cc6aef6361",
+        "periodNo": 1,
+        "revision": 1,
+        "startLocal": "08:00",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 3,
+      "entityType": "period_template",
+      "entityId": "b1cfc451-5bb0-4ca8-a5a4-f60cba7c6c3c",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "11:40",
+        "id": "b1cfc451-5bb0-4ca8-a5a4-f60cba7c6c3c",
+        "periodNo": 2,
+        "revision": 1,
+        "startLocal": "10:00",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 4,
+      "entityType": "period_template",
+      "entityId": "ef6f44da-ed64-404e-915b-407e38173405",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "15:40",
+        "id": "ef6f44da-ed64-404e-915b-407e38173405",
+        "periodNo": 3,
+        "revision": 1,
+        "startLocal": "14:00",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 5,
+      "entityType": "period_template",
+      "entityId": "fe99cb29-b6ab-4e93-a072-9607e61eb94b",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "17:40",
+        "id": "fe99cb29-b6ab-4e93-a072-9607e61eb94b",
+        "periodNo": 4,
+        "revision": 1,
+        "startLocal": "16:00",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 6,
+      "entityType": "course",
+      "entityId": "284210f9-5c6a-4382-8109-05d5ea7cdb48",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": "#3b82f6",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "id": "284210f9-5c6a-4382-8109-05d5ea7cdb48",
+        "location": "逸夫楼201",
+        "name": "高等数学",
+        "notes": null,
+        "revision": 1,
+        "teacher": "小明",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 7,
+      "entityType": "course_meeting",
+      "entityId": "877435b7-f128-4346-bb40-5eef7435a7cc",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "284210f9-5c6a-4382-8109-05d5ea7cdb48",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "id": "877435b7-f128-4346-bb40-5eef7435a7cc",
+        "periodEnd": 2,
+        "periodStart": 1,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:01:10Z",
+        "weekRule": [
+          {
+            "end": 16,
+            "parity": "all",
+            "start": 1
+          }
+        ],
+        "weekday": 1
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 8,
+      "entityType": "course",
+      "entityId": "5b2bbf94-f603-4ceb-aba3-806730744ddc",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": "#8b5cf6",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "id": "5b2bbf94-f603-4ceb-aba3-806730744ddc",
+        "location": "理工楼110",
+        "name": "线性代数",
+        "notes": null,
+        "revision": 1,
+        "teacher": "小红",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 9,
+      "entityType": "course_meeting",
+      "entityId": "fff624c9-db2a-4f1e-95f0-4a744f643994",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "5b2bbf94-f603-4ceb-aba3-806730744ddc",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "id": "fff624c9-db2a-4f1e-95f0-4a744f643994",
+        "periodEnd": 3,
+        "periodStart": 3,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:01:10Z",
+        "weekRule": [
+          {
+            "end": 16,
+            "parity": "all",
+            "start": 1
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:01:10Z"
+    },
+    {
+      "syncSeq": 10,
+      "entityType": "todo",
+      "entityId": "2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "categoryId": null,
+        "color": null,
+        "createdAt": "2026-09-08T14:01:19Z",
+        "deadlineAt": "2026-09-12T08:00:00Z",
+        "description": null,
+        "estimatedMinutes": 240,
+        "id": "2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+        "priority": "high",
+        "revision": 1,
+        "status": "todo",
+        "tagIds": [],
+        "title": "生化大作业",
+        "type": "project",
+        "updatedAt": "2026-09-08T14:01:19Z"
+      },
+      "createdAt": "2026-09-08T14:01:19Z"
+    },
+    {
+      "syncSeq": 11,
+      "entityType": "todo_block",
+      "entityId": "dc67f528-9ed1-4e43-bdde-890be0246da8",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "blockNote": "查资料和整理文献",
+        "createdAt": "2026-09-08T14:01:19Z",
+        "endAt": "2026-09-08T02:30:00Z",
+        "id": "dc67f528-9ed1-4e43-bdde-890be0246da8",
+        "revision": 1,
+        "startAt": "2026-09-08T00:30:00Z",
+        "status": "scheduled",
+        "todoId": "2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+        "updatedAt": "2026-09-08T14:01:19Z"
+      },
+      "createdAt": "2026-09-08T14:01:19Z"
+    },
+    {
+      "syncSeq": 12,
+      "entityType": "todo_block",
+      "entityId": "c7ca66ae-153c-407f-bdba-c1f6731e0734",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "blockNote": "分析实验数据",
+        "createdAt": "2026-09-08T14:01:19Z",
+        "endAt": "2026-09-10T09:30:00Z",
+        "id": "c7ca66ae-153c-407f-bdba-c1f6731e0734",
+        "revision": 1,
+        "startAt": "2026-09-10T08:00:00Z",
+        "status": "scheduled",
+        "todoId": "2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+        "updatedAt": "2026-09-08T14:01:19Z"
+      },
+      "createdAt": "2026-09-08T14:01:19Z"
+    },
+    {
+      "syncSeq": 13,
+      "entityType": "todo",
+      "entityId": "b06e5926-806b-4aba-b166-bdefc6dfdd52",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "categoryId": null,
+        "color": null,
+        "createdAt": "2026-09-08T14:01:19Z",
+        "deadlineAt": null,
+        "description": null,
+        "estimatedMinutes": null,
+        "id": "b06e5926-806b-4aba-b166-bdefc6dfdd52",
+        "priority": "low",
+        "revision": 1,
+        "status": "todo",
+        "tagIds": [],
+        "title": "买牛奶",
+        "type": "one_off",
+        "updatedAt": "2026-09-08T14:01:19Z"
+      },
+      "createdAt": "2026-09-08T14:01:19Z"
+    },
+    {
+      "syncSeq": 14,
+      "entityType": "tag",
+      "entityId": "23e3e8f6-3b55-4596-9439-1a87308f2c54",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "color": "#f59e0b",
+        "createdAt": "2026-09-08T14:01:19Z",
+        "id": "23e3e8f6-3b55-4596-9439-1a87308f2c54",
+        "name": "复习",
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:01:19Z"
+      },
+      "createdAt": "2026-09-08T14:01:19Z"
+    },
+    {
+      "syncSeq": 15,
+      "entityType": "todo_category",
+      "entityId": "b39d0e01-7900-49d0-acab-a9f4118745f1",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "color": "#22c55e",
+        "createdAt": "2026-09-08T14:01:19Z",
+        "id": "b39d0e01-7900-49d0-acab-a9f4118745f1",
+        "name": "作业",
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:01:19Z"
+      },
+      "createdAt": "2026-09-08T14:01:19Z"
+    },
+    {
+      "syncSeq": 16,
+      "entityType": "todo",
+      "entityId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "categoryId": "b39d0e01-7900-49d0-acab-a9f4118745f1",
+        "color": null,
+        "createdAt": "2026-09-08T14:01:29Z",
+        "deadlineAt": "2026-09-15T08:00:00Z",
+        "description": null,
+        "estimatedMinutes": null,
+        "id": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "priority": "normal",
+        "revision": 1,
+        "status": "todo",
+        "tagIds": [
+          "23e3e8f6-3b55-4596-9439-1a87308f2c54"
+        ],
+        "title": "整理笔记",
+        "type": "project",
+        "updatedAt": "2026-09-08T14:01:29Z"
+      },
+      "createdAt": "2026-09-08T14:01:29Z"
+    },
+    {
+      "syncSeq": 17,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T07:30:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 1,
+        "startAt": "2026-09-09T06:30:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:01:29Z"
+      },
+      "createdAt": "2026-09-08T14:01:29Z"
+    },
+    {
+      "syncSeq": 18,
+      "entityType": "todo",
+      "entityId": "2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+      "operation": "update",
+      "revision": 2,
+      "payload": {
+        "categoryId": null,
+        "color": null,
+        "createdAt": "2026-09-08T14:01:19Z",
+        "deadlineAt": "2026-09-12T08:00:00Z",
+        "description": null,
+        "estimatedMinutes": 240,
+        "id": "2b119d4d-7183-45e2-b5ba-97c77f6fb398",
+        "priority": "high",
+        "revision": 2,
+        "status": "todo",
+        "tagIds": [],
+        "title": "生化大作业",
+        "type": "project",
+        "updatedAt": "2026-09-08T14:01:50Z"
+      },
+      "createdAt": "2026-09-08T14:01:50Z"
+    },
+    {
+      "syncSeq": 19,
+      "entityType": "todo",
+      "entityId": "ec0781be-64b7-4db3-9ff5-738f3a18ad77",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "categoryId": null,
+        "color": null,
+        "createdAt": "2026-09-08T14:01:54Z",
+        "deadlineAt": null,
+        "description": null,
+        "estimatedMinutes": null,
+        "id": "ec0781be-64b7-4db3-9ff5-738f3a18ad77",
+        "priority": "normal",
+        "revision": 1,
+        "status": "todo",
+        "tagIds": [],
+        "title": "交作业提醒",
+        "type": "one_off",
+        "updatedAt": "2026-09-08T14:01:54Z"
+      },
+      "createdAt": "2026-09-08T14:01:54Z"
+    },
+    {
+      "syncSeq": 20,
+      "entityType": "course",
+      "entityId": "109574eb-4354-4147-b052-402bb23e7ef3",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:02:49Z",
+        "id": "109574eb-4354-4147-b052-402bb23e7ef3",
+        "location": "文成楼125",
+        "name": "大学英语",
+        "notes": null,
+        "revision": 1,
+        "teacher": "王老师",
+        "updatedAt": "2026-09-08T14:02:49Z"
+      },
+      "createdAt": "2026-09-08T14:02:49Z"
+    },
+    {
+      "syncSeq": 21,
+      "entityType": "course_meeting",
+      "entityId": "e1732a08-2232-4c4d-8e4c-f4245ef029ef",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "109574eb-4354-4147-b052-402bb23e7ef3",
+        "createdAt": "2026-09-08T14:02:49Z",
+        "id": "e1732a08-2232-4c4d-8e4c-f4245ef029ef",
+        "periodEnd": 2,
+        "periodStart": 1,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:02:49Z",
+        "weekRule": [
+          {
+            "end": 2,
+            "parity": "all",
+            "start": 2
+          },
+          {
+            "end": 5,
+            "parity": "all",
+            "start": 5
+          },
+          {
+            "end": 8,
+            "parity": "all",
+            "start": 8
+          }
+        ],
+        "weekday": 5
+      },
+      "createdAt": "2026-09-08T14:02:49Z"
+    },
+    {
+      "syncSeq": 22,
+      "entityType": "occurrence_override",
+      "entityId": "ef6a0340-67b3-42d1-bd69-746bc306b363",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "action": "move",
+        "createdAt": "2026-09-08T14:05:55Z",
+        "id": "ef6a0340-67b3-42d1-bd69-746bc306b363",
+        "metadata": null,
+        "occurrenceDateLocal": "2026-09-07",
+        "replacementEndAt": "2026-09-07T06:40:00Z",
+        "replacementStartAt": "2026-09-07T05:00:00Z",
+        "revision": 1,
+        "seriesId": "877435b7-f128-4346-bb40-5eef7435a7cc",
+        "seriesType": "course_meeting",
+        "updatedAt": "2026-09-08T14:05:55Z"
+      },
+      "createdAt": "2026-09-08T14:05:55Z"
+    },
+    {
+      "syncSeq": 23,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "update",
+      "revision": 2,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T06:45:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 2,
+        "startAt": "2026-09-09T06:30:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:13:48Z"
+      },
+      "createdAt": "2026-09-08T14:13:48Z"
+    },
+    {
+      "syncSeq": 24,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "update",
+      "revision": 3,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T09:40:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 3,
+        "startAt": "2026-09-09T06:30:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:13:53Z"
+      },
+      "createdAt": "2026-09-08T14:13:53Z"
+    },
+    {
+      "syncSeq": 25,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "update",
+      "revision": 4,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T09:10:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 4,
+        "startAt": "2026-09-09T06:00:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:13:57Z"
+      },
+      "createdAt": "2026-09-08T14:13:57Z"
+    },
+    {
+      "syncSeq": 26,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "update",
+      "revision": 5,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T06:50:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 5,
+        "startAt": "2026-09-09T03:40:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:14:01Z"
+      },
+      "createdAt": "2026-09-08T14:14:01Z"
+    },
+    {
+      "syncSeq": 27,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "update",
+      "revision": 6,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T05:10:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 6,
+        "startAt": "2026-09-09T02:00:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:14:02Z"
+      },
+      "createdAt": "2026-09-08T14:14:02Z"
+    },
+    {
+      "syncSeq": 28,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "update",
+      "revision": 7,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T04:50:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 7,
+        "startAt": "2026-09-09T01:40:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:14:16Z"
+      },
+      "createdAt": "2026-09-08T14:14:16Z"
+    },
+    {
+      "syncSeq": 29,
+      "entityType": "todo_block",
+      "entityId": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+      "operation": "update",
+      "revision": 8,
+      "payload": {
+        "blockNote": "probe overlap with Wednesday course",
+        "createdAt": "2026-09-08T14:01:29Z",
+        "endAt": "2026-09-09T05:10:00Z",
+        "id": "445acb8e-40fe-41fd-a5ae-7f00d317b170",
+        "revision": 8,
+        "startAt": "2026-09-09T02:00:00Z",
+        "status": "scheduled",
+        "todoId": "150a4c95-bb85-4299-84f4-ac416c8ebcf1",
+        "updatedAt": "2026-09-08T14:14:17Z"
+      },
+      "createdAt": "2026-09-08T14:14:17Z"
+    },
+    {
+      "syncSeq": 30,
+      "entityType": "period_template",
+      "entityId": "b645e631-4af7-4a4f-a4b3-719ecea5b3d2",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:15:26Z",
+        "endLocal": "12:00",
+        "id": "b645e631-4af7-4a4f-a4b3-719ecea5b3d2",
+        "periodNo": 5,
+        "revision": 1,
+        "startLocal": "11:20",
+        "updatedAt": "2026-09-08T14:15:26Z"
+      },
+      "createdAt": "2026-09-08T14:15:26Z"
+    },
+    {
+      "syncSeq": 31,
+      "entityType": "period_template",
+      "entityId": "5658d252-b6cc-4e85-b0d2-7e4a8f2428b4",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:15:38Z",
+        "endLocal": "14:40",
+        "id": "5658d252-b6cc-4e85-b0d2-7e4a8f2428b4",
+        "periodNo": 6,
+        "revision": 1,
+        "startLocal": "14:00",
+        "updatedAt": "2026-09-08T14:15:38Z"
+      },
+      "createdAt": "2026-09-08T14:15:38Z"
+    },
+    {
+      "syncSeq": 32,
+      "entityType": "period_template",
+      "entityId": "9bc29df3-de8e-41a3-802a-924ef620d58b",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:15:44Z",
+        "endLocal": "15:30",
+        "id": "9bc29df3-de8e-41a3-802a-924ef620d58b",
+        "periodNo": 7,
+        "revision": 1,
+        "startLocal": "14:50",
+        "updatedAt": "2026-09-08T14:15:44Z"
+      },
+      "createdAt": "2026-09-08T14:15:44Z"
+    },
+    {
+      "syncSeq": 33,
+      "entityType": "period_template",
+      "entityId": "71bf2d45-6a90-4304-b13c-b5fbf4683a50",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:15:57Z",
+        "endLocal": "16:20",
+        "id": "71bf2d45-6a90-4304-b13c-b5fbf4683a50",
+        "periodNo": 8,
+        "revision": 1,
+        "startLocal": "15:40",
+        "updatedAt": "2026-09-08T14:15:57Z"
+      },
+      "createdAt": "2026-09-08T14:15:57Z"
+    },
+    {
+      "syncSeq": 34,
+      "entityType": "period_template",
+      "entityId": "a2462c79-ebc8-440b-8f27-436c0789a363",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:16:04Z",
+        "endLocal": "17:10",
+        "id": "a2462c79-ebc8-440b-8f27-436c0789a363",
+        "periodNo": 9,
+        "revision": 1,
+        "startLocal": "16:30",
+        "updatedAt": "2026-09-08T14:16:04Z"
+      },
+      "createdAt": "2026-09-08T14:16:04Z"
+    },
+    {
+      "syncSeq": 35,
+      "entityType": "period_template",
+      "entityId": "e49f8aca-4aba-4f0e-9d2a-bea52cfe0df9",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:16:11Z",
+        "endLocal": "18:00",
+        "id": "e49f8aca-4aba-4f0e-9d2a-bea52cfe0df9",
+        "periodNo": 10,
+        "revision": 1,
+        "startLocal": "17:20",
+        "updatedAt": "2026-09-08T14:16:11Z"
+      },
+      "createdAt": "2026-09-08T14:16:11Z"
+    },
+    {
+      "syncSeq": 36,
+      "entityType": "academic_calendar",
+      "entityId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+      "operation": "update",
+      "revision": 2,
+      "payload": {
+        "createdAt": "2026-09-08T14:01:10Z",
+        "firstDay": "2026-09-07",
+        "id": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "name": "2026 Autumn",
+        "revision": 2,
+        "totalWeeks": 22,
+        "updatedAt": "2026-09-08T14:17:40Z"
+      },
+      "createdAt": "2026-09-08T14:17:40Z"
+    },
+    {
+      "syncSeq": 37,
+      "entityType": "course_meeting",
+      "entityId": "e1732a08-2232-4c4d-8e4c-f4245ef029ef",
+      "operation": "delete",
+      "revision": 2,
+      "payload": {
+        "courseId": "109574eb-4354-4147-b052-402bb23e7ef3",
+        "createdAt": "2026-09-08T14:02:49Z",
+        "deletedAt": "2026-09-08T14:17:58Z",
+        "id": "e1732a08-2232-4c4d-8e4c-f4245ef029ef",
+        "periodEnd": 2,
+        "periodStart": 1,
+        "revision": 2,
+        "updatedAt": "2026-09-08T14:02:49Z",
+        "weekRule": [
+          {
+            "end": 2,
+            "parity": "all",
+            "start": 2
+          },
+          {
+            "end": 5,
+            "parity": "all",
+            "start": 5
+          },
+          {
+            "end": 8,
+            "parity": "all",
+            "start": 8
+          }
+        ],
+        "weekday": 5
+      },
+      "createdAt": "2026-09-08T14:17:58Z"
+    },
+    {
+      "syncSeq": 38,
+      "entityType": "course",
+      "entityId": "109574eb-4354-4147-b052-402bb23e7ef3",
+      "operation": "delete",
+      "revision": 2,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:02:49Z",
+        "deletedAt": "2026-09-08T14:17:58Z",
+        "id": "109574eb-4354-4147-b052-402bb23e7ef3",
+        "location": "文成楼125",
+        "name": "大学英语",
+        "notes": null,
+        "revision": 2,
+        "teacher": "王老师",
+        "updatedAt": "2026-09-08T14:02:49Z"
+      },
+      "createdAt": "2026-09-08T14:17:58Z"
+    },
+    {
+      "syncSeq": 39,
+      "entityType": "course_meeting",
+      "entityId": "fff624c9-db2a-4f1e-95f0-4a744f643994",
+      "operation": "delete",
+      "revision": 2,
+      "payload": {
+        "courseId": "5b2bbf94-f603-4ceb-aba3-806730744ddc",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "deletedAt": "2026-09-08T14:17:59Z",
+        "id": "fff624c9-db2a-4f1e-95f0-4a744f643994",
+        "periodEnd": 3,
+        "periodStart": 3,
+        "revision": 2,
+        "updatedAt": "2026-09-08T14:01:10Z",
+        "weekRule": [
+          {
+            "end": 16,
+            "parity": "all",
+            "start": 1
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:17:59Z"
+    },
+    {
+      "syncSeq": 40,
+      "entityType": "course",
+      "entityId": "5b2bbf94-f603-4ceb-aba3-806730744ddc",
+      "operation": "delete",
+      "revision": 2,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": "#8b5cf6",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "deletedAt": "2026-09-08T14:17:59Z",
+        "id": "5b2bbf94-f603-4ceb-aba3-806730744ddc",
+        "location": "理工楼110",
+        "name": "线性代数",
+        "notes": null,
+        "revision": 2,
+        "teacher": "小红",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:17:59Z"
+    },
+    {
+      "syncSeq": 41,
+      "entityType": "occurrence_override",
+      "entityId": "ef6a0340-67b3-42d1-bd69-746bc306b363",
+      "operation": "delete",
+      "revision": 2,
+      "payload": {
+        "deletedAt": "2026-09-08T14:17:59Z",
+        "id": "ef6a0340-67b3-42d1-bd69-746bc306b363",
+        "revision": 2
+      },
+      "createdAt": "2026-09-08T14:17:59Z"
+    },
+    {
+      "syncSeq": 42,
+      "entityType": "course_meeting",
+      "entityId": "877435b7-f128-4346-bb40-5eef7435a7cc",
+      "operation": "delete",
+      "revision": 2,
+      "payload": {
+        "courseId": "284210f9-5c6a-4382-8109-05d5ea7cdb48",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "deletedAt": "2026-09-08T14:17:59Z",
+        "id": "877435b7-f128-4346-bb40-5eef7435a7cc",
+        "periodEnd": 2,
+        "periodStart": 1,
+        "revision": 2,
+        "updatedAt": "2026-09-08T14:01:10Z",
+        "weekRule": [
+          {
+            "end": 16,
+            "parity": "all",
+            "start": 1
+          }
+        ],
+        "weekday": 1
+      },
+      "createdAt": "2026-09-08T14:17:59Z"
+    },
+    {
+      "syncSeq": 43,
+      "entityType": "course",
+      "entityId": "284210f9-5c6a-4382-8109-05d5ea7cdb48",
+      "operation": "delete",
+      "revision": 2,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": "#3b82f6",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "deletedAt": "2026-09-08T14:17:59Z",
+        "id": "284210f9-5c6a-4382-8109-05d5ea7cdb48",
+        "location": "逸夫楼201",
+        "name": "高等数学",
+        "notes": null,
+        "revision": 2,
+        "teacher": "小明",
+        "updatedAt": "2026-09-08T14:01:10Z"
+      },
+      "createdAt": "2026-09-08T14:17:59Z"
+    },
+    {
+      "syncSeq": 44,
+      "entityType": "course",
+      "entityId": "86381c87-05eb-4f15-af3e-dbaeeea879d6",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "86381c87-05eb-4f15-af3e-dbaeeea879d6",
+        "location": "12-209",
+        "name": "中国近现代史纲要",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 45,
+      "entityType": "course_meeting",
+      "entityId": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "86381c87-05eb-4f15-af3e-dbaeeea879d6",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+        "periodEnd": 2,
+        "periodStart": 1,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 4,
+            "parity": "all",
+            "start": 1
+          },
+          {
+            "end": 16,
+            "parity": "all",
+            "start": 6
+          }
+        ],
+        "weekday": 1
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 46,
+      "entityType": "course",
+      "entityId": "b5e297ee-c311-411f-8f99-3d99a76545a4",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "b5e297ee-c311-411f-8f99-3d99a76545a4",
+        "location": "12-209",
+        "name": "毛泽东思想和中国特色社会主义理论体系概论",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 47,
+      "entityType": "course_meeting",
+      "entityId": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "b5e297ee-c311-411f-8f99-3d99a76545a4",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "0ef0a6c9-860d-4a54-9084-0558dd8b660f",
+        "periodEnd": 7,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 4,
+            "parity": "all",
+            "start": 1
+          },
+          {
+            "end": 16,
+            "parity": "all",
+            "start": 6
+          }
+        ],
+        "weekday": 1
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 48,
+      "entityType": "course",
+      "entityId": "7bc1effe-25ac-41d0-9b98-3daf9e55137f",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "7bc1effe-25ac-41d0-9b98-3daf9e55137f",
+        "location": "未排地点",
+        "name": "生物化学与分子生物学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 49,
+      "entityType": "course_meeting",
+      "entityId": "9dc7e88a-e9a3-45a8-b604-aa24483d1708",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "7bc1effe-25ac-41d0-9b98-3daf9e55137f",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "9dc7e88a-e9a3-45a8-b604-aa24483d1708",
+        "periodEnd": 5,
+        "periodStart": 1,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 13,
+            "parity": "all",
+            "start": 7
+          }
+        ],
+        "weekday": 2
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 50,
+      "entityType": "course",
+      "entityId": "1e30d873-e236-4656-a896-841609bd2d94",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "1e30d873-e236-4656-a896-841609bd2d94",
+        "location": "12-107",
+        "name": "生理学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 51,
+      "entityType": "course_meeting",
+      "entityId": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "1e30d873-e236-4656-a896-841609bd2d94",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "4b44d9ba-a47a-46df-93a3-da78409b2f21",
+        "periodEnd": 8,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 3,
+            "parity": "all",
+            "start": 1
+          },
+          {
+            "end": 14,
+            "parity": "all",
+            "start": 6
+          }
+        ],
+        "weekday": 2
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 52,
+      "entityType": "course",
+      "entityId": "a5cb8aa3-3056-4163-8306-c2c11b79ed5f",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "a5cb8aa3-3056-4163-8306-c2c11b79ed5f",
+        "location": "12-107",
+        "name": "生理学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 53,
+      "entityType": "course_meeting",
+      "entityId": "6ec948ff-e051-4dfe-b0a8-79f5f3e516ed",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "a5cb8aa3-3056-4163-8306-c2c11b79ed5f",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "6ec948ff-e051-4dfe-b0a8-79f5f3e516ed",
+        "periodEnd": 7,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 4,
+            "parity": "all",
+            "start": 4
+          },
+          {
+            "end": 15,
+            "parity": "all",
+            "start": 15
+          }
+        ],
+        "weekday": 2
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 54,
+      "entityType": "course",
+      "entityId": "60bc8504-3565-4b74-a9ed-1e8a2f7524d3",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "60bc8504-3565-4b74-a9ed-1e8a2f7524d3",
+        "location": "12-109",
+        "name": "生物化学与分子生物学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 55,
+      "entityType": "course_meeting",
+      "entityId": "bc65288b-e29e-42cd-9496-741dbbf39441",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "60bc8504-3565-4b74-a9ed-1e8a2f7524d3",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "bc65288b-e29e-42cd-9496-741dbbf39441",
+        "periodEnd": 5,
+        "periodStart": 3,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 9,
+            "parity": "all",
+            "start": 9
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 56,
+      "entityType": "course",
+      "entityId": "6b0bc9a7-2c72-4f6d-b1f2-66ba8c512ba5",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "6b0bc9a7-2c72-4f6d-b1f2-66ba8c512ba5",
+        "location": "12-109",
+        "name": "生物化学与分子生物学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 57,
+      "entityType": "course_meeting",
+      "entityId": "64807224-42f6-4884-915c-34842ff1a90e",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "6b0bc9a7-2c72-4f6d-b1f2-66ba8c512ba5",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "64807224-42f6-4884-915c-34842ff1a90e",
+        "periodEnd": 5,
+        "periodStart": 4,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 4,
+            "parity": "all",
+            "start": 1
+          },
+          {
+            "end": 8,
+            "parity": "all",
+            "start": 6
+          },
+          {
+            "end": 16,
+            "parity": "all",
+            "start": 10
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 58,
+      "entityType": "course",
+      "entityId": "59705841-fd65-45a3-9d84-8fb0df03658f",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "59705841-fd65-45a3-9d84-8fb0df03658f",
+        "location": "未排地点",
+        "name": "初级临床实践",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 59,
+      "entityType": "course_meeting",
+      "entityId": "d99a6fad-ef20-475d-98bb-ac2c1d2e786f",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "59705841-fd65-45a3-9d84-8fb0df03658f",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "d99a6fad-ef20-475d-98bb-ac2c1d2e786f",
+        "periodEnd": 9,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 2,
+            "parity": "all",
+            "start": 2
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 60,
+      "entityType": "course",
+      "entityId": "b00acfd7-32e1-4ea6-9dc5-f01e0fc0edb4",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "b00acfd7-32e1-4ea6-9dc5-f01e0fc0edb4",
+        "location": "未排地点",
+        "name": "初级临床实践",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 61,
+      "entityType": "course_meeting",
+      "entityId": "7f68baa2-e178-44f4-9312-562c2654a4f6",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "b00acfd7-32e1-4ea6-9dc5-f01e0fc0edb4",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "7f68baa2-e178-44f4-9312-562c2654a4f6",
+        "periodEnd": 9,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 3,
+            "parity": "all",
+            "start": 3
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 62,
+      "entityType": "course",
+      "entityId": "bd9b6974-e861-45cc-bf5c-476db869c0db",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "bd9b6974-e861-45cc-bf5c-476db869c0db",
+        "location": "未排地点",
+        "name": "初级临床实践",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 63,
+      "entityType": "course_meeting",
+      "entityId": "9f4fed55-bfb7-4365-8c73-7b9bd66e77d7",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "bd9b6974-e861-45cc-bf5c-476db869c0db",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "9f4fed55-bfb7-4365-8c73-7b9bd66e77d7",
+        "periodEnd": 9,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 4,
+            "parity": "all",
+            "start": 4
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 64,
+      "entityType": "course",
+      "entityId": "b6a47ea5-2ea3-45a1-8878-31b19053303e",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "b6a47ea5-2ea3-45a1-8878-31b19053303e",
+        "location": "未排地点",
+        "name": "初级临床实践",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 65,
+      "entityType": "course_meeting",
+      "entityId": "a1f5a6d7-51c3-47cf-a01f-c76508871417",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "b6a47ea5-2ea3-45a1-8878-31b19053303e",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "a1f5a6d7-51c3-47cf-a01f-c76508871417",
+        "periodEnd": 9,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 6,
+            "parity": "all",
+            "start": 6
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 66,
+      "entityType": "course",
+      "entityId": "d9837fd1-72e7-4f94-8015-9cfebda25177",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "d9837fd1-72e7-4f94-8015-9cfebda25177",
+        "location": "12-307",
+        "name": "社会医学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 67,
+      "entityType": "course_meeting",
+      "entityId": "8f7dea4a-7d00-45cb-a061-adc8a9e6d663",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "d9837fd1-72e7-4f94-8015-9cfebda25177",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "8f7dea4a-7d00-45cb-a061-adc8a9e6d663",
+        "periodEnd": 8,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 11,
+            "parity": "all",
+            "start": 9
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 68,
+      "entityType": "course",
+      "entityId": "189770d4-5463-46f1-bbdc-94ba08c5dfc7",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "189770d4-5463-46f1-bbdc-94ba08c5dfc7",
+        "location": "12-307",
+        "name": "社会医学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 69,
+      "entityType": "course_meeting",
+      "entityId": "05e6d999-0e51-4a2b-8c5e-334eab01d889",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "189770d4-5463-46f1-bbdc-94ba08c5dfc7",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "05e6d999-0e51-4a2b-8c5e-334eab01d889",
+        "periodEnd": 9,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 12,
+            "parity": "all",
+            "start": 12
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 70,
+      "entityType": "course",
+      "entityId": "9e49e117-4f35-4fef-8c17-453af13ed7b2",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "9e49e117-4f35-4fef-8c17-453af13ed7b2",
+        "location": "12-307",
+        "name": "形势与政策3",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 71,
+      "entityType": "course_meeting",
+      "entityId": "c7c7cd4f-5550-42f4-b95d-923d270c981e",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "9e49e117-4f35-4fef-8c17-453af13ed7b2",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "c7c7cd4f-5550-42f4-b95d-923d270c981e",
+        "periodEnd": 8,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 13,
+            "parity": "all",
+            "start": 13
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 72,
+      "entityType": "course",
+      "entityId": "48c2900d-ccff-43b3-9d6b-6961dbe98226",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "48c2900d-ccff-43b3-9d6b-6961dbe98226",
+        "location": "12-307",
+        "name": "形势与政策3",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 73,
+      "entityType": "course_meeting",
+      "entityId": "331fd283-315a-4af8-ba5e-a4347b9c5c4a",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "48c2900d-ccff-43b3-9d6b-6961dbe98226",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "331fd283-315a-4af8-ba5e-a4347b9c5c4a",
+        "periodEnd": 8,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 14,
+            "parity": "all",
+            "start": 14
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 74,
+      "entityType": "course",
+      "entityId": "29323bfd-228f-4e40-9b66-653f6b3fb173",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "29323bfd-228f-4e40-9b66-653f6b3fb173",
+        "location": "12-307",
+        "name": "形势与政策3",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 75,
+      "entityType": "course_meeting",
+      "entityId": "5900d7f3-f205-43ba-817c-c86ccfd0732a",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "29323bfd-228f-4e40-9b66-653f6b3fb173",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "5900d7f3-f205-43ba-817c-c86ccfd0732a",
+        "periodEnd": 7,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 15,
+            "parity": "all",
+            "start": 15
+          }
+        ],
+        "weekday": 3
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 76,
+      "entityType": "course",
+      "entityId": "733515d1-10d9-4ee3-b072-3cba4bafffe8",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "733515d1-10d9-4ee3-b072-3cba4bafffe8",
+        "location": "未排地点",
+        "name": "生理学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 77,
+      "entityType": "course_meeting",
+      "entityId": "043c305f-6823-4857-a7c5-6503fc0dbd92",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "733515d1-10d9-4ee3-b072-3cba4bafffe8",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "043c305f-6823-4857-a7c5-6503fc0dbd92",
+        "periodEnd": 5,
+        "periodStart": 1,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 13,
+            "parity": "all",
+            "start": 8
+          }
+        ],
+        "weekday": 4
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 78,
+      "entityType": "course",
+      "entityId": "a654bd23-c301-49c9-b7de-8f8f5ca61ebc",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "a654bd23-c301-49c9-b7de-8f8f5ca61ebc",
+        "location": "12-107",
+        "name": "生理学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 79,
+      "entityType": "course_meeting",
+      "entityId": "aff140d3-02e0-44fc-bf4d-5fe9acc64430",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "a654bd23-c301-49c9-b7de-8f8f5ca61ebc",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "aff140d3-02e0-44fc-bf4d-5fe9acc64430",
+        "periodEnd": 7,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 2,
+            "parity": "all",
+            "start": 1
+          },
+          {
+            "end": 14,
+            "parity": "all",
+            "start": 5
+          }
+        ],
+        "weekday": 4
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 80,
+      "entityType": "course",
+      "entityId": "1f22e920-09ba-49b7-995a-3aaa60511230",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "1f22e920-09ba-49b7-995a-3aaa60511230",
+        "location": "12-107",
+        "name": "习近平新时代中国特色社会主义思想概论",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 81,
+      "entityType": "course_meeting",
+      "entityId": "14776b10-f90a-4eac-816d-6a39d4225d19",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "1f22e920-09ba-49b7-995a-3aaa60511230",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "14776b10-f90a-4eac-816d-6a39d4225d19",
+        "periodEnd": 9,
+        "periodStart": 8,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 3,
+            "parity": "all",
+            "start": 1
+          },
+          {
+            "end": 17,
+            "parity": "all",
+            "start": 5
+          }
+        ],
+        "weekday": 4
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 82,
+      "entityType": "course",
+      "entityId": "59739428-a369-4307-85ea-c8d9ca8bd0a4",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "59739428-a369-4307-85ea-c8d9ca8bd0a4",
+        "location": "12-205",
+        "name": "社会医学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 83,
+      "entityType": "course_meeting",
+      "entityId": "2654d53a-0377-46e5-b654-ea89bfd10130",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "59739428-a369-4307-85ea-c8d9ca8bd0a4",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "2654d53a-0377-46e5-b654-ea89bfd10130",
+        "periodEnd": 3,
+        "periodStart": 1,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 9,
+            "parity": "all",
+            "start": 9
+          }
+        ],
+        "weekday": 5
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 84,
+      "entityType": "course",
+      "entityId": "a6381ea8-e402-4771-bd02-264884065eee",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "a6381ea8-e402-4771-bd02-264884065eee",
+        "location": "12-205",
+        "name": "生物化学与分子生物学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 85,
+      "entityType": "course_meeting",
+      "entityId": "513445d6-1286-45ea-b8d4-de091de22bfe",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "a6381ea8-e402-4771-bd02-264884065eee",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "513445d6-1286-45ea-b8d4-de091de22bfe",
+        "periodEnd": 5,
+        "periodStart": 3,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 2,
+            "parity": "all",
+            "start": 1
+          },
+          {
+            "end": 8,
+            "parity": "all",
+            "start": 5
+          },
+          {
+            "end": 15,
+            "parity": "all",
+            "start": 10
+          }
+        ],
+        "weekday": 5
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 86,
+      "entityType": "course",
+      "entityId": "f14b21ab-522f-4165-b759-e1039f81d749",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "f14b21ab-522f-4165-b759-e1039f81d749",
+        "location": "12-205",
+        "name": "生物化学与分子生物学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 87,
+      "entityType": "course_meeting",
+      "entityId": "a474448c-c98d-4d6c-8798-0109f4b66527",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "f14b21ab-522f-4165-b759-e1039f81d749",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "a474448c-c98d-4d6c-8798-0109f4b66527",
+        "periodEnd": 5,
+        "periodStart": 4,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 9,
+            "parity": "all",
+            "start": 9
+          }
+        ],
+        "weekday": 5
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 88,
+      "entityType": "course",
+      "entityId": "b83c41df-b459-4b79-a778-25359590d402",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "b83c41df-b459-4b79-a778-25359590d402",
+        "location": "12-209",
+        "name": "中国近现代史纲要",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 89,
+      "entityType": "course_meeting",
+      "entityId": "665f57fc-2b00-434f-9368-1fceb22fdf42",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "b83c41df-b459-4b79-a778-25359590d402",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "665f57fc-2b00-434f-9368-1fceb22fdf42",
+        "periodEnd": 2,
+        "periodStart": 1,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 5,
+            "parity": "all",
+            "start": 5
+          }
+        ],
+        "weekday": 6
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 90,
+      "entityType": "course",
+      "entityId": "4936f577-97f0-4fe7-8032-ea8becf869d9",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "4936f577-97f0-4fe7-8032-ea8becf869d9",
+        "location": "12-209",
+        "name": "毛泽东思想和中国特色社会主义理论体系概论",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 91,
+      "entityType": "course_meeting",
+      "entityId": "657d4daf-2af7-418f-a128-9905502d015a",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "4936f577-97f0-4fe7-8032-ea8becf869d9",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "657d4daf-2af7-418f-a128-9905502d015a",
+        "periodEnd": 7,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 5,
+            "parity": "all",
+            "start": 5
+          }
+        ],
+        "weekday": 6
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 92,
+      "entityType": "course",
+      "entityId": "8e088844-06c2-4b97-a4b0-442482c2b589",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "8e088844-06c2-4b97-a4b0-442482c2b589",
+        "location": "12-205",
+        "name": "生物化学与分子生物学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 93,
+      "entityType": "course_meeting",
+      "entityId": "91edc14b-f95d-420f-be1a-b8177cf96698",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "8e088844-06c2-4b97-a4b0-442482c2b589",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "91edc14b-f95d-420f-be1a-b8177cf96698",
+        "periodEnd": 5,
+        "periodStart": 3,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 2,
+            "parity": "all",
+            "start": 2
+          }
+        ],
+        "weekday": 7
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 94,
+      "entityType": "course",
+      "entityId": "7996df55-0733-4fce-89ec-44d23ef5f064",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "color": null,
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "7996df55-0733-4fce-89ec-44d23ef5f064",
+        "location": "12-309",
+        "name": "生理学（A）",
+        "notes": null,
+        "revision": 1,
+        "teacher": null,
+        "updatedAt": "2026-09-08T14:18:06Z"
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 95,
+      "entityType": "course_meeting",
+      "entityId": "a2fe629b-53bf-4310-b0f6-04f6e8cd5d32",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "courseId": "7996df55-0733-4fce-89ec-44d23ef5f064",
+        "createdAt": "2026-09-08T14:18:06Z",
+        "id": "a2fe629b-53bf-4310-b0f6-04f6e8cd5d32",
+        "periodEnd": 7,
+        "periodStart": 6,
+        "revision": 1,
+        "updatedAt": "2026-09-08T14:18:06Z",
+        "weekRule": [
+          {
+            "end": 2,
+            "parity": "all",
+            "start": 2
+          }
+        ],
+        "weekday": 7
+      },
+      "createdAt": "2026-09-08T14:18:06Z"
+    },
+    {
+      "syncSeq": 96,
+      "entityType": "occurrence_override",
+      "entityId": "2d04bb90-fdde-428f-9b04-dd2f9576331a",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "action": "move",
+        "createdAt": "2026-09-08T14:29:23Z",
+        "id": "2d04bb90-fdde-428f-9b04-dd2f9576331a",
+        "metadata": null,
+        "occurrenceDateLocal": "2026-09-07",
+        "replacementEndAt": "2026-09-07T03:40:00Z",
+        "replacementStartAt": "2026-09-07T00:00:00Z",
+        "revision": 1,
+        "seriesId": "b5834ab3-8efb-450b-8cf8-b4b47fc8c7bd",
+        "seriesType": "course_meeting",
+        "updatedAt": "2026-09-08T14:29:23Z"
+      },
+      "createdAt": "2026-09-08T14:29:23Z"
+    },
+    {
+      "syncSeq": 97,
+      "entityType": "period_template",
+      "entityId": "ec1189ad-3f4b-460b-a6c2-c5cc6aef6361",
+      "operation": "update",
+      "revision": 2,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "08:40",
+        "id": "ec1189ad-3f4b-460b-a6c2-c5cc6aef6361",
+        "periodNo": 1,
+        "revision": 2,
+        "startLocal": "08:00",
+        "updatedAt": "2026-09-08T14:38:44Z"
+      },
+      "createdAt": "2026-09-08T14:38:44Z"
+    },
+    {
+      "syncSeq": 98,
+      "entityType": "period_template",
+      "entityId": "b1cfc451-5bb0-4ca8-a5a4-f60cba7c6c3c",
+      "operation": "update",
+      "revision": 2,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "09:30",
+        "id": "b1cfc451-5bb0-4ca8-a5a4-f60cba7c6c3c",
+        "periodNo": 2,
+        "revision": 2,
+        "startLocal": "08:50",
+        "updatedAt": "2026-09-08T14:38:56Z"
+      },
+      "createdAt": "2026-09-08T14:38:56Z"
+    },
+    {
+      "syncSeq": 99,
+      "entityType": "period_template",
+      "entityId": "ef6f44da-ed64-404e-915b-407e38173405",
+      "operation": "update",
+      "revision": 2,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "10:20",
+        "id": "ef6f44da-ed64-404e-915b-407e38173405",
+        "periodNo": 3,
+        "revision": 2,
+        "startLocal": "09:40",
+        "updatedAt": "2026-09-08T14:38:56Z"
+      },
+      "createdAt": "2026-09-08T14:38:56Z"
+    },
+    {
+      "syncSeq": 100,
+      "entityType": "period_template",
+      "entityId": "fe99cb29-b6ab-4e93-a072-9607e61eb94b",
+      "operation": "update",
+      "revision": 2,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:01:10Z",
+        "endLocal": "11:10",
+        "id": "fe99cb29-b6ab-4e93-a072-9607e61eb94b",
+        "periodNo": 4,
+        "revision": 2,
+        "startLocal": "10:30",
+        "updatedAt": "2026-09-08T14:38:56Z"
+      },
+      "createdAt": "2026-09-08T14:38:56Z"
+    },
+    {
+      "syncSeq": 101,
+      "entityType": "period_template",
+      "entityId": "bc2da48b-b952-43c3-be9d-ef12ced324c0",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:54:31Z",
+        "endLocal": "19:50",
+        "id": "bc2da48b-b952-43c3-be9d-ef12ced324c0",
+        "periodNo": 11,
+        "revision": 1,
+        "startLocal": "18:10",
+        "updatedAt": "2026-09-08T14:54:31Z"
+      },
+      "createdAt": "2026-09-08T14:54:31Z"
+    },
+    {
+      "syncSeq": 102,
+      "entityType": "period_template",
+      "entityId": "a6da7fe7-59ea-41a6-b2a6-472774524db9",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:54:39Z",
+        "endLocal": "20:40",
+        "id": "a6da7fe7-59ea-41a6-b2a6-472774524db9",
+        "periodNo": 12,
+        "revision": 1,
+        "startLocal": "20:00",
+        "updatedAt": "2026-09-08T14:54:39Z"
+      },
+      "createdAt": "2026-09-08T14:54:39Z"
+    },
+    {
+      "syncSeq": 103,
+      "entityType": "period_template",
+      "entityId": "dd3175fd-d466-4d77-82e9-1ef3e46581e8",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:54:57Z",
+        "endLocal": "21:30",
+        "id": "dd3175fd-d466-4d77-82e9-1ef3e46581e8",
+        "periodNo": 13,
+        "revision": 1,
+        "startLocal": "20:50",
+        "updatedAt": "2026-09-08T14:54:57Z"
+      },
+      "createdAt": "2026-09-08T14:54:57Z"
+    },
+    {
+      "syncSeq": 104,
+      "entityType": "period_template",
+      "entityId": "f10fd74b-f637-4003-bb1a-2491b3add117",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:55:06Z",
+        "endLocal": "22:20",
+        "id": "f10fd74b-f637-4003-bb1a-2491b3add117",
+        "periodNo": 14,
+        "revision": 1,
+        "startLocal": "21:40",
+        "updatedAt": "2026-09-08T14:55:06Z"
+      },
+      "createdAt": "2026-09-08T14:55:06Z"
+    },
+    {
+      "syncSeq": 105,
+      "entityType": "period_template",
+      "entityId": "64745883-7ebf-49dd-8778-37352b400647",
+      "operation": "create",
+      "revision": 1,
+      "payload": {
+        "calendarId": "5be24d2a-51f8-411d-bd70-ee9726ca3d63",
+        "createdAt": "2026-09-08T14:55:14Z",
+        "endLocal": "23:10",
+        "id": "64745883-7ebf-49dd-8778-37352b400647",
+        "periodNo": 15,
+        "revision": 1,
+        "startLocal": "22:30",
+        "updatedAt": "2026-09-08T14:55:14Z"
+      },
+      "createdAt": "2026-09-08T14:55:14Z"
+    }
+  ],
+  "hasMore": false
+}
