@@ -157,11 +157,6 @@ export function EventNode({
           <Pencil className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
         )}
       </div>
-      {!isDead && (event.type === "course" || event.type === "recurring_schedule") && (
-        <div className="truncate px-1.5 text-[10px] leading-tight text-muted-foreground">
-          {event.type === "course" ? sub : event.type}
-        </div>
-      )}
       {sub && !isDead && (
         <div className="truncate px-1.5 text-[10px] leading-tight text-muted-foreground">
           {sub}

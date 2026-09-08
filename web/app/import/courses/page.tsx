@@ -57,13 +57,17 @@ export default function ImportCoursesPage() {
       const details = (e as { details?: unknown }).details as
         | { errors?: { line: number; field: string; code: string; message: string }[]; conflicts?: string[] }
         | undefined;
-      if (details?.errors?.length) {
+      const rows = details?.errors?.map(
+        (r) => `Line ${r.line} (${r.field}): ${r.message}`
+      );
+      const conflicts = details?.conflicts;
+      if (rows?.length || conflicts?.length) {
         setPreview({
           previewId: "",
           expiresAt: "",
           calendarId,
           courses: [],
-          conflicts: details.errors.map((r) => `Line ${r.line} (${r.field}): ${r.message}`),
+          conflicts: [...(rows ?? []), ...(conflicts ?? [])],
         } as ImportPreview);
         setStep("preview");
       }

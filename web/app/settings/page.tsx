@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CalendarSettings } from "@/features/settings/calendar-settings";
 import { CoursesSettings } from "@/features/settings/courses-settings";
 import { SchedulesSettings } from "@/features/settings/schedules-settings";
+import { SyncSettingsCard } from "@/features/settings/sync-settings";
 import { useSession } from "@/features/auth/session-store";
 
 export default function SettingsPage() {
@@ -47,6 +48,7 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </Tabs>
+          <SyncSettingsCard />
         </div>
       </div>
     </AuthedPage>
