@@ -300,7 +300,9 @@ export function WeekTableView() {
     const anchorTop = el ? el.getBoundingClientRect().top : 0;
     const baseStart = Math.min(eventStartMinutes(ev, tz), 1439);
     const baseEnd =
-      ev.endAt == null ? baseStart : Math.min(baseStart + Math.max(eventDurationMinutes(ev), 1), 1440);
+      ev.endAt == null
+        ? baseStart
+        : Math.min(baseStart + Math.max(eventDurationMinutes(ev), 1), 1440);
     dragRef.current = {
       ev,
       mode,
@@ -311,8 +313,9 @@ export function WeekTableView() {
       baseEnd,
       moved: false,
     };
-    setDragId(ev.id);
-    setPreview(null);
+    // NOTE: do NOT hide the source element here. Unmounting it releases the
+    // pointer capture and the pointerup handler never runs — a plain click
+    // would leave the block invisible forever.
   }
 
   /** Column index under clientX (uses live column rects). */
@@ -345,6 +348,7 @@ export function WeekTableView() {
     const relY = pe.clientY - d.anchorTop;
     d.moved = d.moved || Math.abs(relY - d.relStart) > 3;
     if (!d.moved) return;
+    setDragId(d.ev.id); // drag really started: hide source via opacity below
     const delta = minuteAtY(relY, rows) - minuteAtY(d.relStart, rows);
     const dayIdx = columnAtX(pe.clientX);
     const dur = d.baseEnd - d.baseStart;
@@ -363,9 +367,7 @@ export function WeekTableView() {
       e = snapTo(d.baseEnd + delta, endCandidates, d.baseStart + MIN_DUR_MIN, 1440);
       s = d.baseStart;
     }
-    if (s !== d.baseStart || e !== d.baseEnd || dayIdx !== -1) {
-      setPreview({ ev: d.ev, dayIdx, s, e });
-    }
+    setPreview({ ev: d.ev, dayIdx, s, e });
   }
 
   function endDrag(pe: React.PointerEvent<HTMLElement>) {
@@ -556,10 +558,9 @@ export function WeekTableView() {
                   colRef={(el) => {
                     colEls.current[di] = el;
                   }}
-                  bars={(byDay.get(d) ?? [])
-                    .filter((b) => !(dragId && b.ev.id === dragId))
-                    .map(toPlaced)}
+                  bars={(byDay.get(d) ?? []).map(toPlaced)}
                   previewBars={previewBarsFor(di)}
+                  dragActiveId={dragId}
                   dragApi={{
                     begin: beginDrag,
                     move: moveDrag,
@@ -608,6 +609,7 @@ function DayGridColumn({
   colRef,
   bars,
   previewBars,
+  dragActiveId,
   dragApi,
 }: {
   idx: number;
@@ -617,6 +619,7 @@ function DayGridColumn({
   colRef: (el: HTMLDivElement | null) => void;
   bars: PlacedBar[];
   previewBars: PlacedBar[];
+  dragActiveId: string | null;
   dragApi: DragApi;
 }) {
   const totalH = rows.length * ROW_HEIGHT;
@@ -665,9 +668,15 @@ function DayGridColumn({
         />
       ))}
 
-      {/* event bars */}
+      {/* event bars (source bar stays mounted during drag: hidden via opacity) */}
       {items.map((it) => (
-        <TableCell key={it.id} bar={it} colIdx={idx} dragApi={dragApi} />
+        <TableCell
+          key={it.id}
+          bar={it}
+          colIdx={idx}
+          hiddenDuringDrag={dragActiveId === it.ev.id}
+          dragApi={dragApi}
+        />
       ))}
     </div>
   );
@@ -676,10 +685,12 @@ function DayGridColumn({
 function TableCell({
   bar,
   colIdx,
+  hiddenDuringDrag,
   dragApi,
 }: {
   bar: PlacedBar;
   colIdx: number;
+  hiddenDuringDrag: boolean;
   dragApi: DragApi;
 }) {
   const { ev } = bar;
@@ -707,7 +718,8 @@ function TableCell({
       className={cn(
         "group absolute z-10 cursor-grab touch-none select-none overflow-hidden rounded border shadow-sm active:cursor-grabbing",
         isBlock ? "z-20" : "z-10",
-        conflictTextureClass(ev.conflictState)
+        conflictTextureClass(ev.conflictState),
+        hiddenDuringDrag && "pointer-events-none opacity-0"
       )}
       style={{
         top,
