@@ -7,10 +7,7 @@ import { Loader2 } from "lucide-react";
 import { useSession } from "@/features/auth/session-store";
 import { useServerNow } from "@/features/time/clock";
 import { useDateNav, anchorWeekStart } from "@/features/views/date-nav-store";
-import {
-  useAllPeriods,
-  periodBoundariesFromTemplates,
-} from "@/features/calendars/hooks";
+import { useAllPeriods } from "@/features/calendars/hooks";
 import { useRangeEvents } from "@/features/events/hooks";
 import { listTodos } from "@/features/todos/api";
 import { updateTodoBlock } from "@/features/todos/api";
@@ -28,14 +25,14 @@ import {
 } from "@/lib/time/tz";
 import { eventDayKey, eventDurationMinutes, eventStartMinutes } from "@/lib/event-model";
 import { layoutColumns } from "@/lib/overlap-layout";
+import { DAY_MINUTES, snapMinute, type SnapMode } from "@/features/week-view/geometry";
 import {
-  DAY_MINUTES,
-  GRID_HEIGHT_PX,
-  PX_PER_MINUTE,
-  minutesToPx,
-  snapMinute,
-  type SnapMode,
-} from "@/features/week-view/geometry";
+  buildScale,
+  proposeFoldBands,
+  clipToVisible,
+  FOLD_HEIGHT_PX,
+  type DayScale,
+} from "@/features/week-view/fold";
 import { WeekToolbar } from "@/features/week-view/week-toolbar";
 import { WeekDayHeader, GUTTER_WIDTH } from "@/features/week-view/day-header";
 import { EventNode } from "@/features/week-view/event-node";
@@ -61,6 +58,17 @@ interface DayBundle {
   lanes: { event: CalendarEvent; leftPct: number; widthPct: number }[];
   todos: CalendarEvent[];
   deadlines: CalendarEvent[];
+}
+
+/** minutes-of-day helpers */
+function minFromClock(clock: string): number {
+  const [h, m] = clock.split(":").map(Number);
+  return h * 60 + m;
+}
+function clockFromMin(minutes: number): string {
+  const h = Math.floor(minutes / 60) % 24;
+  const m = Math.round(minutes % 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 export function WeekView() {
@@ -90,15 +98,26 @@ export function WeekView() {
 
   const eventsQuery = useRangeEvents(range, !!tz);
   const calendarsQuery = useAllPeriods();
+
+  // Period template of every calendar: {no, start, end} minute-of-day.
+  const periodSlots = React.useMemo(() => {
+    const out: { no: number; start: number; end: number }[] = [];
+    for (const g of calendarsQuery.data ?? []) {
+      for (const p of g.periods) {
+        out.push({ no: p.periodNo, start: minFromClock(p.startLocal), end: minFromClock(p.endLocal) });
+      }
+    }
+    return out.sort((a, b) => a.start - b.start || a.no - b.no);
+  }, [calendarsQuery.data]);
   const boundaries = React.useMemo(
-    () =>
-      periodBoundariesFromTemplates(
-        calendarsQuery.data ?? []
-      ),
-    [calendarsQuery.data]
+    () => [...new Set(periodSlots.flatMap((p) => [p.start, p.end]))].sort((a, b) => a - b),
+    [periodSlots]
   );
 
   const [snap, setSnap] = React.useState<SnapMode>("period");
+  // Folding (docs/ui-interaction.md §3): auto folds empty 凌晨/午休/夜间 spans.
+  const [foldMode, setFoldMode] = React.useState<"auto" | "none">("auto");
+  const [removedFolds, setRemovedFolds] = React.useState<string[]>([]);
   const [dialog, setDialog] = React.useState<DialogState>({ kind: "none" });
   const [newBlockSlot, setNewBlockSlot] = React.useState<{
     day: LocalDate;
@@ -107,14 +126,36 @@ export function WeekView() {
   } | null>(null);
   const queryClient = useQueryClient();
 
+  const nowMin = tz ? minutesOfDay(now, tz) : 0;
+
+  const events = eventsQuery.data ?? [];
+
+  // Which fold bands apply this week (a band that would hide any event or the
+  // current time is never folded).
+  const foldBands = React.useMemo(() => {
+    if (foldMode === "none" || !events.length || !periodSlots.length) return [];
+    const occupied = events.map((ev) => {
+      const s = eventStartMinutes(ev, tz);
+      const dur = Math.max(eventDurationMinutes(ev), 1);
+      return { from: s, to: Math.min(DAY_MINUTES, s + dur) };
+    });
+    const bands = proposeFoldBands({
+      periodStarts: periodSlots,
+      occupied,
+      nowMin,
+    });
+    return bands.filter((b) => !removedFolds.includes(b.id));
+  }, [foldMode, events, periodSlots, removedFolds, nowMin, tz]);
+
+  const scale = React.useMemo(() => buildScale(foldBands), [foldBands]);
+
   // Group events per day.
   const bundles = React.useMemo(() => {
-    if (!eventsQuery.data || !tz) return [] as DayBundle[];
     const byDay = new Map<LocalDate, DayBundle>();
     for (const day of days) {
       byDay.set(day, { day, lanes: [], todos: [], deadlines: [] });
     }
-    for (const ev of eventsQuery.data) {
+    for (const ev of events) {
       const key = eventDayKey(ev, tz);
       const bundle = byDay.get(key);
       if (!bundle) continue;
@@ -125,13 +166,9 @@ export function WeekView() {
     const out: DayBundle[] = [];
     for (const day of days) {
       const b = byDay.get(day)!;
-      // layoutColumns sorts internally and returns placements by input index.
       const items = b.lanes.map((l) => {
         const s = eventStartMinutes(l.event, tz);
-        return {
-          start: s,
-          end: s + Math.max(eventDurationMinutes(l.event), 1),
-        };
+        return { start: s, end: s + Math.max(eventDurationMinutes(l.event), 1) };
       });
       const placed = layoutColumns(items);
       b.lanes = b.lanes.map((l, i) => ({
@@ -139,16 +176,11 @@ export function WeekView() {
         leftPct: placed[i].leftPct,
         widthPct: placed[i].widthPct,
       }));
-      // Render order: todos above lanes; sort stable by start.
       b.todos.sort((a, b) => eventStartMinutes(a, tz) - eventStartMinutes(b, tz));
       out.push(b);
     }
     return out;
-  }, [eventsQuery.data, days, tz]);
-
-  const nowMin = tz ? minutesOfDay(now, tz) : 0;
-
-  // ---- move/resize commit (drag) --------------------------------------------
+  }, [events, days, tz]);
 
   async function invalidateEventsAfterWrite() {
     await dropCachePrefix("/calendar/events");
@@ -163,7 +195,7 @@ export function WeekView() {
   ) {
     const startAt = instantFor(dayKey, clockFromMin(startMinutes), tz);
     const endAt = instantFor(dayKey, clockFromMin(endMinutes), tz);
-    mutationFn(event, startAt, endAt, dayKey)
+    moveEventMutation(event, startAt, endAt, dayKey)
       .then(async () => {
         await invalidateEventsAfterWrite();
         toast.success(
@@ -191,6 +223,11 @@ export function WeekView() {
         onNext={() => dateNav.shiftDays(7, tz)}
         snap={snap}
         onSnapChange={setSnap}
+        foldMode={foldMode}
+        onFoldChange={(v) => {
+          setFoldMode(v);
+          setRemovedFolds([]);
+        }}
         onNewBlock={() => {
           const start = snapMinute(nowMin + 60, snap, boundaries);
           setNewBlockSlot({
@@ -202,6 +239,35 @@ export function WeekView() {
       />
       <WeekDayHeader days={days} todayKey={todayKey} />
 
+      {/* Active fold chips */}
+      {(scale.bands.length > 0 || removedFolds.length > 0) && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b bg-muted/20 px-3 py-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            折叠
+          </span>
+          {scale.bands.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setRemovedFolds((cur) => [...cur, b.id])}
+              className="rounded-full border border-dashed px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
+              title="Click to expand this segment"
+            >
+              {b.label}
+            </button>
+          ))}
+          {removedFolds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setRemovedFolds([])}
+              className="text-[11px] text-primary hover:underline"
+            >
+              Expand all
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-auto">
         <div
           className="relative min-w-[900px]"
@@ -210,30 +276,40 @@ export function WeekView() {
             gridTemplateColumns: `${GUTTER_WIDTH}px repeat(7, minmax(0, 1fr))`,
           }}
         >
-          {/* Time gutter */}
-          <div
-            className="relative border-r"
-            style={{ height: GRID_HEIGHT_PX }}
-          >
-            {HOURS.map((h) => (
-              <div
-                key={h}
-                className="absolute right-1 -translate-y-1/2 text-[9px] text-muted-foreground"
-                style={{ top: minutesToPx(h * 60) }}
-              >
-                {String(h).padStart(2, "0")}:00
-              </div>
-            ))}
+          {/* Time + period gutter */}
+          <div className="relative border-r" style={{ height: scale.heightPx }}>
+            {HOURS.map((h) => {
+              const m = h * 60;
+              if (scale.insideBand(m)) return null;
+              return (
+                <div
+                  key={h}
+                  className="absolute right-1 -translate-y-1/2 text-[9px] text-muted-foreground"
+                  style={{ top: scale.yOf(m) }}
+                >
+                  {String(h).padStart(2, "0")}:00
+                </div>
+              );
+            })}
+            {/* period number tags ("第1节" start marks) */}
+            {periodSlots.map((p) => {
+              if (p.start === 0 || scale.insideBand(p.start)) return null;
+              return (
+                <div
+                  key={`${p.no}-${p.start}`}
+                  className="absolute right-0.5 text-[9px] font-semibold leading-none text-primary/80"
+                  style={{ top: scale.yOf(p.start) + 8 }}
+                >
+                  {p.no}
+                </div>
+              );
+            })}
           </div>
 
           {isLoading && !eventsQuery.data ? (
             <div className="col-span-7 flex items-center justify-center text-muted-foreground">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               Loading week…
-            </div>
-          ) : !eventsQuery.data ? (
-            <div className="col-span-7 flex items-center justify-center text-sm text-muted-foreground">
-              Cannot load events (offline and no cached copy).
             </div>
           ) : (
             bundles.map((b, i) => (
@@ -242,14 +318,21 @@ export function WeekView() {
                 bundle={b}
                 idx={i}
                 tz={tz}
+                scale={scale}
+                periodSlots={periodSlots}
                 nowMinutes={b.day === todayKey ? nowMin : null}
                 snap={snap}
                 boundaries={boundaries}
                 onMoveCommit={handleMoveCommit}
                 onOpen={(ev) => setDialog({ kind: "details", event: ev })}
+                onToggleBand={(id) => setRemovedFolds((cur) => [...cur, id])}
                 onEmptyClick={(minutes) => {
                   const s = snapMinute(minutes, snap, boundaries);
-                  setNewBlockSlot({ day: b.day, start: s, end: Math.min(s + 60, DAY_MINUTES) });
+                  setNewBlockSlot({
+                    day: b.day,
+                    start: s,
+                    end: Math.min(s + 60, DAY_MINUTES),
+                  });
                 }}
               />
             ))
@@ -257,7 +340,6 @@ export function WeekView() {
         </div>
       </div>
 
-      {/* Dialogs */}
       {dialog.kind !== "none" && dialog.kind === "details" && (
         <EventDetailsDialog
           event={dialog.event}
@@ -308,13 +390,7 @@ export function WeekView() {
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-function clockFromMin(minutes: number): string {
-  const h = Math.floor(minutes / 60) % 24;
-  const m = Math.round(minutes % 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-async function mutationFn(
+async function moveEventMutation(
   event: CalendarEvent,
   startAt: string,
   endAt: string,
@@ -335,30 +411,38 @@ async function mutationFn(
 
 // ---- day column ---------------------------------------------------------------
 
+const SEGMENT_TINTS: { id: string; from: number; to: number; css: string }[] = [
+  { id: "night", from: 0, to: 6 * 60, css: "var(--muted-foreground)" },
+  { id: "morning", from: 6 * 60, to: 12 * 60, css: "var(--cp-course)" },
+  { id: "afternoon", from: 12 * 60, to: 18 * 60, css: "var(--cp-now)" },
+  { id: "evening", from: 18 * 60, to: 24 * 60, css: "var(--cp-recurring)" },
+];
+
 function DayColumn({
   bundle,
   idx,
   tz,
+  scale,
+  periodSlots,
   nowMinutes,
   snap,
   boundaries,
   onMoveCommit,
   onOpen,
+  onToggleBand,
   onEmptyClick,
 }: {
   bundle: DayBundle;
   idx: number;
   tz: string;
+  scale: DayScale;
+  periodSlots: { no: number; start: number; end: number }[];
   nowMinutes: number | null;
   snap: SnapMode;
   boundaries: number[];
-  onMoveCommit: (
-    event: CalendarEvent,
-    day: LocalDate,
-    s: number,
-    e: number
-  ) => void;
+  onMoveCommit: (event: CalendarEvent, day: LocalDate, s: number, e: number) => void;
   onOpen: (event: CalendarEvent) => void;
+  onToggleBand: (bandId: string) => void;
   onEmptyClick: (minutes: number) => void;
 }) {
   const weekend = idx >= 5;
@@ -368,7 +452,7 @@ function DayColumn({
     const el = colRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const minutes = (e.clientY - rect.top) / PX_PER_MINUTE;
+    const minutes = scale.minAt(e.clientY - rect.top);
     onEmptyClick(minutes);
   }
 
@@ -377,14 +461,90 @@ function DayColumn({
       ref={colRef}
       onClick={handleClick}
       className={`relative cursor-pointer border-l ${weekend ? "bg-weekend/40" : ""}`}
-      style={{
-        height: GRID_HEIGHT_PX,
-        backgroundImage: `linear-gradient(to bottom, transparent 0, transparent ${minutesToPx(60) - 1}px, color-mix(in srgb, var(--border) 80%, transparent) ${minutesToPx(60) - 1}px, color-mix(in srgb, var(--border) 80%, transparent) ${minutesToPx(60)}px)`,
-        backgroundSize: `100% ${minutesToPx(60)}px`,
-        backgroundRepeat: "repeat-y",
-      }}
+      style={{ height: scale.heightPx }}
     >
-      {/* Hour grid lines are drawn by DayColumn backgrounds */}
+      {/* Morning / afternoon / evening tint bands (clipped outside folded spans) */}
+      {SEGMENT_TINTS.map((seg) =>
+        clipToVisible(seg.from, seg.to, scale).map((r) => (
+          <div
+            key={`${seg.id}-${r.from}`}
+            className="pointer-events-none absolute inset-x-0"
+            style={{
+              top: scale.yOf(r.from),
+              height: Math.max(scale.yOf(r.to) - scale.yOf(r.from), 0),
+              background: `color-mix(in srgb, ${seg.css} 3.5%, transparent)`,
+            }}
+          />
+        ))
+      )}
+
+      {/* Hour grid lines */}
+      {HOURS.map((h) => {
+        const m = h * 60;
+        if (scale.insideBand(m)) return null;
+        return (
+          <div
+            key={h}
+            className="pointer-events-none absolute inset-x-0"
+            style={{
+              top: scale.yOf(m),
+              borderTop: `1px solid color-mix(in srgb, var(--border) 80%, transparent)`,
+            }}
+          />
+        );
+      })}
+
+      {/* Period boundaries: soft slot bands + guide lines to locate 第几节 */}
+      {periodSlots.map((p) => {
+        if (p.start < 0 || p.start >= DAY_MINUTES) return null;
+        const vis = clipToVisible(p.start, p.end, scale);
+        return vis.map((r, ri) => (
+          <div key={`slot-${p.no}-${ri}`}>
+            <div
+              className="pointer-events-none absolute inset-x-0"
+              style={{
+                top: scale.yOf(r.from),
+                height: Math.max(scale.yOf(r.to) - scale.yOf(r.from), 0),
+                background: `color-mix(in srgb, var(--cp-course) 4%, transparent)`,
+              }}
+            />
+            <div
+              className="pointer-events-none absolute inset-x-0 border-t border-dashed"
+              style={{
+                top: scale.yOf(r.from),
+                borderColor: "color-mix(in srgb, var(--cp-course) 35%, transparent)",
+              }}
+            />
+          </div>
+        ));
+      })}
+
+      {/* Collapsed fold strips (visual compression markers) */}
+      {scale.bands.map((b) => (
+        <button
+          type="button"
+          key={b.id}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBand(b.id);
+          }}
+          className="absolute inset-x-0 z-20 flex items-center overflow-hidden border-y border-dashed text-muted-foreground hover:bg-accent/60"
+          style={{
+            top: scale.yOf(b.from),
+            height: FOLD_HEIGHT_PX,
+            backgroundImage:
+              "repeating-linear-gradient(-45deg, transparent, transparent 6px, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 6px, color-mix(in srgb, var(--muted-foreground) 12%, transparent) 12px)",
+          }}
+          title={`${b.label} — click to expand`}
+        >
+          {idx === 0 ? (
+            <span className="px-1 text-[9px]">{b.label} ⇅</span>
+          ) : (
+            <span className="mx-auto text-[10px]">···</span>
+          )}
+        </button>
+      ))}
+
       {/* Course + recurring lanes */}
       {bundle.lanes.map((l) => (
         <EventNode
@@ -395,6 +555,7 @@ function DayColumn({
           tz={tz}
           snap={snap}
           boundaries={boundaries}
+          scale={scale}
           draggable
           onMoveCommit={onMoveCommit}
           onOpen={onOpen}
@@ -411,6 +572,7 @@ function DayColumn({
           tz={tz}
           snap={snap}
           boundaries={boundaries}
+          scale={scale}
           draggable
           onMoveCommit={onMoveCommit}
           onOpen={onOpen}
@@ -427,6 +589,7 @@ function DayColumn({
           tz={tz}
           snap={snap}
           boundaries={boundaries}
+          scale={scale}
           draggable={false}
           onMoveCommit={onMoveCommit}
           onOpen={onOpen}
@@ -434,10 +597,10 @@ function DayColumn({
       ))}
 
       {/* Current time line */}
-      {nowMinutes !== null && (
+      {nowMinutes !== null && !scale.insideBand(nowMinutes) && (
         <div
           className="pointer-events-none absolute inset-x-0 z-30"
-          style={{ top: minutesToPx(nowMinutes) }}
+          style={{ top: scale.yOf(nowMinutes) }}
         >
           <div className="h-[2px] w-full" style={{ background: "var(--cp-now)" }} />
           <div
@@ -497,14 +660,15 @@ function NewBlockDialog({
   const empty = !todosQuery.isLoading && todos.length === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onOpenChange as never}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onOpenChange as never}
+    >
       <div
         className="w-full max-w-sm rounded-lg border bg-background p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 text-base font-semibold">
-          Schedule todo block
-        </h3>
+        <h3 className="mb-3 text-base font-semibold">Schedule todo block</h3>
         <p className="mb-3 text-xs text-muted-foreground">{day}</p>
         {empty ? (
           <p className="text-sm text-muted-foreground">

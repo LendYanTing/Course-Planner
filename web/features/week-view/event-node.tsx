@@ -11,7 +11,8 @@ import {
   isDeadline,
 } from "@/lib/event-model";
 import { paletteFor, conflictTextureClass } from "@/lib/event-style";
-import { DAY_MINUTES, PX_PER_MINUTE, minutesToPx, snapMinute, type SnapMode } from "@/features/week-view/geometry";
+import { DAY_MINUTES, snapMinute, type SnapMode } from "@/features/week-view/geometry";
+import type { DayScale } from "@/features/week-view/fold";
 
 type DragMode = "move" | "resize-start" | "resize-end";
 
@@ -23,6 +24,7 @@ export interface EventNodeProps {
   tz: string;
   snap: SnapMode;
   boundaries: number[];
+  scale: DayScale;
   draggable: boolean;
   onMoveCommit: (
     event: CalendarEvent,
@@ -40,6 +42,7 @@ export function EventNode({
   tz,
   snap,
   boundaries,
+  scale,
   draggable,
   onMoveCommit,
   onOpen,
@@ -55,7 +58,8 @@ export function EventNode({
   const dragRef = React.useRef<{
     mode: DragMode;
     pointerId: number;
-    startY: number;
+    anchorTop: number;
+    relStart: number;
     baseStart: number;
     baseEnd: number;
     moved: boolean;
@@ -64,33 +68,34 @@ export function EventNode({
 
   const s = preview?.s ?? baseStart;
   const e = preview?.e ?? baseEnd;
-  const topPx = minutesToPx(s);
-  const heightPx = isDead ? undefined : Math.max(minutesToPx(e - s), 6);
+  const topPx = scale.yOf(s);
+  const heightPx = isDead ? undefined : Math.max(scale.yOf(e) - topPx, 6);
 
-  function beginDrag(
-    mode: DragMode,
-    pe: React.PointerEvent<HTMLElement>
-  ) {
+  function beginDrag(mode: DragMode, pe: React.PointerEvent<HTMLElement>) {
     if (!draggable || isDead) return;
     pe.preventDefault();
     pe.stopPropagation();
     const el = pe.currentTarget as HTMLElement;
     el.setPointerCapture(pe.pointerId);
+    const anchor = (el.offsetParent as HTMLElement | null) ?? el;
+    const anchorTop = anchor.getBoundingClientRect().top;
     dragRef.current = {
       mode,
       pointerId: pe.pointerId,
-      startY: pe.clientY,
+      anchorTop,
+      relStart: pe.clientY - anchorTop,
       baseStart: s,
       baseEnd: e,
       moved: false,
     };
   }
 
-  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+  function onPointerMove(pe: React.PointerEvent<HTMLDivElement>) {
     const d = dragRef.current;
-    if (!d || d.pointerId !== e.pointerId) return;
-    const deltaMin = (e.clientY - d.startY) / PX_PER_MINUTE;
-    d.moved = d.moved || Math.abs(e.clientY - d.startY) > 2;
+    if (!d || d.pointerId !== pe.pointerId) return;
+    const relY = pe.clientY - d.anchorTop;
+    const deltaMin = scale.minAt(relY) - scale.minAt(d.relStart);
+    d.moved = d.moved || Math.abs(relY - d.relStart) > 2;
     const dur = d.baseEnd - d.baseStart;
     let ns: number;
     let ne: number;
@@ -99,7 +104,7 @@ export function EventNode({
       ne = ns + dur;
       if (ne > DAY_MINUTES) {
         ne = DAY_MINUTES;
-        ns = ne - dur;
+        ns = Math.max(0, ne - dur);
       }
       if (ns < 0) {
         ns = 0;
@@ -117,9 +122,9 @@ export function EventNode({
     setPreview({ s: ns, e: ne });
   }
 
-  function endDrag(e: React.PointerEvent<HTMLDivElement>) {
+  function endDrag(pe: React.PointerEvent<HTMLDivElement>) {
     const d = dragRef.current;
-    if (!d || d.pointerId !== e.pointerId) return;
+    if (!d || d.pointerId !== pe.pointerId) return;
     dragRef.current = null;
     const moved = d.moved;
     const p = preview;
@@ -133,6 +138,7 @@ export function EventNode({
   const style = paletteFor(event);
   const texture = conflictTextureClass(event.conflictState);
   const sub = eventSubtitle(event);
+  const periodTag = coursePeriodLabel(event);
 
   const content = (
     <>
@@ -157,8 +163,14 @@ export function EventNode({
           <Pencil className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
         )}
       </div>
-      {sub && !isDead && (
+      {(periodTag || sub) && !isDead && (
         <div className="truncate px-1.5 text-[10px] leading-tight text-muted-foreground">
+          {periodTag && (
+            <span className="font-medium" style={{ color: style.accent }}>
+              {periodTag}
+              {sub ? " · " : ""}
+            </span>
+          )}
           {sub}
         </div>
       )}
@@ -247,4 +259,12 @@ export function EventNode({
       )}
     </div>
   );
+}
+
+/** “第1节” / “第1–3节” from the event projection metadata. */
+export function coursePeriodLabel(event: CalendarEvent): string | null {
+  const ps = event.metadata?.periodStart;
+  const pe = event.metadata?.periodEnd;
+  if (typeof ps !== "number" || typeof pe !== "number") return null;
+  return ps === pe ? `第${ps}节` : `第${ps}–${pe}节`;
 }

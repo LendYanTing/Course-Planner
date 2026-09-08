@@ -18,6 +18,8 @@ export function WeekToolbar({
   onNext,
   snap,
   onSnapChange,
+  foldMode,
+  onFoldChange,
   onNewBlock,
 }: {
   rangeLabel: string;
@@ -26,6 +28,8 @@ export function WeekToolbar({
   onNext: () => void;
   snap: SnapMode;
   onSnapChange: (m: SnapMode) => void;
+  foldMode: "auto" | "none";
+  onFoldChange: (m: "auto" | "none") => void;
   onNewBlock: () => void;
 }) {
   return (
@@ -52,6 +56,15 @@ export function WeekToolbar({
                 {m.label}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={foldMode} onValueChange={(v) => onFoldChange(v as "auto" | "none")}>
+          <SelectTrigger className="h-8 w-[130px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Fold: auto</SelectItem>
+            <SelectItem value="none">Fold: none</SelectItem>
           </SelectContent>
         </Select>
       </div>
