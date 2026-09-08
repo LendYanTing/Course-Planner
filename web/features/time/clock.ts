@@ -7,7 +7,7 @@
  */
 
 import { create } from "zustand";
-import { useEffect, useRef, useState } from "react";
+import * as React from "react";
 import { api } from "@/lib/api/http";
 
 interface ClockState {
@@ -42,7 +42,7 @@ export function estimatedServerNow(): Date {
 /** Reactive "now" that refreshes every `intervalMs` (default 1 minute). */
 export function useServerNow(intervalMs = 60_000): Date {
   const { offsetMs } = useClock();
-  const [now, setNow] = useState<Date>(() => estimatedServerNow());
+  const [now, setNow] = React.useState<Date>(() => estimatedServerNow());
   void offsetMs; // re-render when the offset is (re)established
   useIntervalEffect(() => {
     setNow(estimatedServerNow());
@@ -51,9 +51,11 @@ export function useServerNow(intervalMs = 60_000): Date {
 }
 
 function useIntervalEffect(cb: () => void, ms: number) {
-  const saved = useRef(cb);
-  saved.current = cb;
-  useEffect(() => {
+  const saved = React.useRef(cb);
+  React.useEffect(() => {
+    saved.current = cb;
+  });
+  React.useEffect(() => {
     const id = setInterval(() => saved.current(), ms);
     return () => clearInterval(id);
   }, [ms]);

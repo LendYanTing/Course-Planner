@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { WeekRuleEditor } from "@/components/week-rule-editor";
-import type { AcademicCalendar, Course, CourseMeeting, WeekRule } from "@/generated/entities";
+import type { Course, CourseMeeting, WeekRule } from "@/generated/entities";
 import { useCalendars } from "@/features/calendars/hooks";
 import { useApiQuery } from "@/lib/api/hooks";
 import { cacheKey, dropCachePrefix } from "@/db/db";
@@ -30,10 +30,9 @@ export function CoursesSettings() {
   const qc = useQueryClient();
   const calendars = useCalendars();
   const cals = calendars.data ?? [];
-  const [calendarId, setCalendarId] = React.useState<string>("");
-  React.useEffect(() => {
-    if (!calendarId && cals.length) setCalendarId(cals[0].id);
-  }, [cals, calendarId]);
+  const [userCalendarId, setUserCalendarId] = React.useState<string>("");
+  // Default to the first semester once the list is available.
+  const calendarId = userCalendarId || cals[0]?.id || "";
 
   const courses = useApiQuery<Course[]>({
     queryKey: ["courses", calendarId],
@@ -59,7 +58,7 @@ export function CoursesSettings() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2">
         <Label className="text-sm">Calendar</Label>
-        <Select value={calendarId} onValueChange={setCalendarId}>
+        <Select value={calendarId} onValueChange={setUserCalendarId}>
           <SelectTrigger className="w-64">
             <SelectValue placeholder="Choose semester" />
           </SelectTrigger>

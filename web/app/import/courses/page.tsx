@@ -37,18 +37,17 @@ export default function ImportCoursesPage() {
   const [busy, setBusy] = React.useState(false);
   const [step, setStep] = React.useState<"edit" | "preview">("edit");
 
-  React.useEffect(() => {
-    if (!calendarId && cals.length) setCalendarId(cals[0].id);
-  }, [cals, calendarId]);
+  // Default to the first semester once the list is available.
+  const effectiveCalendarId = calendarId || cals[0]?.id || "";
 
   async function runPreview() {
-    if (!calendarId || !csv.trim()) {
+    if (!effectiveCalendarId || !csv.trim()) {
       toast.error("Pick a calendar and paste some CSV");
       return;
     }
     setBusy(true);
     try {
-      const p = await previewCourseCsv(calendarId, csv);
+      const p = await previewCourseCsv(effectiveCalendarId, csv);
       setPreview(p);
       setStep("preview");
     } catch (e) {
@@ -65,7 +64,7 @@ export default function ImportCoursesPage() {
         setPreview({
           previewId: "",
           expiresAt: "",
-          calendarId,
+          calendarId: effectiveCalendarId,
           courses: [],
           conflicts: [...(rows ?? []), ...(conflicts ?? [])],
         } as ImportPreview);
@@ -115,7 +114,7 @@ export default function ImportCoursesPage() {
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <div className="flex flex-col gap-1.5">
                   <Label>Target calendar</Label>
-                  <Select value={calendarId} onValueChange={setCalendarId} disabled={step === "preview"}>
+                  <Select value={effectiveCalendarId} onValueChange={setCalendarId} disabled={step === "preview"}>
                     <SelectTrigger>
                       <SelectValue placeholder="Choose semester" />
                     </SelectTrigger>
@@ -140,7 +139,7 @@ export default function ImportCoursesPage() {
                   >
                     Load sample
                   </Button>
-                  <Button size="sm" disabled={busy || !calendarId} onClick={() => void runPreview()}>
+                  <Button size="sm" disabled={busy || !effectiveCalendarId} onClick={() => void runPreview()}>
                     <Upload /> Preview
                   </Button>
                 </div>

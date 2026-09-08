@@ -7,7 +7,7 @@
  */
 
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,11 +45,6 @@ function minutesToClock(minutes: number): string {
   const h = Math.floor(minutes / 60) % 24;
   const m = minutes % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function clockToMinutes(c: string): number {
-  const [h, m] = c.split(":").map(Number);
-  return (h % 24) * 60 + m;
 }
 
 async function invalidateEvents() {
@@ -105,20 +100,13 @@ export function BlockEditorDialog({
   const day = eventDayKey(event, tz);
   const start = event.startAt ? minutesOfInstant(event.startAt, tz) : 9 * 60;
   const end = event.endAt ? minutesOfInstant(event.endAt, tz) : start + 60;
+  // This dialog is mounted fresh for every open (caller keys it), so initial
+  // state already reflects the current event.
   const [startClock, setStartClock] = React.useState(minutesToClock(start));
   const [endClock, setEndClock] = React.useState(minutesToClock(end));
   const [note, setNote] = React.useState<string>(
     (event.metadata?.blockNote as string) ?? ""
   );
-
-  React.useEffect(() => {
-    if (open) {
-      setStartClock(minutesToClock(start));
-      setEndClock(minutesToClock(end));
-      setNote((event.metadata?.blockNote as string) ?? "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, event.id]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -216,20 +204,14 @@ export function OccurrenceTimeDialog({
 }) {
   const tz = useTimezone();
   const day = eventDayKey(event, tz);
-  const [startClock, setStartClock] = React.useState("");
-  const [endClock, setEndClock] = React.useState("");
-
-  React.useEffect(() => {
-    if (open) {
-      setStartClock(minutesToClock(minutesOfInstant(event.startAt, tz)));
-      setEndClock(
-        event.endAt
-          ? minutesToClock(minutesOfInstant(event.endAt, tz))
-          : ""
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, event.id]);
+  const startClockDefault = minutesToClock(
+    event.startAt ? minutesOfInstant(event.startAt, tz) : 9 * 60
+  );
+  const endClockDefault = minutesToClock(
+    event.endAt ? minutesOfInstant(event.endAt, tz) : 10 * 60
+  );
+  const [startClock, setStartClock] = React.useState(startClockDefault);
+  const [endClock, setEndClock] = React.useState(endClockDefault);
 
   const save = useMutation({
     mutationFn: () =>
@@ -392,7 +374,7 @@ export function EventDetailsDialog({
         : event.type === "deadline"
           ? "deadline"
           : "todo";
-  const sub = eventSubtitle(event, tz);
+  const sub = eventSubtitle(event);
   const range = event.endAt
     ? `${formatLocalClock(parseDate(event.startAt), tz)} – ${formatLocalClock(parseDate(event.endAt), tz)}`
     : isDeadline(event)

@@ -89,7 +89,7 @@ export function overlapsUtc(
   return as < be && bs < ae;
 }
 
-export function eventSubtitle(event: CalendarEvent, tz: string): string | null {
+export function eventSubtitle(event: CalendarEvent): string | null {
   if (event.type === "course") {
     const parts: string[] = [];
     if (event.metadata?.teacher) parts.push(String(event.metadata.teacher));

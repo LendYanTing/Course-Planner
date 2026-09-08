@@ -132,7 +132,7 @@ export function EventNode({
 
   const style = paletteFor(event);
   const texture = conflictTextureClass(event.conflictState);
-  const sub = eventSubtitle(event, tz);
+  const sub = eventSubtitle(event);
 
   const content = (
     <>
@@ -210,7 +210,7 @@ export function EventNode({
       onPointerDown={(e) => beginDrag("move", e)}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
-      onPointerCancel={(e) => {
+      onPointerCancel={() => {
         dragRef.current = null;
         setPreview(null);
       }}

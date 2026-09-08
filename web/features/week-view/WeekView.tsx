@@ -20,15 +20,13 @@ import { cacheKey, dropCachePrefix } from "@/db/db";
 import type { CalendarEvent, LocalDate } from "@/generated/entities";
 import {
   addDaysToKey,
-  civilToInstant,
   localDateKey,
   localDayStart,
   minutesOfDay,
   toIsoUtc,
-  weekStartKey,
   formatDateKeyShort,
 } from "@/lib/time/tz";
-import { eventDayKey, eventDurationMinutes, eventStartMinutes, isDeadline } from "@/lib/event-model";
+import { eventDayKey, eventDurationMinutes, eventStartMinutes } from "@/lib/event-model";
 import { layoutColumns } from "@/lib/overlap-layout";
 import {
   DAY_MINUTES,
@@ -244,7 +242,6 @@ export function WeekView() {
                 bundle={b}
                 idx={i}
                 tz={tz}
-                today={b.day === todayKey}
                 nowMinutes={b.day === todayKey ? nowMin : null}
                 snap={snap}
                 boundaries={boundaries}
@@ -342,7 +339,6 @@ function DayColumn({
   bundle,
   idx,
   tz,
-  today,
   nowMinutes,
   snap,
   boundaries,
@@ -353,7 +349,6 @@ function DayColumn({
   bundle: DayBundle;
   idx: number;
   tz: string;
-  today: boolean;
   nowMinutes: number | null;
   snap: SnapMode;
   boundaries: number[];

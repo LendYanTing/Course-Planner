@@ -68,7 +68,7 @@ export function MonthView() {
         map.set(key, list);
       }
     }
-    for (const [k, list] of map) {
+    for (const list of map.values()) {
       list.sort((a, b) => a.startAt.localeCompare(b.startAt));
     }
     return map;
@@ -142,7 +142,7 @@ export function MonthView() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-          {weeks.map((week, wi) => (
+          {weeks.map((week) => (
             <div key={week[0]} className="grid min-h-24 flex-1 grid-cols-7 border-b last:border-b-0">
               {week.map((day, di) => {
                 const inMonth = day.slice(0, 7) === monthKey.slice(0, 7);
@@ -169,7 +169,7 @@ export function MonthView() {
                     >
                       {Number(day.slice(8, 10))}
                     </span>
-                    <MiniEvents events={events.slice(0, 3)} tz={tz} />
+                    <MiniEvents events={events.slice(0, 3)} />
                     {events.length > 3 && (
                       <span className="px-0.5 text-[10px] text-muted-foreground">
                         +{events.length - 3} more
@@ -186,7 +186,7 @@ export function MonthView() {
   );
 }
 
-function MiniEvents({ events, tz }: { events: CalendarEvent[]; tz: string }) {
+function MiniEvents({ events }: { events: CalendarEvent[] }) {
   return (
     <div className="flex w-full flex-col gap-0.5">
       {events.map((ev) => {
