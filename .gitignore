@@ -11,6 +11,7 @@
 server/server
 server/server.exe
 server/bin/
+server/.tools-bin/
 *.test
 *.out
 coverage.txt

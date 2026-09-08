@@ -19,21 +19,27 @@ type Config struct {
 	CORSAllowedOrigins []string
 	ConfirmationTTL    time.Duration
 	LogLevel           string
+	CookieSecureValue  bool
 	// TestMode relaxes nothing security-wise; it only keeps startup logs terse.
 	TestMode bool
 }
 
+// CookieSecure reports whether refresh cookies should carry the Secure
+// attribute. Set COOKIE_SECURE=false only for plain-HTTP local development.
+func (c *Config) CookieSecure() bool { return c.CookieSecureValue }
+
 // Load builds a Config from environment variables with safe defaults.
 func Load() (*Config, error) {
 	c := &Config{
-		Port:            envOr("PORT", "8080"),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
-		JWTSecret:       os.Getenv("JWT_SECRET"),
-		AccessTokenTTL:  envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
-		RefreshTokenTTL: envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
-		ConfirmationTTL: envDuration("CONFIRMATION_TTL", 10*time.Minute),
-		LogLevel:        envOr("LOG_LEVEL", "info"),
-		TestMode:        os.Getenv("TEST_MODE") == "1",
+		Port:              envOr("PORT", "8080"),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		JWTSecret:         os.Getenv("JWT_SECRET"),
+		AccessTokenTTL:    envDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:   envDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		ConfirmationTTL:   envDuration("CONFIRMATION_TTL", 10*time.Minute),
+		LogLevel:          envOr("LOG_LEVEL", "info"),
+		TestMode:          os.Getenv("TEST_MODE") == "1",
+		CookieSecureValue: envOr("COOKIE_SECURE", "true") == "true",
 	}
 	if origins := os.Getenv("CORS_ALLOWED_ORIGINS"); origins != "" {
 		for _, o := range strings.Split(origins, ",") {

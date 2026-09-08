@@ -1,0 +1,9 @@
+# Normalize all text files to LF in the repo; Windows checkouts keep CRLF only
+# for PowerShell/batch files. Go/web/flutter sources stay LF everywhere.
+* text=auto
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary

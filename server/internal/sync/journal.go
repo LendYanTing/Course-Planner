@@ -21,16 +21,16 @@ import (
 
 // Entity types exchanged over the sync protocol.
 const (
-	EntityCalendar   = "academic_calendar"
-	EntityPeriod     = "period_template"
-	EntityCourse     = "course"
-	EntityMeeting    = "course_meeting"
-	EntityRecurring  = "recurring_schedule"
-	EntityTodo       = "todo"
-	EntityTodoBlock  = "todo_block"
-	EntityTag        = "tag"
-	EntityCategory   = "todo_category"
-	EntityOverride   = "occurrence_override"
+	EntityCalendar  = "academic_calendar"
+	EntityPeriod    = "period_template"
+	EntityCourse    = "course"
+	EntityMeeting   = "course_meeting"
+	EntityRecurring = "recurring_schedule"
+	EntityTodo      = "todo"
+	EntityTodoBlock = "todo_block"
+	EntityTag       = "tag"
+	EntityCategory  = "todo_category"
+	EntityOverride  = "occurrence_override"
 )
 
 // Operation names on the wire.

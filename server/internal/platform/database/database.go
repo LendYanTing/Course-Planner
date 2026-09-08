@@ -39,14 +39,14 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("ensure schema_migrations: %w", err)
 	}
 
-	entries, err := fs.Glob(migrationFS, "migrations/*.sql")
+	entries, err := fs.Glob(migrationFS, "*.sql")
 	if err != nil {
 		return err
 	}
 	sort.Strings(entries)
 
 	for _, entry := range entries {
-		version := strings.TrimSuffix(strings.TrimPrefix(entry, "migrations/"), ".sql")
+		version := strings.TrimSuffix(entry, ".sql")
 		var exists bool
 		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&exists); err != nil {
 			return err

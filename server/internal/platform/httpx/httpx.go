@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/carryingon/courseplanner/server/internal/common/apperr"
@@ -52,6 +53,11 @@ func WriteError(w http.ResponseWriter, err error) {
 	var ae *apperr.Error
 	if !errors.As(err, &ae) {
 		ae = &apperr.Error{Status: http.StatusInternalServerError, Code: apperr.CodeInternal, Message: "internal server error"}
+		slog.Error("unhandled error", "error", err)
+	} else if ae.Status >= 500 {
+		slog.Error("request failed", "code", ae.Code, "message", ae.Message, "error", err)
+	} else {
+		slog.Debug("request rejected", "code", ae.Code, "message", ae.Message)
 	}
 	body := ErrorBody{Error: ErrorDetail{Code: ae.Code, Message: ae.Message, Details: ae.Details}}
 	WriteJSON(w, ae.Status, body)

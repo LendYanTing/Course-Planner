@@ -21,10 +21,10 @@ const RefreshCookie = "cp_refresh_token"
 // Service implements the auth flows. It is shared by REST handlers and any
 // future programmatic entry points.
 type Service struct {
-	pool    *pgxpool.Pool
-	users   *user.Repo
-	tokens  *TokenService
-	refresh *RefreshRepo
+	pool         *pgxpool.Pool
+	users        *user.Repo
+	tokens       *TokenService
+	refresh      *RefreshRepo
 	cookieSecure bool
 }
 

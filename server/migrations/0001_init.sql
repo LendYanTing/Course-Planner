@@ -56,7 +56,7 @@ CREATE INDEX idx_sync_changes_entity ON sync_changes (user_id, entity_type, enti
 CREATE TABLE sync_operations (
     user_id      UUID   NOT NULL,
     operation_id UUID   NOT NULL,
-    status       TEXT   NOT NULL CHECK (status IN ('accepted', 'merged', 'conflict', 'rejected')),
+    status       TEXT   NOT NULL CHECK (status IN ('processing', 'accepted', 'merged', 'conflict', 'rejected')),
     result       JSONB  NOT NULL,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, operation_id)
@@ -144,9 +144,9 @@ CREATE TABLE todo_categories (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     revision   INT  NOT NULL DEFAULT 1,
-    deleted_at TIMESTAMPTZ,
-    UNIQUE (user_id, name) WHERE deleted_at IS NULL
+    deleted_at TIMESTAMPTZ
 );
+CREATE UNIQUE INDEX idx_todo_categories_user_name ON todo_categories (user_id, name) WHERE deleted_at IS NULL;
 
 CREATE TABLE todos (
     id                UUID PRIMARY KEY,
@@ -194,9 +194,9 @@ CREATE TABLE tags (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     revision   INT  NOT NULL DEFAULT 1,
-    deleted_at TIMESTAMPTZ,
-    UNIQUE (user_id, name) WHERE deleted_at IS NULL
+    deleted_at TIMESTAMPTZ
 );
+CREATE UNIQUE INDEX idx_tags_user_name ON tags (user_id, name) WHERE deleted_at IS NULL;
 
 -- occurrence overrides: THIS-scope edits on course meetings / recurring schedules.
 CREATE TABLE occurrence_overrides (

@@ -67,7 +67,7 @@ func (s *TokenService) VerifyAccessToken(token string) (string, error) {
 // ---- Refresh tokens (opaque, hashed at rest, rotatable) ------------------
 
 type RefreshRepo struct {
-	pool      *pgxpool.Pool
+	pool       *pgxpool.Pool
 	refreshTTL time.Duration
 }
 

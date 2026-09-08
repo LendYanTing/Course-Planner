@@ -21,9 +21,9 @@ import (
 func Now() time.Time { return time.Now().UTC() }
 
 var (
-	dateRe  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-	hhmmRe  = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
-	rfcRe   = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`)
+	dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	hhmmRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+	rfcRe  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`)
 )
 
 // LoadTimezone validates and loads an IANA timezone. Invalid zones yield

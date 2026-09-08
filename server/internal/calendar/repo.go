@@ -84,7 +84,9 @@ func NewRepo(pool *pgxpool.Pool) *Repo { return &Repo{pool: pool} }
 // ---- calendars -----------------------------------------------------------
 
 func (r *Repo) CreateCalendar(ctx context.Context, db sync.DBTX, c *Calendar) error {
-	c.ID = uuid.NewString()
+	if c.ID == "" {
+		c.ID = uuid.NewString()
+	}
 	now := timeutil.Now()
 	c.CreatedAt, c.UpdatedAt, c.Revision = now, now, 1
 	if _, err := db.Exec(ctx, `
@@ -289,7 +291,9 @@ func (r *Repo) tombstoneCalendar(ctx context.Context, db sync.DBTX, c *Calendar)
 // ---- periods -------------------------------------------------------------
 
 func (r *Repo) CreatePeriod(ctx context.Context, db sync.DBTX, p *Period) error {
-	p.ID = uuid.NewString()
+	if p.ID == "" {
+		p.ID = uuid.NewString()
+	}
 	now := timeutil.Now()
 	p.CreatedAt, p.UpdatedAt, p.Revision = now, now, 1
 	if _, err := db.Exec(ctx, `
