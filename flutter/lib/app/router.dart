@@ -13,6 +13,7 @@ import '../presentation/settings/settings_page.dart';
 import '../presentation/settings/tags_page.dart';
 import '../presentation/todo/todo_page.dart';
 import '../state/session.dart';
+import '../state/sync_controller.dart';
 import 'theme.dart';
 
 /// Builds the GoRouter instance. Redirects are re-evaluated whenever
@@ -145,6 +146,12 @@ class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Push queued operations shortly after any local mutation lands.
+    ref.listen(snapshotProvider, (previous, next) {
+      final snapshot = next.value;
+      if (snapshot == null || snapshot.pendingOps.isEmpty) return;
+      ref.read(syncCoordinatorProvider.notifier).schedulePush();
+    });
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'Course Planner',

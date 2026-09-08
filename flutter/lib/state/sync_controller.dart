@@ -79,22 +79,15 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
 
   @override
   SyncUiState build() {
-    // Debounced sync whenever a local mutation lands in the queue.
-    ref.listen(snapshotProvider, (previous, next) {
-      final value = next.value;
-      if (value == null) return;
-      final signedIn = ref.read(sessionControllerProvider).phase == AuthPhase.signedIn;
-      if (!signedIn) return;
-      if (value.pendingOps.isNotEmpty) {
-        _schedule(seconds: 2);
-      }
-    });
-    // Periodic catch-up every 60s while signed in.
-    ref.onDispose(() {
-      _debounce?.cancel();
-      _periodic?.cancel();
-    });
     return const SyncUiState();
+  }
+
+  /// Debounced push trigger — called by the app root when the snapshot shows
+  /// newly queued operations (kept out of `build()`: a Notifier must not
+  /// subscribe to streams synchronously).
+  void schedulePush() {
+    if (ref.read(sessionControllerProvider).phase != AuthPhase.signedIn) return;
+    _schedule(seconds: 2);
   }
 
   void startPeriodicSync() {
