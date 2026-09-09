@@ -35,9 +35,11 @@ import {
   civilToInstant,
   localDateKey,
   localDayStart,
+  minutesOfDay,
   toIsoUtc,
   formatDateKeyShort,
 } from "@/lib/time/tz";
+import { toLocalInputValue } from "@/lib/time/datetime-input";
 import { eventDayKey, eventDurationMinutes, eventStartMinutes } from "@/lib/event-model";
 import { layoutColumns } from "@/lib/overlap-layout";
 import { conflictTextureClass, paletteFor } from "@/lib/event-style";
@@ -129,6 +131,35 @@ function snapTo(value: number, list: number[], lo = 0, hi = 1440): number {
     }
   }
   return clamp(best, lo, hi);
+}
+
+/**
+ * Vertical pixel for a point marker (now / deadline): inside a visible row it
+ * sits at the exact minute fraction; inside an omitted span (凌晨 / 课间 /
+ * 午休 / 夜间, i.e. a “folded” time) it is pinned onto the boundary line of
+ * that collapsed segment.
+ */
+function markerYOf(minute: number, rows: RowDef[]): number {
+  if (!rows.length) return 0;
+  const endH = rows.length * ROW_HEIGHT;
+  const v = clamp(minute, 0, 1440);
+  if (v <= rows[0].startMin) return 0;
+  const last = rows[rows.length - 1];
+  if (v >= last.endMin) return endH;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (v >= r.startMin && v < r.endMin) {
+      const frac = (v - r.startMin) / (r.endMin - r.startMin);
+      return (i + frac) * ROW_HEIGHT;
+    }
+  }
+  // v is inside an omitted gap between two rows: pin onto the boundary line.
+  for (let i = 0; i < rows.length - 1; i++) {
+    if (v >= rows[i].endMin && v < rows[i + 1].startMin) {
+      return (i + 1) * ROW_HEIGHT;
+    }
+  }
+  return endH;
 }
 
 /**
@@ -284,8 +315,32 @@ export function WeekTableView() {
     return map;
   }, [eventsQuery.data, rows, days, tz]);
 
-  // ---- drag & drop state ----------------------------------------------------
+  // ---- deadlines (point markers) + current time ------------------------------
+  const deadlinesByDay = React.useMemo(() => {
+    const map = new Map<
+      LocalDate,
+      { ev: CalendarEvent; minute: number; timeLabel: string }[]
+    >();
+    if (eventsQuery.data) {
+      for (const ev of eventsQuery.data) {
+        if (ev.type !== "deadline") continue;
+        const key = eventDayKey(ev, tz);
+        if (!days.includes(key)) continue;
+        const local = toLocalInputValue(ev.startAt, tz); // YYYY-MM-DDTHH:MM
+        const timeLabel = `${local.slice(5, 10)} ${local.slice(11)}`;
+        const list = map.get(key) ?? [];
+        list.push({ ev, minute: eventStartMinutes(ev, tz), timeLabel });
+        map.set(key, list);
+      }
+    }
+    return map;
+  }, [eventsQuery.data, days, tz]);
 
+  const nowMinute = tz ? minutesOfDay(now, tz) : 0;
+  const todayInWeek = days.includes(todayKey);
+  const nowLineY = markerYOf(nowMinute, rows);
+
+  // ---- drag & drop state ----------------------------------------------------
   const colEls = React.useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = React.useRef<DragInfo | null>(null);
   const [dragId, setDragId] = React.useState<string | null>(null);
@@ -587,6 +642,7 @@ export function WeekTableView() {
                   }}
                   bars={(byDay.get(d) ?? []).map(toPlaced)}
                   previewBars={previewBarsFor(di)}
+                  deadlines={deadlinesByDay.get(d) ?? []}
                   dragActiveId={dragId}
                   allowCourseEdit={editCourses}
                   dragApi={{
@@ -620,6 +676,33 @@ export function WeekTableView() {
                 </span>
               </div>
             )}
+
+            {/* Current-time line (orange), pinned onto the collapsed boundary
+                when "now" falls inside an omitted span */}
+            {todayInWeek && (
+              <div className="pointer-events-none absolute z-30" style={{ left: GUTTER, right: 0 }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: nowLineY,
+                    height: 0,
+                    borderTop: "2px solid var(--cp-now)",
+                  }}
+                />
+                <div
+                  className="absolute rounded-full px-1 text-[9px] font-semibold text-white shadow"
+                  style={{
+                    left: 2,
+                    top: nowLineY - 9,
+                    background: "var(--cp-now)",
+                  }}
+                >
+                  现在 {clockOf(nowMinute)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -637,6 +720,7 @@ function DayGridColumn({
   colRef,
   bars,
   previewBars,
+  deadlines,
   dragActiveId,
   allowCourseEdit,
   dragApi,
@@ -648,6 +732,7 @@ function DayGridColumn({
   colRef: (el: HTMLDivElement | null) => void;
   bars: PlacedBar[];
   previewBars: PlacedBar[];
+  deadlines: { ev: CalendarEvent; minute: number; timeLabel: string }[];
   dragActiveId: string | null;
   allowCourseEdit: boolean;
   dragApi: DragApi;
@@ -709,6 +794,27 @@ function DayGridColumn({
           dragApi={dragApi}
         />
       ))}
+      {/* deadline markers (red pill, hover shows the exact time) */}
+      {deadlines.map((dd) => {
+        const y = markerYOf(dd.minute, rows);
+        return (
+          <div
+            key={dd.ev.id}
+            className="pointer-events-none absolute left-1 right-1 z-40 -translate-y-1/2"
+            style={{ top: y }}
+          >
+            <span
+              title={`${dd.ev.title} · 截止 ${dd.timeLabel}`}
+              className="pointer-events-auto inline-flex max-w-full cursor-help items-center gap-1 rounded-full border px-1.5 py-px text-[9px] font-semibold text-white shadow-sm"
+              style={{ background: "var(--cp-deadline)", borderColor: "var(--cp-deadline)" }}
+            >
+              <TriangleAlert className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{dd.ev.title}</span>
+              <span className="shrink-0 tabular-nums opacity-95">{dd.timeLabel}</span>
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
