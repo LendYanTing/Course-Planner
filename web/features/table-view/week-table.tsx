@@ -19,6 +19,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useSession } from "@/features/auth/session-store";
 import { useServerNow } from "@/features/time/clock";
 import { useDateNav, anchorWeekStart } from "@/features/views/date-nav-store";
@@ -225,6 +227,9 @@ export function WeekTableView() {
 
   const eventsQuery = useRangeEvents(range, !!tz);
   const calendarsQuery = useAllPeriods();
+  // Default OFF: only todo time blocks may be dragged/resized. Turning this on
+  // also allows dragging/resizing courses & recurring schedules (THIS-scope).
+  const [editCourses, setEditCourses] = React.useState(false);
 
   // Chronological rows from the period template (dedup duplicate starts).
   const rows: RowDef[] = React.useMemo(() => {
@@ -458,8 +463,30 @@ export function WeekTableView() {
           {formatDateKeyShort(days[0], tz)} – {formatDateKeyShort(days[6], tz)} · {year}
         </span>
         <div className="flex-1" />
-        <span className="hidden text-[11px] text-muted-foreground sm:inline">
-          Drag to move (cross-day ok) · ⇕ resize snaps to 上课/下课时间
+        <div
+          className="flex items-center gap-2"
+          title={
+            editCourses
+              ? "已开启：课程 / 周期安排也可拖动与缩放（按单次 occurrence 修改）"
+              : "关闭：仅 Todo 时间块可拖动与缩放；课程只读"
+          }
+        >
+          <Switch
+            id="grid-edit-courses"
+            checked={editCourses}
+            onCheckedChange={setEditCourses}
+            aria-label="允许拖动/缩放课程"
+          />
+          <Label
+            htmlFor="grid-edit-courses"
+            className="cursor-pointer select-none whitespace-nowrap text-[11px] text-muted-foreground"
+          >
+            课程可拖动/缩放
+          </Label>
+        </div>
+        <span className="hidden text-[11px] text-muted-foreground md:inline">
+          {editCourses ? "课程也可拖/缩（仅本次）· " : "仅 Todo 时间块可拖/缩 · "}
+          上缘=上课时间 下缘=下课时间
         </span>
       </div>
 
@@ -561,6 +588,7 @@ export function WeekTableView() {
                   bars={(byDay.get(d) ?? []).map(toPlaced)}
                   previewBars={previewBarsFor(di)}
                   dragActiveId={dragId}
+                  allowCourseEdit={editCourses}
                   dragApi={{
                     begin: beginDrag,
                     move: moveDrag,
@@ -610,6 +638,7 @@ function DayGridColumn({
   bars,
   previewBars,
   dragActiveId,
+  allowCourseEdit,
   dragApi,
 }: {
   idx: number;
@@ -620,6 +649,7 @@ function DayGridColumn({
   bars: PlacedBar[];
   previewBars: PlacedBar[];
   dragActiveId: string | null;
+  allowCourseEdit: boolean;
   dragApi: DragApi;
 }) {
   const totalH = rows.length * ROW_HEIGHT;
@@ -675,6 +705,7 @@ function DayGridColumn({
           bar={it}
           colIdx={idx}
           hiddenDuringDrag={dragActiveId === it.ev.id}
+          allowCourseEdit={allowCourseEdit}
           dragApi={dragApi}
         />
       ))}
@@ -686,15 +717,23 @@ function TableCell({
   bar,
   colIdx,
   hiddenDuringDrag,
+  allowCourseEdit,
   dragApi,
 }: {
   bar: PlacedBar;
   colIdx: number;
   hiddenDuringDrag: boolean;
+  allowCourseEdit: boolean;
   dragApi: DragApi;
 }) {
   const { ev } = bar;
   const isBlock = ev.type === "todo_block";
+  // Only todo time blocks are interactive by default; courses / recurring
+  // schedules opt in via the toolbar switch.
+  const interactive =
+    ev.type === "todo_block" ||
+    (allowCourseEdit &&
+      (ev.type === "course" || ev.type === "recurring_schedule"));
   const style = paletteFor(ev);
   const top = bar.topPx;
   const height = Math.max(bar.bottomPx - top, 6);
@@ -716,9 +755,12 @@ function TableCell({
   return (
     <div
       className={cn(
-        "group absolute z-10 cursor-grab touch-none select-none overflow-hidden rounded border shadow-sm active:cursor-grabbing",
+        "group absolute z-10 overflow-hidden rounded border shadow-sm",
         isBlock ? "z-20" : "z-10",
         conflictTextureClass(ev.conflictState),
+        interactive
+          ? "cursor-grab touch-none select-none active:cursor-grabbing"
+          : "cursor-default",
         hiddenDuringDrag && "pointer-events-none opacity-0"
       )}
       style={{
@@ -733,12 +775,14 @@ function TableCell({
         color: style.text,
       }}
       title={`${ev.title}${periodLabel ? " " + periodLabel : ""}`}
-      onPointerDown={(e) => {
-        if (ev.type !== "deadline") dragApi.begin(ev, colIdx, "move", e);
-      }}
-      onPointerMove={(e) => dragApi.move(e)}
-      onPointerUp={(e) => dragApi.end(e)}
-      onPointerCancel={() => dragApi.cancel()}
+      onPointerDown={
+        interactive
+          ? (e) => dragApi.begin(ev, colIdx, "move", e)
+          : undefined
+      }
+      onPointerMove={interactive ? (e) => dragApi.move(e) : undefined}
+      onPointerUp={interactive ? (e) => dragApi.end(e) : undefined}
+      onPointerCancel={interactive ? () => dragApi.cancel() : undefined}
     >
       <div className="flex min-w-0 items-center gap-1 px-1 py-0.5">
         {ev.conflictState !== "none" && (
@@ -762,7 +806,7 @@ function TableCell({
       )}
 
       {/* resize handles: top snaps to 上课时间, bottom snaps to 下课时间 */}
-      {ev.type !== "deadline" && (
+      {interactive && (
         <>
           <span
             className="absolute inset-x-0 top-0 z-30 h-2 cursor-n-resize"
