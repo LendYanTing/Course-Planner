@@ -44,7 +44,7 @@ import { eventDayKey, eventDurationMinutes, eventStartMinutes } from "@/lib/even
 import { layoutColumns } from "@/lib/overlap-layout";
 import { conflictTextureClass, paletteFor } from "@/lib/event-style";
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 const ROW_HEIGHT = 54;
 const GUTTER = 64;
 /** Split a bar into two when the touched-period gap is ≥ this (午休 etc). */
@@ -512,7 +512,7 @@ export function WeekTableView() {
           <ChevronRight />
         </Button>
         <Button variant="secondary" size="sm" onClick={() => dateNav.goToday(tz)}>
-          Today
+          今天
         </Button>
         <span className="ml-1 text-sm font-medium">
           {formatDateKeyShort(days[0], tz)} – {formatDateKeyShort(days[6], tz)} · {year}

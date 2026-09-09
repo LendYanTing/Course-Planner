@@ -24,9 +24,9 @@ export const DAY_SEGMENTS: { from: number; to: number; segment: DaySegment }[] =
 ];
 
 export const SNAP_MODES = [
-  { value: "period", label: "Snap: periods" },
-  { value: "5_minutes", label: "Snap: 5 min" },
-  { value: "free", label: "Snap: free" },
+  { value: "period", label: "吸附：节次" },
+  { value: "5_minutes", label: "吸附：5 分钟" },
+  { value: "free", label: "吸附：自由" },
 ] as const;
 
 export type SnapMode = (typeof SNAP_MODES)[number]["value"];

@@ -27,7 +27,7 @@ const MAX_BATCH = 200;
 
 let started = false;
 
-/** Register online/offline listeners and a periodic replays timer. */
+/** 注册 online/offline listeners and a periodic replays timer. */
 export function startSyncEngine() {
   if (started) return;
   started = true;

@@ -205,7 +205,7 @@ function CourseForm({
         <Field label="Location">
           <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="逸夫楼201" />
         </Field>
-        <Field label="Color">
+        <Field label="颜色">
           <div className="flex flex-wrap gap-1">
             {["", ...COLOR_PRESETS].map((c) => (
               <button
@@ -221,7 +221,7 @@ function CourseForm({
           </div>
         </Field>
       </div>
-      <Field label="Notes">
+      <Field label="备注">
         <Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
       <div>
@@ -261,7 +261,7 @@ function CourseForm({
         </Button>
       </div>
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={onDone}>Cancel</Button>
+        <Button variant="outline" onClick={onDone}>取消</Button>
         <Button disabled={busy || !name.trim() || !calendarId} onClick={() => void submit()}>
           Create course
         </Button>
@@ -308,7 +308,7 @@ function CourseCard({ course, onChanged }: { course: Course; onChanged: () => vo
       toast.success("Course saved");
       await onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : "保存 failed");
     } finally {
       setBusy(false);
     }
@@ -321,7 +321,7 @@ function CourseCard({ course, onChanged }: { course: Course; onChanged: () => vo
       toast.success("Course deleted");
       await onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : "删除 failed");
     } finally {
       setBusy(false);
     }
@@ -349,7 +349,7 @@ function CourseCard({ course, onChanged }: { course: Course; onChanged: () => vo
             <Field label="Teacher"><Input value={teacher} onChange={(e) => setTeacher(e.target.value)} /></Field>
             <Field label="Location"><Input value={location} onChange={(e) => setLocation(e.target.value)} /></Field>
           </div>
-          <Field label="Notes"><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+          <Field label="备注"><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
           <div>
             <Label className="mb-1.5 block text-xs">Sessions</Label>
             {(meetings.data ?? []).map((m) => (
@@ -357,7 +357,7 @@ function CourseCard({ course, onChanged }: { course: Course; onChanged: () => vo
             ))}
           </div>
           <div className="flex justify-end">
-            <Button size="sm" disabled={busy} onClick={() => void saveMeta()}>Save course</Button>
+            <Button size="sm" disabled={busy} onClick={() => void saveMeta()}>保存 course</Button>
           </div>
         </div>
       )}
@@ -387,7 +387,7 @@ function MeetingCard({ courseId, meeting, onChanged }: { courseId: string; meeti
       await onChanged();
       await qc.invalidateQueries({ queryKey: ["courses"] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : "保存 failed");
     } finally {
       setBusy(false);
     }
@@ -400,7 +400,7 @@ function MeetingCard({ courseId, meeting, onChanged }: { courseId: string; meeti
       toast.success("Session deleted");
       await onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : "删除 failed");
     } finally {
       setBusy(false);
     }
@@ -420,7 +420,7 @@ function MeetingCard({ courseId, meeting, onChanged }: { courseId: string; meeti
         maxWeeks={60}
       />
       <div className="flex gap-2">
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()}>Save</Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()}>保存</Button>
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove()}><Trash2 /></Button>
       </div>
     </div>

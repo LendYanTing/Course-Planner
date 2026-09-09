@@ -5,14 +5,14 @@ export async function login(username: string, password: string): Promise<Session
   return api.post<SessionDto>("/auth/login", { username, password });
 }
 
-export interface RegisterInput {
+export interface 注册Input {
   username: string;
   email?: string | null;
   password: string;
   timezone: string;
 }
 
-export async function register(input: RegisterInput): Promise<SessionDto> {
+export async function register(input: 注册Input): Promise<SessionDto> {
   return api.post<SessionDto>("/auth/register", input);
 }
 

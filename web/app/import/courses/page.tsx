@@ -51,7 +51,7 @@ export default function ImportCoursesPage() {
       setPreview(p);
       setStep("preview");
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Preview failed";
+      const message = e instanceof Error ? e.message : "预览 failed";
       toast.error(message);
       const details = (e as { details?: unknown }).details as
         | { errors?: { line: number; field: string; code: string; message: string }[]; conflicts?: string[] }
@@ -113,7 +113,7 @@ export default function ImportCoursesPage() {
             <CardContent className="flex flex-col gap-3">
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <div className="flex flex-col gap-1.5">
-                  <Label>Target calendar</Label>
+                  <Label>目标学期</Label>
                   <Select value={effectiveCalendarId} onValueChange={setCalendarId} disabled={step === "preview"}>
                     <SelectTrigger>
                       <SelectValue placeholder="Choose semester" />
@@ -137,10 +137,10 @@ export default function ImportCoursesPage() {
                       toast.info("Sample CSV loaded");
                     }}
                   >
-                    Load sample
+                    载入示例
                   </Button>
                   <Button size="sm" disabled={busy || !effectiveCalendarId} onClick={() => void runPreview()}>
-                    <Upload /> Preview
+                    <Upload /> 预览
                   </Button>
                 </div>
               </div>
@@ -157,7 +157,7 @@ export default function ImportCoursesPage() {
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-medium">
-                      Preview — {preview.courses.length} course row(s)
+                      预览 — {preview.courses.length} course row(s)
                     </div>
                     {preview.conflicts && preview.conflicts.length > 0 && (
                       <Badge variant="destructive">{preview.conflicts.length} issue(s)</Badge>
@@ -169,7 +169,7 @@ export default function ImportCoursesPage() {
                         <tr>
                           <th className="p-2">Line</th>
                           <th className="p-2">Name</th>
-                          <th className="p-2">Weekday</th>
+                          <th className="p-2">星期</th>
                           <th className="p-2">Periods</th>
                           <th className="p-2">Teacher</th>
                           <th className="p-2">Location</th>
@@ -200,14 +200,14 @@ export default function ImportCoursesPage() {
                   )}
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => setStep("edit")} disabled={busy}>
-                      Back
+                      返回
                     </Button>
                     <Button
                       disabled={busy || preview.courses.length === 0}
                       onClick={() => void runCommit()}
                     >
                       {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                      Commit import
+                      确认导入
                     </Button>
                   </div>
                 </div>

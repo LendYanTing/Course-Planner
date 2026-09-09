@@ -15,7 +15,7 @@ import { useTodos, invalidateTodos } from "@/features/todos/hooks";
 import { useTags, useCategories } from "@/features/tags/hooks";
 import { TodoEditor } from "@/features/todos/todo-editor";
 import { createTodo, updateTodo } from "@/features/todos/api";
-import { PRIORITY_META, STATUS_META } from "@/features/todos/meta";
+import { PRIORITY_META, STATUS_META, TODO_TYPE_META } from "@/features/todos/meta";
 import { useTimezone } from "@/features/todos/use-timezone";
 import { toLocalInputValue } from "@/lib/time/datetime-input";
 import { useServerNow } from "@/features/time/clock";
@@ -38,6 +38,7 @@ export default function TodosPage() {
   const todos = todosQuery.data ?? [];
   const tags = tagsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
 
   const selected = todos.find((t) => t.id === selectedId) ?? null;
 
@@ -92,9 +93,9 @@ export default function TodosPage() {
           <div className="ml-4 flex items-center gap-1">
             {(
               [
-                ["open", `Open (${counts.open})`],
-                ["all", `All (${counts.all})`],
-                ["completed", `Done (${counts.completed})`],
+                ["open", `未完成 (${counts.open})`],
+                ["all", `全部 (${counts.all})`],
+                ["completed", `已完成 (${counts.completed})`],
               ] as [Filter, string][]
             ).map(([f, label]) => (
               <button
@@ -112,7 +113,7 @@ export default function TodosPage() {
           </div>
           <div className="flex-1" />
           <Button size="sm" onClick={() => { setCreating(true); setSelectedId(null); }}>
-            <Plus /> New todo
+            <Plus /> 新建待办
           </Button>
         </div>
 
@@ -121,7 +122,7 @@ export default function TodosPage() {
           <div className="flex min-h-0 flex-col overflow-y-auto border-r">
             <div className="flex gap-2 border-b p-3">
               <Input
-                placeholder="Quick add…"
+                placeholder="快速添加…"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
                 onKeyDown={(e) => {
@@ -139,7 +140,7 @@ export default function TodosPage() {
             </div>
             {filtered.length === 0 ? (
               <p className="p-6 text-sm text-muted-foreground">
-                {todosQuery.isLoading ? "Loading…" : "Nothing here. Add a todo above."}
+                {todosQuery.isLoading ? "加载中…" : "这里还没有内容，在上方添加一个待办。"}
               </p>
             ) : (
               filtered.map((t) => (
@@ -179,11 +180,28 @@ export default function TodosPage() {
                       {t.title}
                     </p>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline">{t.type}</Badge>
+                      <Badge variant="outline">{TODO_TYPE_META[t.type]?.label ?? t.type}</Badge>
+                      {(() => {
+                        const cat = t.categoryId ? categoryById.get(t.categoryId) : undefined;
+                        if (!cat) return null;
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border px-1.5 text-[10px]"
+                            style={{ color: cat.color ?? "var(--muted-foreground)" }}
+                            title={`分类：${cat.name}`}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ background: cat.color ?? "currentColor" }}
+                            />
+                            {cat.name}
+                          </span>
+                        );
+                      })()}
                       <span
                         className="h-2 w-2 rounded-full"
                         style={{ background: PRIORITY_META[t.priority]?.dot ?? "var(--muted-foreground)" }}
-                        title={`Priority: ${t.priority}`}
+                        title={`优先级: ${t.priority}`}
                       />
                       {t.deadlineAt && (
                         <span
@@ -230,7 +248,7 @@ export default function TodosPage() {
               <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
                 <div>
                   <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
-                  Select a todo to edit it, or press “New todo”.
+                  选择一个待办进行编辑，或点击“新建待办”。
                   <div className="mt-2 flex justify-center gap-3">
                     <span className="inline-flex items-center gap-1"><Circle className="h-2.5 w-2.5 text-todo" /> projects get time blocks</span>
                   </div>

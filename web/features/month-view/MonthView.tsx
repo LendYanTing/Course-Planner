@@ -21,11 +21,7 @@ import {
 import { eventDayKey, eventTitleFallback } from "@/lib/event-model";
 import { conflictTextureClass, paletteFor } from "@/lib/event-style";
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const MONTH_LABELS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+const DAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
 export function MonthView() {
   const tz = useSession((s) => s.user?.timezone ?? "");
@@ -107,24 +103,24 @@ export function MonthView() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        <Button variant="outline" size="icon" onClick={() => goMonth(-1)} aria-label="Previous month">
+        <Button variant="outline" size="icon" onClick={() => goMonth(-1)} aria-label="上个月">
           <ChevronLeft />
         </Button>
-        <Button variant="outline" size="icon" onClick={() => goMonth(1)} aria-label="Next month">
+        <Button variant="outline" size="icon" onClick={() => goMonth(1)} aria-label="下个月">
           <ChevronRight />
         </Button>
         <Button variant="secondary" size="sm" onClick={goToday}>
-          Today
+          今天
         </Button>
         <span className="ml-1 text-sm font-semibold">
-          {year ? `${MONTH_LABELS[monthNo - 1]} ${year}` : ""}
+          {year ? `${year} 年 ${monthNo} 月` : ""}
         </span>
         <div className="flex-1" />
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-          <LegendDot color="var(--cp-course)" label="Course" />
-          <LegendDot color="var(--cp-recurring)" label="Recurring" />
-          <LegendDot color="var(--cp-todo)" label="Todo block" />
-          <LegendDot color="var(--cp-deadline)" label="Deadline" />
+          <LegendDot color="var(--cp-course)" label="课程" />
+          <LegendDot color="var(--cp-recurring)" label="周期" />
+          <LegendDot color="var(--cp-todo)" label="时间块" />
+          <LegendDot color="var(--cp-deadline)" label="截止" />
         </div>
       </div>
 
@@ -172,7 +168,7 @@ export function MonthView() {
                     <MiniEvents events={events.slice(0, 3)} />
                     {events.length > 3 && (
                       <span className="px-0.5 text-[10px] text-muted-foreground">
-                        +{events.length - 3} more
+                        +{events.length - 3} 更多
                       </span>
                     )}
                   </button>

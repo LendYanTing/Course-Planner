@@ -30,11 +30,11 @@ export default function LoginPage() {
 
   return (
     <AuthCard
-      title="Sign in"
-      subtitle="Welcome back"
+      title="登录"
+      subtitle="欢迎回来"
       footer={
         <>
-          No account?{" "}
+          还没有账号？{" "}
           <Link href="/register" className="text-primary hover:underline">
             Register
           </Link>
@@ -49,7 +49,7 @@ export default function LoginPage() {
         }}
       >
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="username">Username</Label>
+          <Label htmlFor="username">用户名</Label>
           <Input
             id="username"
             autoComplete="username"
@@ -60,7 +60,7 @@ export default function LoginPage() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">密码</Label>
           <Input
             id="password"
             type="password"
@@ -72,7 +72,7 @@ export default function LoginPage() {
         </div>
         <Button type="submit" disabled={mutation.isPending || !username || !password}>
           {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Sign in
+          登录
         </Button>
       </form>
     </AuthCard>

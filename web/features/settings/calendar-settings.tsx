@@ -67,7 +67,7 @@ function CalendarForm({
       await qc.invalidateQueries({ queryKey: ["calendars"] });
       onDone(result);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : "保存 failed");
     } finally {
       setBusy(false);
     }
@@ -89,7 +89,7 @@ function CalendarForm({
       </div>
       <div className="flex items-end gap-2">
         <Button size="sm" disabled={busy || !name.trim() || !firstDay} onClick={() => void submit()}>
-          {calendar ? "Save" : "Create"}
+          {calendar ? "保存" : "Create"}
         </Button>
         {calendar && (
           <Button size="sm" variant="destructive" disabled={busy} onClick={async () => {
@@ -99,7 +99,7 @@ function CalendarForm({
               await qc.invalidateQueries({ queryKey: ["calendars"] });
               onDone(null);
             } catch (e) {
-              toast.error(e instanceof Error ? e.message : "Delete failed");
+              toast.error(e instanceof Error ? e.message : "删除 failed");
             } finally {
               setBusy(false);
             }
@@ -140,7 +140,7 @@ function CalendarCard({
           </div>
         </button>
         <Button size="sm" variant="ghost" onClick={() => { setEditing((e) => !e); setOpen(true); }}>
-          {editing ? "Done" : "Edit"}
+          {editing ? "Done" : "编辑"}
         </Button>
       </div>
       {editing && <div className="border-t p-3"><CalendarForm calendar={calendar} onDone={() => setEditing(false)} /></div>}
@@ -191,7 +191,7 @@ function PeriodRow({
       toast.success("Period saved");
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : "保存 failed");
     } finally {
       setBusy(false);
     }
@@ -203,7 +203,7 @@ function PeriodRow({
       await mutatePeriodDelete(calendarId, period.id);
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Delete failed");
+      toast.error(err instanceof Error ? err.message : "删除 failed");
     } finally {
       setBusy(false);
     }
@@ -223,7 +223,7 @@ function PeriodRow({
       <span className="text-muted-foreground">–</span>
       <input type="time" value={e} onChange={(e) => setE(e.target.value)} className="h-7 rounded border border-input bg-transparent px-1 text-sm" />
       <span className="flex-1" />
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()}>Save</Button>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()}>保存</Button>
       <Button size="sm" variant="ghost" disabled={busy} onClick={() => void remove()}><Trash2 /></Button>
     </div>
   );
@@ -252,7 +252,7 @@ function PeriodForm({
       setNo(String(nextNo + 1));
       toast.success("Period added");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : "保存 failed");
     } finally {
       setBusy(false);
     }
@@ -273,7 +273,7 @@ function PeriodForm({
       <span className="text-muted-foreground">–</span>
       <input type="time" value={e} onChange={(e) => setE(e.target.value)} className="h-7 rounded border border-input bg-transparent px-1" />
       <Button size="sm" disabled={busy} onClick={() => void submit()}>Add</Button>
-      <Button size="sm" variant="ghost" onClick={() => setVisible(false)}>Cancel</Button>
+      <Button size="sm" variant="ghost" onClick={() => setVisible(false)}>取消</Button>
     </div>
   );
 }

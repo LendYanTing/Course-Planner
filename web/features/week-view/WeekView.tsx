@@ -295,7 +295,7 @@ export function WeekView() {
                 ])
               }
               className="rounded-full border border-dashed px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
-              title="Expand all short breaks"
+              title="展开全部课间"
             >
               课间 ×
               {scale.bands.filter((b) => b.id.startsWith("gap-")).length}
@@ -670,7 +670,7 @@ function DayColumn({
   );
 }
 
-// ---- New todo-block dialog -------------------------------------------------------
+// ---- 新建待办-block dialog -------------------------------------------------------
 
 function NewBlockDialog({
   day,
@@ -769,7 +769,7 @@ function NewBlockDialog({
             </div>
             <input
               className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
-              placeholder="Block note (optional)"
+              placeholder="时间块备注 (optional)"
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -779,7 +779,7 @@ function NewBlockDialog({
                 className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent"
                 onClick={() => onOpenChange(false)}
               >
-                Cancel
+                取消
               </button>
               <button
                 type="button"

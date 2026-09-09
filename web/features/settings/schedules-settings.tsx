@@ -71,7 +71,7 @@ export function SchedulesSettings() {
             <p className="truncate text-sm font-medium">{s.title}</p>
             <p className="truncate text-xs text-muted-foreground">{ruleSummary(s.rule)}</p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => setEditing(s)}>Edit</Button>
+          <Button size="sm" variant="outline" onClick={() => setEditing(s)}>编辑</Button>
           <Button
             size="sm" variant="ghost"
             onClick={async () => {
@@ -80,7 +80,7 @@ export function SchedulesSettings() {
                 toast.success("Schedule deleted");
                 await invalidate();
               } catch (e) {
-                toast.error(e instanceof Error ? e.message : "Delete failed");
+                toast.error(e instanceof Error ? e.message : "删除 failed");
               }
             }}
           >
@@ -191,7 +191,7 @@ function ScheduleDialog({
       onClose();
       await onSaved();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : "保存 failed");
     } finally {
       setBusy(false);
     }
@@ -203,11 +203,11 @@ function ScheduleDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{schedule ? "Edit schedule" : "New recurring schedule"}</DialogTitle>
+          <DialogTitle>{schedule ? "编辑 schedule" : "New recurring schedule"}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label>Title</Label>
+            <Label>标题</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="晚自习 / Gym / 日语课" />
           </div>
 
@@ -312,15 +312,15 @@ function ScheduleDialog({
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label>Notes (optional)</Label>
+            <Label>备注 (optional)</Label>
             <Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={onClose} disabled={busy}>取消</Button>
           <Button disabled={busy || !title.trim()} onClick={() => void save()}>
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {schedule ? "Save" : "Create"}
+            {schedule ? "保存" : "Create"}
           </Button>
         </DialogFooter>
       </DialogContent>

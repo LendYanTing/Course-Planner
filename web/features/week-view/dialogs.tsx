@@ -117,7 +117,7 @@ export function BlockEditorDialog({
       }),
     onSuccess: async () => {
       await invalidateEvents();
-      toast.success("Block updated");
+      toast.success("时间块已更新");
       onOpenChange(false);
     },
     onError: (err) => toast.error(msg(err)),
@@ -127,7 +127,7 @@ export function BlockEditorDialog({
     mutationFn: () => deleteTodoBlock(event.source.id),
     onSuccess: async () => {
       await invalidateEvents();
-      toast.success("Block deleted");
+      toast.success("时间块已删除");
       onOpenChange(false);
     },
     onError: (err) => toast.error(msg(err)),
@@ -138,7 +138,7 @@ export function BlockEditorDialog({
     <DialogShell
       open={open}
       onOpenChange={onOpenChange}
-      title="Edit todo block"
+      title="编辑时间块"
       description={`${event.title} · ${day}`}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -160,7 +160,7 @@ export function BlockEditorDialog({
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="block-note">Block note (what will I do?)</Label>
+        <Label htmlFor="block-note">时间块备注 (what will I do?)</Label>
         <Textarea
           id="block-note"
           value={note}
@@ -175,15 +175,15 @@ export function BlockEditorDialog({
           disabled={busy}
           onClick={() => del.mutate()}
         >
-          Delete
+          删除
         </Button>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
+            取消
           </Button>
           <Button disabled={busy} onClick={() => save.mutate()}>
             {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save
+            保存
           </Button>
         </div>
       </div>
@@ -226,7 +226,7 @@ export function OccurrenceTimeDialog({
       }),
     onSuccess: async () => {
       await invalidateEvents();
-      toast.success("This occurrence moved");
+      toast.success("已移动该次上课");
       onOpenChange(false);
     },
     onError: (err) => toast.error(msg(err)),
@@ -236,7 +236,7 @@ export function OccurrenceTimeDialog({
     <DialogShell
       open={open}
       onOpenChange={onOpenChange}
-      title="Change this occurrence"
+      title="调整该次上课时间"
       description={`${event.title} · ${day} · scope: 仅这一次`}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -259,11 +259,11 @@ export function OccurrenceTimeDialog({
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={save.isPending}>
-          Cancel
+          取消
         </Button>
         <Button onClick={() => save.mutate()} disabled={save.isPending || !startClock || !endClock}>
           {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Apply to this date
+          应用到该日期
         </Button>
       </div>
     </DialogShell>
@@ -300,7 +300,7 @@ export function OccurrenceDeleteDialog({
       }),
     onSuccess: async () => {
       await invalidateEvents();
-      toast.success("Occurrence removed");
+      toast.success("该次上课已移除");
       onOpenChange(false);
     },
     onError: (err) => toast.error(msg(err)),
@@ -313,7 +313,7 @@ export function OccurrenceDeleteDialog({
     <DialogShell
       open={open}
       onOpenChange={onOpenChange}
-      title={`Remove occurrence of “${event.title}”`}
+      title={`移除该次上课： “${event.title}”`}
       description={`${seriesLabel} · occurrence on ${day}`}
     >
       <RadioGroup value={scope} onValueChange={(v) => setScope(v as SeriesScope)}>
@@ -332,7 +332,7 @@ export function OccurrenceDeleteDialog({
       </RadioGroup>
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={del.isPending}>
-          Cancel
+          取消
         </Button>
         <Button
           variant="destructive"
@@ -340,7 +340,7 @@ export function OccurrenceDeleteDialog({
           disabled={del.isPending}
         >
           {del.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          {scope === "ALL" ? "Delete series" : "Remove"}
+          {scope === "ALL" ? "删除 series" : "Remove"}
         </Button>
       </div>
     </DialogShell>
@@ -403,21 +403,21 @@ export function EventDetailsDialog({
       <div className="flex flex-wrap gap-2">
         {isBlock && (
           <Button size="sm" onClick={onEditBlock}>
-            Edit block
+            编辑时间块
           </Button>
         )}
         {series && (
           <Button size="sm" variant="outline" onClick={onChangeTime}>
-            Change time (this date)
+            调整时间（仅本次）
           </Button>
         )}
         {series && (
           <Button size="sm" variant="destructive" onClick={onDelete}>
-            Remove occurrence
+            移除该次上课
           </Button>
         )}
         <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
-          Close
+          关闭
         </Button>
       </div>
     </DialogShell>

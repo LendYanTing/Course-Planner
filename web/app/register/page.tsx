@@ -55,11 +55,11 @@ export default function RegisterPage() {
 
   return (
     <AuthCard
-      title="Create account"
-      subtitle="Pick a timezone carefully — it is locked forever."
+      title="创建账号"
+      subtitle="请谨慎选择时区——创建后不可更改。"
       footer={
         <>
-          Already registered?{" "}
+          已有账号？{" "}
           <Link href="/login" className="text-primary hover:underline">
             Sign in
           </Link>
@@ -74,7 +74,7 @@ export default function RegisterPage() {
         }}
       >
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="username">Username</Label>
+          <Label htmlFor="username">用户名</Label>
           <Input
             id="username"
             autoComplete="username"
@@ -85,11 +85,11 @@ export default function RegisterPage() {
             required
           />
           <p className="text-xs text-muted-foreground">
-            3–32 chars: letters, digits, _ and -
+            3–32 位：字母、数字、_ 与 -
           </p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Email (optional)</Label>
+          <Label htmlFor="email">邮箱（可选）</Label>
           <Input
             id="email"
             type="email"
@@ -99,7 +99,7 @@ export default function RegisterPage() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="timezone">Timezone</Label>
+          <Label htmlFor="timezone">时区</Label>
           <Select value={timezone} onValueChange={setTimezone}>
             <SelectTrigger id="timezone" className="w-full">
               <SelectValue placeholder="Select timezone" />
@@ -113,11 +113,11 @@ export default function RegisterPage() {
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            All times are interpreted in this zone (never your device zone).
+            所有时间都按该时区解释（不使用设备时区）。
           </p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">密码</Label>
           <Input
             id="password"
             type="password"
@@ -127,10 +127,10 @@ export default function RegisterPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          <p className="text-xs text-muted-foreground">At least 8 characters.</p>
+          <p className="text-xs text-muted-foreground">至少 8 个字符。</p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="confirm">Confirm password</Label>
+          <Label htmlFor="confirm">确认密码</Label>
           <Input
             id="confirm"
             type="password"
@@ -148,7 +148,7 @@ export default function RegisterPage() {
           }
         >
           {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Create account
+          创建账号
         </Button>
       </form>
     </AuthCard>

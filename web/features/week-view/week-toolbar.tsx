@@ -41,7 +41,7 @@ export function WeekToolbar({
         <ChevronRight />
       </Button>
       <Button variant="secondary" size="sm" onClick={onToday}>
-        Today
+        今天
       </Button>
       <span className="ml-1 text-sm font-medium">{rangeLabel}</span>
       <div className="flex-1" />
@@ -63,13 +63,13 @@ export function WeekToolbar({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="auto">Fold: auto</SelectItem>
-            <SelectItem value="none">Fold: none</SelectItem>
+            <SelectItem value="auto">折叠：自动</SelectItem>
+            <SelectItem value="none">折叠：关闭</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <Button size="sm" onClick={onNewBlock}>
-        <Plus /> New block
+        <Plus /> 新建时间块
       </Button>
     </div>
   );

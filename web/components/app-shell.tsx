@@ -27,12 +27,12 @@ import { useSession, signOut } from "@/features/auth/session-store";
 import { SyncBadge } from "@/features/sync/ui/sync-badge";
 
 const NAV = [
-  { href: "/week", label: "Week", icon: CalendarDays },
-  { href: "/table", label: "Grid", icon: LayoutGrid },
-  { href: "/month", label: "Month", icon: CalendarRange },
-  { href: "/todos", label: "Todos", icon: ListTodo },
-  { href: "/import/courses", label: "Import", icon: Upload },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/week", label: "周视图", icon: CalendarDays },
+  { href: "/table", label: "课表", icon: LayoutGrid },
+  { href: "/month", label: "月视图", icon: CalendarRange },
+  { href: "/todos", label: "待办", icon: ListTodo },
+  { href: "/import/courses", label: "导入", icon: Upload },
+  { href: "/settings", label: "设置", icon: Settings },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -47,13 +47,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-4 border-b px-4">
+      <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75">
         <Link
           href="/week"
           className="flex items-center gap-2 font-semibold tracking-tight"
         >
           <CalendarClock className="h-5 w-5 text-primary" />
-          <span className="hidden sm:inline">Course Planner</span>
+          <span className="hidden sm:inline">课程规划</span>
         </Link>
         <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {NAV.map((item) => {
@@ -66,8 +66,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 className={cn(
                   buttonVariants({ variant: "ghost", size: "sm" }),
-                  "shrink-0 text-muted-foreground",
-                  active && "bg-accent text-foreground"
+                  "shrink-0 text-muted-foreground transition-colors",
+                  active && "bg-accent font-medium text-foreground"
                 )}
               >
                 <Icon className="mr-1 h-4 w-4" />
@@ -101,17 +101,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push("/settings")}>
                 <Settings className="mr-2" />
-                Settings
+                设置
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void handleLogout()}>
                 <LogOut className="mr-2" />
-                Sign out
+                退出登录
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="cp-fade-up flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }

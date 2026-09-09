@@ -20,7 +20,7 @@ export default function SettingsPage() {
         <div className="mx-auto w-full max-w-3xl">
           <Card className="mb-4">
             <CardHeader className="p-4">
-              <CardTitle className="text-base">Settings</CardTitle>
+              <CardTitle className="text-base">设置</CardTitle>
               <CardDescription>
                 Signed in as <span className="font-medium">{user?.username}</span> · Timezone{" "}
                 <span className="font-medium">{user?.timezone}</span> (locked at registration) ·

@@ -100,7 +100,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
       toast.success(isNew ? "Todo created" : "Todo saved");
       onSaved(created);
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Save failed"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "保存 failed"),
   });
 
   const del = useMutation({
@@ -110,7 +110,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
       toast.success("Todo deleted");
       onSaved(null);
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "删除 failed"),
   });
 
   function toggleTag(id: string) {
@@ -150,7 +150,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold">
-          {isNew ? "New todo" : "Edit todo"}
+          {isNew ? "新建待办" : "编辑 todo"}
         </h2>
         {!isNew && (
           <Button
@@ -159,14 +159,14 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
             disabled={busy}
             onClick={() => del.mutate()}
           >
-            <Trash2 /> Delete
+            <Trash2 /> 删除
           </Button>
         )}
       </div>
 
       <div className="mt-3 flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label>Title</Label>
+          <Label>标题</Label>
           <Input
             autoFocus={isNew}
             value={title}
@@ -176,7 +176,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Field label="Type">
+          <Field label="类型">
             <Select
               value={type}
               onValueChange={(v) => setType(v as Todo["type"])}
@@ -191,7 +191,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Priority">
+          <Field label="优先级">
             <Select value={priority} onValueChange={(v) => setPriority(v as Todo["priority"])}>
               <TriggerField />
               <SelectContent>
@@ -204,7 +204,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
             </Select>
           </Field>
           {!isNew && (
-            <Field label="Status">
+            <Field label="状态">
               <Select value={status} onValueChange={(v) => setStatus(v as Todo["status"])}>
                 <TriggerField />
                 <SelectContent>
@@ -220,7 +220,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label>Description</Label>
+          <Label>描述</Label>
           <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -249,7 +249,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
           </div>
         )}
 
-        <Field label="Color">
+        <Field label="颜色">
           <ColorRow value={color} onChange={setColor} />
         </Field>
 
@@ -258,7 +258,7 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
             <Select value={categoryId || "__none__"} onValueChange={(v) => setCategoryId(v === "__none__" ? "" : v)}>
               <TriggerField className="flex-1" />
               <SelectContent>
-                <SelectItem value="__none__">None</SelectItem>
+                <SelectItem value="__none__">无</SelectItem>
                 {categories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
@@ -330,14 +330,14 @@ export function TodoEditor({ todo, tags, categories, onSaved }: TodoEditorProps)
           disabled={busy}
           onClick={() => onSaved(todo)}
         >
-          {isNew ? "Discard" : "Close"}
+          {isNew ? "Discard" : "关闭"}
         </Button>
         <Button
           disabled={busy || !title.trim()}
           onClick={() => save.mutate()}
         >
           {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isNew ? "Create todo" : "Save"}
+          {isNew ? "Create todo" : "保存"}
         </Button>
       </div>
       <span className="hidden">{selectedTodo?.id}</span>
@@ -418,10 +418,10 @@ function TodoBlocks({
     <div className="rounded-md border p-3">
       <div className="mb-2 flex items-center justify-between">
         <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-          Scheduled blocks
+          已排时间块
         </Label>
         <Button size="sm" variant="outline" onClick={() => setEditing("new")}>
-          <Plus /> Add block
+          <Plus /> 添加时间块
         </Button>
       </div>
       {blocks.length === 0 && (
@@ -449,7 +449,7 @@ function TodoBlocks({
               )}
             </div>
             <Button size="sm" variant="ghost" onClick={() => setEditing(b)}>
-              Edit
+              编辑
             </Button>
           </div>
         ))}
@@ -521,7 +521,7 @@ export function BlockDialog({
       onClose();
       await onSaved();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : "保存 failed");
     } finally {
       setBusy(false);
     }
@@ -536,7 +536,7 @@ export function BlockDialog({
       onClose();
       await onSaved();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : "删除 failed");
     } finally {
       setBusy(false);
     }
@@ -546,7 +546,7 @@ export function BlockDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{block ? "Edit block" : "Add time block"}</DialogTitle>
+          <DialogTitle>{block ? "编辑 block" : "Add time block"}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Start">
@@ -556,11 +556,11 @@ export function BlockDialog({
             <Input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
           </Field>
         </div>
-        <Field label="Block note (this slot works on…)">
+        <Field label="时间块备注 (this slot works on…)">
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
         </Field>
         {block && (
-          <Field label="Status">
+          <Field label="状态">
             <Select
               value={status}
               onValueChange={(v) => setStatus(v as TodoBlock["status"])}
@@ -579,17 +579,17 @@ export function BlockDialog({
         <DialogFooter className="flex items-center justify-between">
           {block ? (
             <Button variant="destructive" size="sm" disabled={busy} onClick={() => void remove()}>
-              Delete
+              删除
             </Button>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={busy}>
-              Cancel
+              取消
             </Button>
             <Button disabled={busy || !start || !end} onClick={() => void save()}>
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />} Save
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />} 保存
             </Button>
           </div>
         </DialogFooter>

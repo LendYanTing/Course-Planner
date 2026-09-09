@@ -30,10 +30,10 @@ export function AuthCard({
               <CalendarClock className="h-6 w-6" />
             </span>
             <h1 className="text-xl font-semibold tracking-tight">
-              Course Planner
+              课程规划
             </h1>
             <p className="text-sm text-muted-foreground">
-              Timetable, scheduling and todos — offline first.
+              课表 / 日程 / 待办 · 离线优先。
             </p>
           </div>
           <Card>

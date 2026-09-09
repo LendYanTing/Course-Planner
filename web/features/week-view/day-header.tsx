@@ -6,7 +6,7 @@ import { formatDateKeyShort } from "@/lib/time/tz";
 
 export const GUTTER_WIDTH = 56; // px, matches the time gutter column
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
 /**
  * One row of weekday headers (kept outside the scroll area so it stays fixed).

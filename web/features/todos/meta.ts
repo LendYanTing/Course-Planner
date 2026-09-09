@@ -2,30 +2,30 @@ export const PRIORITY_META: Record<
   string,
   { label: string; dot: string; order: number }
 > = {
-  low: { label: "Low", dot: "var(--muted-foreground)", order: 0 },
-  normal: { label: "Normal", dot: "#3b82f6", order: 1 },
-  high: { label: "High", dot: "#f97316", order: 2 },
-  urgent: { label: "Urgent", dot: "#ef4444", order: 3 },
+  low: { label: "低", dot: "var(--muted-foreground)", order: 0 },
+  normal: { label: "中", dot: "#3b82f6", order: 1 },
+  high: { label: "高", dot: "#f97316", order: 2 },
+  urgent: { label: "紧急", dot: "#ef4444", order: 3 },
 };
 
 export const STATUS_META: Record<string, { label: string }> = {
-  todo: { label: "Todo" },
-  in_progress: { label: "In progress" },
-  completed: { label: "Completed" },
-  cancelled: { label: "Cancelled" },
+  todo: { label: "待办" },
+  in_progress: { label: "进行中" },
+  completed: { label: "已完成" },
+  cancelled: { label: "已取消" },
 };
 
 export const BLOCK_STATUS_META: Record<string, { label: string }> = {
-  scheduled: { label: "Scheduled" },
-  in_progress: { label: "In progress" },
-  completed: { label: "Completed" },
-  skipped: { label: "Skipped" },
+  scheduled: { label: "已排期" },
+  in_progress: { label: "进行中" },
+  completed: { label: "已完成" },
+  skipped: { label: "已跳过" },
 };
 
 export const TODO_TYPE_META: Record<string, { label: string; hint: string }> = {
-  one_off: { label: "One-off", hint: "A single task without planning fields." },
+  one_off: { label: "一次性", hint: "没有排期字段的单个任务。" },
   project: {
-    label: "Project",
-    hint: "Adds deadline, estimated duration and schedulable blocks.",
+    label: "项目",
+    hint: "带有截止时间、预计时长与可排期时间块。",
   },
 };

@@ -122,7 +122,7 @@ export function ConflictCenter({
         <Separator />
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            关闭
           </Button>
         </DialogFooter>
       </DialogContent>

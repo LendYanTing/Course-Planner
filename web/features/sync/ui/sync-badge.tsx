@@ -34,12 +34,12 @@ export function SyncBadge() {
         )}
         title={
           conflicts.length
-            ? `${conflicts.length} sync conflict(s) — review`
+            ? `${conflicts.length} 个同步冲突，请处理`
             : pendingCount
-              ? `${pendingCount} pending change(s)`
+              ? `${pendingCount} 个更改待同步`
               : online
-                ? "Synced"
-                : "Offline"
+                ? "已同步"
+                : "离线"
         }
       >
         {icon}
