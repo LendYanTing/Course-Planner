@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// Material 3 theme. Event colors are taken from the server (`color` fields);
-/// this file only defines the neutral shell and shared component styles.
+/// Material 3 theme. Event colors come from the server (`color` fields);
+/// this file defines the neutral shell, shared component styles and the
+/// cross-platform font stack so CJK glyphs render consistently.
 abstract class AppTheme {
   static const seed = Color(0xFF3F51B5);
 
@@ -9,9 +11,26 @@ abstract class AppTheme {
 
   static ThemeData dark() => _base(Brightness.dark);
 
+  /// Deterministic family for a platform: Latin + CJK come from ONE family so
+  /// no per-glyph fallback mixing happens (docs: consistent UI type).
+  static String? _fontFamilyForPlatform() {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.windows:
+        return 'Microsoft YaHei'; // 微软雅黑 ships with Windows
+      case TargetPlatform.macOS:
+      case TargetPlatform.iOS:
+        return 'PingFang SC';
+      case TargetPlatform.android:
+        return 'Noto Sans CJK SC';
+      default:
+        return null;
+    }
+  }
+
   static ThemeData _base(Brightness brightness) {
     final scheme = ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
-    return ThemeData(
+    final fontFamily = _fontFamilyForPlatform();
+    final base = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       appBarTheme: AppBarTheme(
@@ -22,6 +41,17 @@ abstract class AppTheme {
       inputDecorationTheme: const InputDecorationTheme(
         border: OutlineInputBorder(),
         isDense: true,
+      ),
+    );
+    if (fontFamily == null) return base;
+    // Spread the family over every text style so mixed scripts never fall
+    // back to different fonts mid-string.
+    final all = base.textTheme.apply(fontFamily: fontFamily);
+    return base.copyWith(
+      textTheme: all,
+      primaryTextTheme: all,
+      appBarTheme: base.appBarTheme.copyWith(
+        titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(fontFamily: fontFamily),
       ),
     );
   }

@@ -82,12 +82,20 @@ Implemented: auth (login/register/refresh/logout/me), session resume + secure
 storage, sync engine (pull/push, cursor, conflicts, hard refresh), todo CRUD
 with tags/categories/priority/status/deadline, todo blocks, week view
 (7×24 grid, events, deadline/now lines, drag-to-move with snap + cross-midnight
-guard, create-block-on-tap, edit sheets), month view (whole-range projection,
-per-day index, deadline markers), settings (sync state, semesters/periods,
+guard, create-block-on-tap, edit sheets), Grid/课表 view per
+`docs/grid-view-web.md` (rows = period templates, AM/PM divider, weekend tint,
+row clipping/merging with ≥45-min splits, lanes, todo drag/resize always,
+course drag behind a toolbar switch, pinned now/deadline markers), switchable
+from the timeline week view, month view (whole-range projection, per-day
+index, deadline markers), settings (sync state, semesters/periods,
 courses/meetings, recurring schedules, tags/categories), course CSV import,
 conflict resolution UI.
 
-Deferred to follow-ups: 凌晨/午休/夜间 folding in week view, top/bottom resize
-handles (resize via editor today), drag of course occurrences while fully
-offline (server-owned series edits), pure-Dart drift schema tests
+UI quality notes: the week grid and its events now live inside one scrollable
+(bugfix), and a per-platform font family (Windows: 微软雅黑) keeps CJK glyphs
+consistent.
+
+Deferred to follow-ups: 凌晨/午休/夜间 folding in week view, drag ghost
+preview & tooltips on Grid tiles, top/bottom resize handles on the timeline
+(resize via editor today), pure-Dart drift schema tests
 (tables covered by widget tests in later rounds).

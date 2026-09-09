@@ -18,9 +18,13 @@ import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../sync/expander.dart';
 import 'event_projection.dart';
+import 'grid_view.dart';
 
 const double _hourPx = 48.0;
 const double _timeGutter = 46.0;
+
+/// Week tab view modes: continuous 7×24 timeline vs period Grid (纯课表).
+enum WeekViewMode { timeline, grid }
 
 /// 7-column × 24-hour week grid (docs/ui-interaction.md §1).
 class WeekPage extends ConsumerStatefulWidget {
@@ -33,6 +37,7 @@ class WeekPage extends ConsumerStatefulWidget {
 class _WeekPageState extends ConsumerState<WeekPage> {
   late DateTime _anchor; // any instant whose local date is inside the shown week
   bool _dragActive = false;
+  WeekViewMode _viewMode = WeekViewMode.timeline;
 
   @override
   void initState() {
@@ -100,6 +105,19 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         title: Text(title),
         actions: [
           IconButton(
+            tooltip: _viewMode == WeekViewMode.timeline ? '切到课表视图' : '切到时间轴周视图',
+            onPressed: () => setState(() {
+              _viewMode = _viewMode == WeekViewMode.timeline
+                  ? WeekViewMode.grid
+                  : WeekViewMode.timeline;
+            }),
+            icon: Icon(
+              _viewMode == WeekViewMode.timeline
+                  ? Icons.view_agenda_outlined
+                  : Icons.view_day_outlined,
+            ),
+          ),
+          IconButton(
             tooltip: '同步',
             onPressed: syncState.syncing ? null : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
             icon: syncState.syncing
@@ -109,16 +127,36 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         ],
       ),
       body: Column(
-        children: [
-          _WeekHeader(
-            days: days,
-            todayLocal: now == null ? null : userTime.localFromUtc(now),
-            onPrev: () => _moveWeek(-1),
-            onNext: () => _moveWeek(1),
-            onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
-          ),
-          Expanded(child: _buildGrid(userTime, days, events, now)),
-        ],
+        children: _viewMode == WeekViewMode.grid
+            ? [
+                _WeekNavRow(
+                  days: days,
+                  onPrev: () => _moveWeek(-1),
+                  onNext: () => _moveWeek(1),
+                  onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: GridViewContent(
+                    userTime: userTime,
+                    days: days,
+                    events: events,
+                    snapshot: snap,
+                    nowUtc: now,
+                    onCommitMove: _commitEventMove,
+                  ),
+                ),
+              ]
+            : [
+                _WeekHeader(
+                  days: days,
+                  todayLocal: now == null ? null : userTime.localFromUtc(now),
+                  onPrev: () => _moveWeek(-1),
+                  onNext: () => _moveWeek(1),
+                  onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
+                ),
+                Expanded(child: _buildGrid(userTime, days, events, now)),
+              ],
       ),
     );
   }
@@ -322,6 +360,32 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     final s = '${u.year.toString().padLeft(4, '0')}-${u.month.toString().padLeft(2, '0')}-${u.day.toString().padLeft(2, '0')}'
         'T${u.hour.toString().padLeft(2, '0')}:${u.minute.toString().padLeft(2, '0')}:${u.second.toString().padLeft(2, '0')}Z';
     return s;
+  }
+}
+
+class _WeekNavRow extends StatelessWidget {
+  const _WeekNavRow({
+    required this.days,
+    required this.onPrev,
+    required this.onNext,
+    required this.onToday,
+  });
+
+  final List<tz.TZDateTime> days;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onToday;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(onPressed: onPrev, icon: const Icon(Icons.chevron_left)),
+        TextButton(onPressed: onToday, child: const Text('今天')),
+        IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_right)),
+        const Spacer(),
+      ],
+    );
   }
 }
 
