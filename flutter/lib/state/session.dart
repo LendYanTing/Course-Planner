@@ -45,34 +45,52 @@ class SessionController extends Notifier<SessionState> {
   /// Startup: resume an existing session from the stored refresh token, or
   /// fall back to the cached profile when offline (offline-first).
   Future<void> bootstrap() async {
-    final services = ref.read(servicesProvider);
-    final meta = await services.store.meta();
-    final refresh = await services.tokenBox.readRefreshToken();
-    if (refresh != null && refresh.isNotEmpty) {
-      try {
-        final session = await services.authApi.refresh(refresh);
-        await _accept(session);
-        return;
-      } on Object {
-        // expired/offline → try the cached profile below
+    try {
+      debugPrint('[session] bootstrap start');
+      final services = ref.read(servicesProvider);
+      final meta = await services.store.meta().timeout(const Duration(seconds: 15));
+      debugPrint('[session] meta read ok: user=${meta?.userId} tz=${meta?.timezone}');
+      final refresh =
+          await services.tokenBox.readRefreshToken().timeout(const Duration(seconds: 15));
+      debugPrint('[session] refresh token present=${refresh != null && refresh.isNotEmpty}');
+      if (refresh != null && refresh.isNotEmpty) {
+        try {
+          debugPrint('[session] trying online refresh…');
+          final session = await services.authApi.refresh(refresh);
+          debugPrint('[session] online refresh ok');
+          await _accept(session);
+          return;
+        } on Object catch (e) {
+          debugPrint('[session] refresh failed: $e');
+          // expired/offline → try the cached profile below
+        }
       }
-    }
-    final cached = meta;
-    if (cached?.userId != null && cached!.timezone != null) {
-      state = SessionState(
-        phase: AuthPhase.signedIn,
-        profile: SessionProfile(
-          userId: cached.userId!,
-          username: cached.username ?? '',
-          timezone: cached.timezone!,
-          email: cached.email,
-        ),
-      );
+      final cached = meta;
+      if (cached?.userId != null && cached!.timezone != null) {
+        debugPrint('[session] resume from cached profile');
+        state = SessionState(
+          phase: AuthPhase.signedIn,
+          profile: SessionProfile(
+            userId: cached.userId!,
+            username: cached.username ?? '',
+            timezone: cached.timezone!,
+            email: cached.email,
+          ),
+        );
+        bumpSessionRevision(ref);
+        return;
+      }
+      debugPrint('[session] no session → signedOut');
+      state = const SessionState(phase: AuthPhase.signedOut);
       bumpSessionRevision(ref);
-      return;
+    } on Object catch (e, st) {
+      // Never leave the UI on the unknown phase forever: surface a hard
+      // failure as signed-out so the login screen (and its error path) can
+      // show what happened.
+      debugPrint('[session] bootstrap failed: $e\n$st');
+      state = const SessionState(phase: AuthPhase.signedOut);
+      bumpSessionRevision(ref);
     }
-    state = const SessionState(phase: AuthPhase.signedOut);
-    bumpSessionRevision(ref);
   }
 
   Future<String?> login({

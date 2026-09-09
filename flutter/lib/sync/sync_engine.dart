@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/error/api_exception.dart';
@@ -77,10 +78,12 @@ class SyncEngine {
   Future<SyncCycleResult> syncOnce() async {
     final meta = await store.meta();
     final cursor = meta?.lastServerCursor ?? 0;
+    debugPrint('[engine] syncOnce start cursor=$cursor');
     try {
       var pulled = 0;
       // 1. catch up on remote changes first
       final syncState = await api.serverCursor();
+      debugPrint('[engine] serverCursor=$syncState');
       if (syncState > cursor) {
         pulled = await pull(after: cursor);
       }
@@ -90,7 +93,10 @@ class SyncEngine {
       if (ops.isNotEmpty) {
         final fresh = await store.meta();
         final base = fresh?.lastServerCursor ?? 0;
+        debugPrint('[engine] pushing ${ops.length} ops base=$base');
         final result = await api.push(baseCursor: base, operations: ops);
+        debugPrint('[engine] push result accepted=${result.accepted.length} '
+            'merged=${result.merged.length} conflicts=${result.conflicts.length}');
         await _handlePushResult(result, ops);
         pushed = ops.length;
       }
@@ -98,21 +104,25 @@ class SyncEngine {
       final afterPush = await store.meta();
       final tail = afterPush?.lastServerCursor ?? 0;
       final state2 = await api.serverCursor();
+      debugPrint('[engine] after-push serverCursor=$state2');
       if (state2 > tail) {
         pulled += await pull(after: tail);
       }
       final conflicts = await store.conflicts();
+      debugPrint('[engine] syncOnce done pulled=$pulled pushed=$pushed conflicts=${conflicts.length}');
       return SyncCycleResult(
         pushed: pushed,
         pulled: pulled,
         conflictCount: conflicts.length,
       );
     } on ApiException catch (e) {
+      debugPrint('[engine] syncOnce ApiException code=${e.code} msg=${e.message}');
       if (e is NetworkException) {
         return SyncCycleResult(error: 'offline');
       }
       return SyncCycleResult(error: e.message);
     } catch (e) {
+      debugPrint('[engine] syncOnce error: $e');
       return SyncCycleResult(error: '$e');
     }
   }

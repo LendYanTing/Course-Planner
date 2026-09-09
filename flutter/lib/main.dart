@@ -7,8 +7,11 @@ import 'state/app_services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('[boot] tz init');
   ensureTimeZonesInitialized();
+  debugPrint('[boot] creating services…');
   final services = await AppServices.create();
+  debugPrint('[boot] services ready');
   runApp(
     ProviderScope(
       overrides: [
@@ -17,4 +20,5 @@ Future<void> main() async {
       child: const CoursePlannerApp(),
     ),
   );
+  debugPrint('[boot] runApp posted');
 }

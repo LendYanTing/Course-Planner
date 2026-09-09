@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/util/streams.dart';
@@ -35,11 +36,16 @@ final snapshotProvider = StreamProvider<EntitiesSnapshot>((ref) async* {
     store.watchAll(),
     store.watchPendingOps(),
     store.watchConflicts(),
-  ).map((tuple) => EntitiesSnapshot(
-        rows: tuple.$1,
-        pendingOps: tuple.$2,
-        conflicts: tuple.$3,
-      ));
+  ).map((tuple) {
+    final snap = EntitiesSnapshot(
+      rows: tuple.$1,
+      pendingOps: tuple.$2,
+      conflicts: tuple.$3,
+    );
+    // ignore: avoid_print
+    debugPrint('[snapshot] cam rows=${snap.rows.length} pending=${snap.pendingOps.length}');
+    return snap;
+  });
 });
 
 /// Engine coordination state shown in the UI.
@@ -108,6 +114,7 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
 
   /// Clock sync + initial pull after login/startup.
   Future<void> syncClockAndPull() async {
+    debugPrint('[sync] syncClockAndPull start');
     final services = ref.read(servicesProvider);
     try {
       final serverNow = await services.authApi.serverTime();
@@ -118,7 +125,9 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
         clockFetchedAt: now,
         clockServerUtc: serverNow,
       ));
-    } on Object {
+      debugPrint('[sync] clock fetched: ${serverNow.toIso8601String()}');
+    } on Object catch (e) {
+      debugPrint('[sync] clock fetch failed: $e');
       // offline: fall back to the persisted clock observation below
     }
     final meta = await services.store.meta();
@@ -127,6 +136,7 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
     }
     await syncNow();
     startPeriodicSync();
+    debugPrint('[sync] syncClockAndPull done');
   }
 
   /// Runs one engine cycle if none is currently running.
@@ -134,9 +144,12 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
     if (_running) return null;
     _running = true;
     state = state.copyWith(syncing: true, lastError: null);
+    debugPrint('[sync] syncNow start');
     try {
       final engine = ref.read(servicesProvider).syncEngine;
       final result = await engine.syncOnce();
+      debugPrint('[sync] syncNow done: pushed=${result.pushed} pulled=${result.pulled} '
+          'conflicts=${result.conflictCount} err=${result.error}');
       state = state.copyWith(
         syncing: false,
         lastSyncAt: DateTime.now().toUtc(),
@@ -144,6 +157,11 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
         hasRunOnce: true,
       );
       return result;
+    } catch (e) {
+      // Should not happen (engine catches), but keep the UI unstuck.
+      debugPrint('[sync] syncNow threw: $e');
+      state = state.copyWith(syncing: false, lastError: '$e', hasRunOnce: true);
+      return null;
     } finally {
       _running = false;
     }
