@@ -15,6 +15,7 @@ import 'package:course_planner/data/local/view_models.dart';
 import 'package:course_planner/domain/entities.dart';
 import 'package:course_planner/domain/sync.dart';
 import 'package:course_planner/presentation/calendar/event_projection.dart';
+import 'package:course_planner/presentation/calendar/month_page.dart';
 import 'package:course_planner/sync/expander.dart';
 import 'package:course_planner/sync/sync_engine.dart';
 import 'package:drift/native.dart';
@@ -69,6 +70,44 @@ void main() {
       final meta = await store.meta();
       expect(meta!.lastServerCursor, greaterThan(0));
       await verifyMirrorAndProjections(store, session.user.timezone);
+    } finally {
+      await db.close();
+    }
+  }, skip: backendUp ? false : 'local backend unreachable from test VM');
+
+  test('live backend: whole-month window projects and buckets by local day',
+      () async {
+    final http = ApiHttp.create(onRefresh: () async => false);
+    final auth = AuthApi(http);
+    final session = await auth.login(username: 'webdev', password: 'password123');
+    http.setAccessToken(session.accessToken);
+
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    final store = SyncStore(db);
+    final engine = SyncEngine(db: db, store: store, api: SyncApi(http));
+    try {
+      await engine.initialPull();
+      final userTime = UserTime.tryCreate(session.user.timezone)!;
+
+      // Exactly what MonthPage does: [1st of month, 1st of next month).
+      final firstOfMonth = userTime.fromLocalParts(2026, 9, 1, 0, 0);
+      final monthEnd = userTime.fromLocalParts(2026, 10, 1, 0, 0);
+      final window = localWindowToUtc(userTime, firstOfMonth, monthEnd);
+      final events = EventProjection(EventExpander(userTime))
+          .project(await _snapshot(store), startUtc: window.start, endUtc: window.end)
+          .events;
+
+      expect(events, isNotEmpty,
+          reason: 'September must project events (was empty before the fix)');
+
+      final byDay = groupEventsByLocalDay(events, userTime);
+      expect(byDay, isNotEmpty);
+      // Keys must be the zero-padded form the grid looks up, not '2026-9-10'.
+      expect(byDay.keys.every((k) => RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(k)), isTrue,
+          reason: 'keys=${byDay.keys.take(5).toList()}');
+      expect(byDay.containsKey('2026-09-10'), isTrue,
+          reason: 'Sep 10 has classes in the seeded data');
+      expect(byDay['2026-09-10'], isNotEmpty);
     } finally {
       await db.close();
     }
@@ -134,6 +173,28 @@ void main() {
           reason: 'offline local projection produced no course events');
       expect((local.length - serverEvents.length).abs() <= 6, isTrue,
           reason: 'server=${serverEvents.length} events vs local=${local.length}');
+
+      // Month view regression, against real captured data: the whole-month
+      // window [Sep 1, Oct 1) must project events and bucket them under the
+      // zero-padded keys the day cells look up.
+      final firstOfMonth = userTime.fromLocalParts(2026, 9, 1, 0, 0);
+      final monthEnd = userTime.fromLocalParts(2026, 10, 1, 0, 0);
+      final monthWindow = localWindowToUtc(userTime, firstOfMonth, monthEnd);
+      final monthEvents = EventProjection(EventExpander(userTime)).project(
+        snapshot,
+        startUtc: monthWindow.start,
+        endUtc: monthWindow.end,
+      ).events;
+      expect(monthEvents, isNotEmpty,
+          reason: 'September must not project empty (was the month-view bug)');
+      final byDay = groupEventsByLocalDay(monthEvents, userTime);
+      expect(
+        byDay.keys.every((k) => RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(k)),
+        isTrue,
+        reason: 'keys=${byDay.keys.take(5).toList()}',
+      );
+      expect(byDay['2026-09-10'], isNotEmpty,
+          reason: 'seeded classes exist on Thu Sep 10');
     } finally {
       await db.close();
     }
@@ -194,4 +255,13 @@ DateTime? _deletedAt(Map<String, dynamic> payload) {
   final v = payload['deletedAt'];
   if (v is String) return DateTime.tryParse(v)?.toUtc();
   return null;
+}
+
+/// Builds a snapshot from every mirrored entity type.
+Future<EntitiesSnapshot> _snapshot(SyncStore store) async {
+  final rows = <EntityRow>[];
+  for (final t in EntityTypes.all) {
+    rows.addAll(await store.entitiesOfType(t));
+  }
+  return EntitiesSnapshot(rows: rows, pendingOps: const [], conflicts: const []);
 }

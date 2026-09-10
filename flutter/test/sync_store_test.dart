@@ -1,3 +1,4 @@
+import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/data/db/app_database.dart';
 import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/domain/entities.dart';
@@ -98,6 +99,34 @@ void main() {
     expect(conflicts.single.conflictingFields, ['title']);
     await store.removeConflict('op1');
     expect(await store.conflicts(), isEmpty);
+  });
+
+  test('enqueueOp serializes TZDateTime changes as ISO strings', () async {
+    // Grid/timeline drags commit `UserTime.fromLocalParts(...)` results, which
+    // are TZDateTime (a DateTime subclass). jsonEncode cannot serialize those
+    // directly — the store must normalize to RFC3339 strings (like the wire /
+    // domain convention), otherwise the local update throws and the block
+    // snaps back.
+    final ut = UserTime.tryCreate('Asia/Shanghai')!;
+    final start = ut.fromLocalParts(2026, 9, 7, 10, 0); // TZDateTime
+    final end = ut.fromLocalParts(2026, 9, 7, 10, 45);
+    await store.enqueueOp(PendingOperation(
+      operationId: 'op-tz',
+      entityType: EntityTypes.todoBlock,
+      entityId: 'b1',
+      operation: SyncOperations.update,
+      baseRevision: 0,
+      changes: {'startAt': start, 'endAt': end},
+      createdAt: DateTime.now().toUtc(),
+    ));
+
+    final ops = await store.pendingOps();
+    final changes = ops.single.changes;
+    expect(changes['startAt'], isA<String>());
+    expect(changes['endAt'], isA<String>());
+    expect((changes['startAt'] as String).endsWith('Z'), isTrue);
+    // Round-trips back to the same instant.
+    expect((changes['startAt'] as String), contains('2026-09-07T02:00:00'));
   });
 
   test('meta persists cursor and profile and resets fully', () async {
