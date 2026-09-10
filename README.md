@@ -17,9 +17,9 @@ Android 装 Releases 里的 APK，登录页服务器地址填 `https://course.le
 | --- | --- |
 | ![时间轴](docs/screenshots/week-timeline.png) | ![课表](docs/screenshots/week-grid.png) |
 
-| 月视图 | 登录 |
+| 月视图 | 待办 |
 | --- | --- |
-| ![月视图](docs/screenshots/month.png) | ![登录](docs/screenshots/login.png) |
+| ![月视图](docs/screenshots/month.png) | ![待办](docs/screenshots/todo.png) |
 
 ## 功能
 
