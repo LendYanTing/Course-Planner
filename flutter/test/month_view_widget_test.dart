@@ -141,6 +141,28 @@ void main() {
             'revision': 1,
           },
         ),
+        // A block on the deadline day: the cell then holds a course/block chip
+        // AND a reminder, which is exactly the ordering being asserted.
+        EntityRow(
+          entityType: EntityTypes.todoBlock,
+          entityId: 'b2',
+          revision: 1,
+          payload: {
+            'id': 'b2',
+            'todoId': 't1',
+            'startAt': ut
+                .fromLocalParts(nowLocal.year, nowLocal.month, 15, 9, 0)
+                .toUtc()
+                .toIso8601String(),
+            'endAt': ut
+                .fromLocalParts(nowLocal.year, nowLocal.month, 15, 10, 0)
+                .toUtc()
+                .toIso8601String(),
+            'status': 'scheduled',
+            'blockNote': '当天时间块',
+            'revision': 1,
+          },
+        ),
         EntityRow(
           entityType: EntityTypes.todoBlock,
           entityId: 'b1',
@@ -179,6 +201,12 @@ void main() {
     expect(find.textContaining('张三'), findsWidgets, reason: 'class teacher shown');
     expect(find.text('第一章习题'), findsWidgets, reason: 'block note shown');
     expect(find.textContaining('18:00'), findsWidgets, reason: 'deadline time shown');
+
+    // The reminder is pinned above the day's blocks so a full day cannot bury it.
+    final reminderTop = tester.getTopLeft(find.textContaining('18:00').first).dy;
+    final blockTop = tester.getTopLeft(find.text('当天时间块').first).dy;
+    expect(reminderTop, lessThan(blockTop),
+        reason: 'the deadline line must sit above the block chip in the cell');
   });
 }
 

@@ -498,10 +498,9 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 // A one-off is a single errand / meeting / shopping list: at
-                // most one block and no deadline. The server imposes neither —
-                // this is our own model.
+                // most one block, plus an optional reminder time.
                 _type == TodoType.oneOff
-                    ? '临时活动、会议或购物清单：最多 1 个时间块，不设截止时间'
+                    ? '临时活动、会议或购物清单：最多 1 个时间块，可设提醒时间'
                     : '多阶段任务：可拆成多个时间块，可设截止时间',
                 style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
@@ -546,32 +545,36 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: '预计时长（分钟，可选）', suffixText: '分'),
             ),
-            if (_type == TodoType.project) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.schedule),
-                      label: Text(_deadline == null
-                          ? '设置截止时间'
-                          : '截止 ${_formatLocal(_deadline!)}'),
-                      onPressed: _pickDeadline,
-                    ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    // A one-off is a single moment (take out the trash), so its
+                    // time point reads as a reminder rather than a deadline.
+                    icon: Icon(_type == TodoType.oneOff
+                        ? Icons.notifications_none
+                        : Icons.schedule),
+                    label: Text(_deadline == null
+                        ? (_type == TodoType.oneOff ? '设置提醒时间' : '设置截止时间')
+                        : '${_type == TodoType.oneOff ? '提醒' : '截止'} '
+                            '${_formatLocal(_deadline!)}'),
+                    onPressed: _pickDeadline,
                   ),
-                  if (_deadline != null)
-                    IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () => setState(() => _deadline = null),
-                    ),
-                ],
-              ),
-            ] else if (_deadline != null)
+                ),
+                if (_deadline != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () => setState(() => _deadline = null),
+                  ),
+              ],
+            ),
+            if (_type == TodoType.oneOff)
               const Padding(
-                padding: EdgeInsets.only(top: 8),
+                padding: EdgeInsets.only(top: 4),
                 child: Text(
-                  '一次性待办不使用截止时间；保存后会清除原有的截止时间。',
-                  style: TextStyle(fontSize: 11, color: Colors.orange),
+                  '提醒时间用于「到点做一下」的一次性事情（比如扔垃圾），不需要再分配时间块。',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ),
             const SizedBox(height: 10),
@@ -742,8 +745,8 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
       'categoryId': _categoryId,
       'tagIds': _tagIds.toList(),
       'priority': _priority.wire,
-      // One-off tasks carry no deadline; switching type clears it.
-      'deadlineAt': _type == TodoType.project ? _deadline : null,
+      // Both types store it in deadlineAt; only the wording differs.
+      'deadlineAt': _deadline,
     };
     if (est != null) {
       changes['estimatedMinutes'] = est;

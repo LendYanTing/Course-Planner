@@ -7,6 +7,7 @@ import '../../../domain/calendar.dart';
 import '../../../domain/calendar_event.dart';
 import '../../../domain/course.dart';
 import '../../../domain/entities.dart';
+import '../../../domain/todo.dart';
 import '../../../sync/expander.dart';
 
 /// A UI-ready event placed on week/month grids, produced from the local
@@ -27,6 +28,7 @@ class UiEvent {
     this.teacher,
     this.note,
     this.pending = false,
+    this.reminder = false,
   });
 
   final String id;
@@ -42,6 +44,9 @@ class UiEvent {
   final String? teacher;
   final String? note;
   final bool pending;
+
+  /// Deadline of a 一次性 todo, which the UI words as 提醒 rather than 截止.
+  final bool reminder;
 }
 
 class EventProjectionResult {
@@ -189,6 +194,8 @@ class EventProjection {
           conflict: ConflictState.none,
           color: t.color,
           note: 'deadline:${dl.toIso8601String()}',
+          // A one-off todo's time point is a reminder, not a deadline.
+          reminder: t.type == TodoType.oneOff,
         ));
       }
     }

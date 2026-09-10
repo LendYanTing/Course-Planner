@@ -664,7 +664,7 @@ class _GridCanvasState extends State<_GridCanvas> {
               Row(children: [
                 const Icon(Icons.flag, size: 16, color: AppTheme.deadlineColor),
                 const SizedBox(width: 6),
-                Text('截止 ${_dateTime(local)}',
+                Text('${e.reminder ? '提醒' : '截止'} ${_dateTime(local)}',
                     style: const TextStyle(color: AppTheme.deadlineColor, fontWeight: FontWeight.w600)),
               ]),
               const SizedBox(height: 10),

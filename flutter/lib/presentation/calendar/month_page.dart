@@ -283,9 +283,11 @@ class _DayCell extends StatelessWidget {
                 padding: EdgeInsets.zero,
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
+                  // Reminders/deadlines first: they are single moments and get
+                  // drowned out when a day is full of course blocks.
+                  if (deadlines.isNotEmpty) _DeadlineLine(events: deadlines, userTime: userTime),
                   for (final e in chips)
                     _MiniChip(event: e, meta: eventMeta(e)),
-                  if (deadlines.isNotEmpty) _DeadlineLine(events: deadlines, userTime: userTime),
                 ],
               ),
             ),
@@ -430,7 +432,13 @@ class _DaySheet extends StatelessWidget {
       expand: false,
       initialChildSize: 0.6,
       builder: (context, controller) {
-        final sorted = [...events]..sort((a, b) => a.startUtc.compareTo(b.startUtc));
+        final sorted = [...events]..sort((a, b) {
+            // Same ordering as the day cell: reminders/deadlines on top.
+            final ad = a.type == EventType.deadline ? 0 : 1;
+            final bd = b.type == EventType.deadline ? 0 : 1;
+            if (ad != bd) return ad - bd;
+            return a.startUtc.compareTo(b.startUtc);
+          });
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -461,7 +469,7 @@ class _DaySheet extends StatelessWidget {
                   final endText = fmt.format(endLocal);
                   // Deadlines show their actual due time, not a bare "截止".
                   final showTime = e.type == EventType.deadline
-                      ? '截止 $startText'
+                      ? '${e.reminder ? '提醒' : '截止'} $startText'
                       : '${_isSameDayLocal(startLocal, endLocal) ? '' : '${endLocal.month}/${endLocal.day} '}'
                           '$startText-$endText';
                   final meta = eventMeta(e);

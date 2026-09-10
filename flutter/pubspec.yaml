@@ -1,7 +1,7 @@
 name: course_planner
 description: "Course Planner Flutter client - offline-first timetable, calendar, todo and sync (docs/openapi.yaml contract)."
 publish_to: 'none'
-version: 0.2.4+6
+version: 0.2.5+7
 
 environment:
   sdk: ^3.12.2
