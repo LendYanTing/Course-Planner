@@ -20,6 +20,8 @@ import (
 	"github.com/carryingon/courseplanner/server/internal/freeslot"
 	"github.com/carryingon/courseplanner/server/internal/importcsv"
 	"github.com/carryingon/courseplanner/server/internal/mcp"
+	"github.com/carryingon/courseplanner/server/internal/mcpconnect"
+	"github.com/carryingon/courseplanner/server/internal/mcptoken"
 	"github.com/carryingon/courseplanner/server/internal/override"
 	"github.com/carryingon/courseplanner/server/internal/platform/config"
 	"github.com/carryingon/courseplanner/server/internal/platform/database"
@@ -51,6 +53,7 @@ type Server struct {
 	ImportSvc   *importcsv.Service
 	PushService *sync.PushService
 	Journal     *sync.Journal
+	McpTokens   *mcptoken.Repo
 	Router      http.Handler
 }
 
@@ -107,7 +110,8 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL),
 		auth.NewRefreshRepo(pool, cfg.RefreshTokenTTL),
 		cfg.CookieSecure())
-	authMw := auth.NewMiddleware(auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL), userRepo)
+	mcpTokenRepo := mcptoken.NewRepo(pool)
+	authMw := auth.NewMiddleware(auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL), userRepo, mcpTokenRepo)
 
 	syncJournal := sync.NewJournal(pool)
 	pushSvc := sync.NewPushService(pool, syncJournal)
@@ -154,6 +158,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		CategorySvc: category.NewService(pool), EventSvc: eventSvc,
 		FreeSlotSvc: freeSlotSvc, SeriesSvc: seriesSvc, AgentSvc: agentSvc,
 		ImportSvc: importSvc, PushService: pushSvc, Journal: syncJournal,
+		McpTokens: mcpTokenRepo,
 	}
 
 	handlers := &handlers{
@@ -171,10 +176,12 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		agent:     agent.NewHandlers(agentSvc),
 		importcsv: importcsv.NewHandlers(importSvc),
 		mcp:       mcpServer,
+		mcpTokens: mcptoken.NewHandlers(mcpTokenRepo, userRepo),
+		connect:   mcpconnect.NewService(userRepo, mcpTokenRepo),
 	}
 	s.Router = handlers.build(cfg)
 
-	slog.Info("server wired", "modules", "auth user calendar course schedule todo tag category event freeslot series sync agent importcsv mcp")
+	slog.Info("server wired", "modules", "auth user calendar course schedule todo tag category event freeslot series sync agent importcsv mcp mcptoken mcpconnect")
 	return s, nil
 }
 

@@ -6,6 +6,9 @@
 .env
 .env.*
 !.env.example
+# Local MCP client configs hold a long-lived MCP token (docs/security.md §11).
+.mcp.json
+.mcp.local.json
 
 # === Go (server) ===
 server/server

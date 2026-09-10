@@ -18,6 +18,10 @@ const (
 	maxBodyBytes = 4 << 20 // 4 MiB; CSV uploads included
 	userIDKey    = contextKey("userID")
 	timezoneKey  = contextKey("timezone")
+
+	credentialKindKey = contextKey("credentialKind")
+	credentialIDKey   = contextKey("credentialID")
+	scopesKey         = contextKey("scopes")
 )
 
 type contextKey string
@@ -118,4 +122,60 @@ func Timezone(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// Credential kinds. The distinction matters for authorization: a long-lived
+// MCP credential may be read-only and may never manage credentials.
+const (
+	CredentialSession = "session"
+	CredentialMCP     = "mcp_token"
+)
+
+// Scope names, mirroring mcptoken.Scope* without importing it.
+const (
+	ScopeRead  = "read"
+	ScopeWrite = "write"
+)
+
+// WithCredential records how the request authenticated: which kind of token,
+// its id (for auditing) and the scopes it carries. Only the auth middleware
+// may call this.
+func WithCredential(ctx context.Context, kind, credentialID string, scopes []string) context.Context {
+	ctx = context.WithValue(ctx, credentialKindKey, kind)
+	ctx = context.WithValue(ctx, credentialIDKey, credentialID)
+	return context.WithValue(ctx, scopesKey, scopes)
+}
+
+// CredentialKind returns CredentialSession or CredentialMCP.
+func CredentialKind(ctx context.Context) string {
+	if v, ok := ctx.Value(credentialKindKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// CredentialID returns the MCP token id, or "" for a session token.
+func CredentialID(ctx context.Context) string {
+	if v, ok := ctx.Value(credentialIDKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// Scopes returns the granted scopes of the presented credential.
+func Scopes(ctx context.Context) []string {
+	if v, ok := ctx.Value(scopesKey).([]string); ok {
+		return v
+	}
+	return nil
+}
+
+// HasScope reports whether the presented credential carries a scope.
+func HasScope(ctx context.Context, scope string) bool {
+	for _, s := range Scopes(ctx) {
+		if s == scope {
+			return true
+		}
+	}
+	return false
 }

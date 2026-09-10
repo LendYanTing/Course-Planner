@@ -39,7 +39,9 @@ go test ./tests/ -count=1
 集成测试每次运行会重建 schema（确定性结果），共覆盖：auth、时区锁定、课程 CRUD、
 周规则/单双周/连堂、CSV 导入、RecurringSchedule、Todo/Block/Deadline、free slots、
 课程硬冲突、软冲突、occurrence override、THIS/THIS_AND_FUTURE/ALL、sync cursor、
-revision 冲突、幂等 push、tombstone、三方合并、MCP preview/apply。
+revision 冲突、幂等 push、tombstone、三方合并、MCP preview/apply、长效 MCP token
+（签发/吊销/到期/只读 scope）、`/mcp/connect` 登录页（含 redirect 白名单与跨站拒绝）、
+MCP 传输边界（405/406/202、协议版本协商、工具 annotations）。
 
 ## 架构与模块
 
@@ -68,8 +70,47 @@ PostgreSQL
 - `internal/sync`     cursor + revision + tombstone + 幂等 operation + 三方合并
 - `internal/agent`    MCP Change Set：preview → confirmationId → 原子 apply
 - `internal/mcp`      Streamable-HTTP JSON-RPC（/api/v1/mcp）+ 工具注册
+- `internal/mcptoken` 长效 MCP 凭证（`cpmcp_` 前缀、哈希落库、scope、吊销）
+- `internal/mcpconnect` 浏览器登录页（`/mcp/connect`），签发 MCP token
 - `internal/platform` 配置、pgx 连接池、迁移、HTTP 工具
 - `internal/common`   apperr 错误码、timeutil（UTC/本地时间）、weekrule
+
+## MCP 接入
+
+MCP 端点是 `POST /api/v1/mcp`（JSON-RPC 2.0，streamable HTTP，无状态）。
+Agent 不能用 15 分钟的 access token 长期挂着，所以用长效 MCP token：
+
+```bash
+# 方式一：浏览器登录换取（推荐给人用）
+open http://127.0.0.1:8080/mcp/connect          # 登录 → 显示 token + 客户端配置
+node scripts/mcp-connect.js                     # 本地 helper：自动开浏览器、回调取 token、打印配置
+
+# 方式二：用会话 token 通过 REST 铸造
+curl -X POST http://127.0.0.1:8080/api/v1/mcp-tokens \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Claude Desktop","scopes":["read","write"],"expiresInDays":0}'
+```
+
+客户端配置（token 明文只在创建时返回一次，服务端只存 SHA-256 哈希）：
+
+```json
+{
+  "mcpServers": {
+    "course-planner": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/api/v1/mcp",
+      "headers": { "Authorization": "Bearer cpmcp_..." }
+    }
+  }
+}
+```
+
+- `scopes: ["read"]` 得到只读凭证：MCP write 工具与 `preview_changes` /
+  `apply_changes` 会返回 `isError`，REST 写路径返回 `FORBIDDEN`。
+- `GET /api/v1/mcp-tokens` 列出（只显示 `tokenPrefix`，永不回显明文），
+  `DELETE /api/v1/mcp-tokens/{id}` 立即吊销；这两个接口只接受会话 token。
+- 传输细节（协议版本协商、405/406/202、`instructions`、工具 annotations）见
+  `docs/mcp.md` §12。
 
 ## 关键约定
 

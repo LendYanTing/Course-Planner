@@ -2,8 +2,9 @@
 //
 //	Usage: DATABASE_URL=... JWT_SECRET=... go run ./cmd/server
 //
-// Endpoints are served under /api/v1 plus /mcp (streamable HTTP MCP) and
-// /healthz. The backend is designed to sit behind an HTTPS edge
+// Endpoints are served under /api/v1 (including the MCP streamable-HTTP
+// endpoint at /api/v1/mcp), plus /healthz and the browser sign-in page at
+// /mcp/connect. The backend is designed to sit behind an HTTPS edge
 // (Cloudflare Tunnel / reverse proxy) and must not be exposed publicly
 // in plain HTTP (docs/architecture.md §7).
 package main

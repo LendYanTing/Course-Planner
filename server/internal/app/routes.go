@@ -14,6 +14,8 @@ import (
 	"github.com/carryingon/courseplanner/server/internal/freeslot"
 	"github.com/carryingon/courseplanner/server/internal/importcsv"
 	"github.com/carryingon/courseplanner/server/internal/mcp"
+	"github.com/carryingon/courseplanner/server/internal/mcpconnect"
+	"github.com/carryingon/courseplanner/server/internal/mcptoken"
 	"github.com/carryingon/courseplanner/server/internal/platform/config"
 	"github.com/carryingon/courseplanner/server/internal/platform/httpx"
 	"github.com/carryingon/courseplanner/server/internal/schedule"
@@ -43,6 +45,8 @@ type handlers struct {
 	agent     *agent.Handlers
 	importcsv *importcsv.Handlers
 	mcp       *mcp.Server
+	mcpTokens *mcptoken.Handlers
+	connect   *mcpconnect.Service
 }
 
 // build assembles the chi router. Base URL prefix is /api/v1 (docs/api.md).
@@ -66,6 +70,12 @@ func (h *handlers) build(cfg *config.Config) http.Handler {
 		httpx.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok", "time": time.Now().UTC().Format(time.RFC3339)})
 	})
 
+	// Browser-facing: sign in and receive a long-lived MCP token. Outside
+	// /api/v1 on purpose — it renders HTML for people, not JSON for clients
+	// (docs/mcp.md §11).
+	r.Get("/mcp/connect", h.connect.Page)
+	r.Post("/mcp/connect", h.connect.Submit)
+
 	r.Route("/api/v1", func(api chi.Router) {
 		// Public.
 		api.Route("/auth", func(authR chi.Router) {
@@ -83,12 +93,21 @@ func (h *handlers) build(cfg *config.Config) http.Handler {
 		// Authenticated.
 		api.Group(func(priv chi.Router) {
 			priv.Use(h.authMw.Handler)
+			// Read-only MCP credentials must not reach write paths.
+			priv.Use(auth.RequireWriteScope)
 
 			// MCP streamable HTTP (user-authenticated; read tools need no
 			// confirmation, writes gate through preview/apply).
 			priv.Handle("/mcp", h.mcp)
 
 			priv.Get("/me", h.auth.Me)
+
+			// Long-lived MCP credentials, managed with a session token only.
+			priv.Route("/mcp-tokens", func(mt chi.Router) {
+				mt.Get("/", h.mcpTokens.List)
+				mt.Post("/", h.mcpTokens.Create)
+				mt.Delete("/{tokenId}", h.mcpTokens.Revoke)
+			})
 
 			priv.Route("/calendars", func(c chi.Router) {
 				c.Get("/", h.cal.List)

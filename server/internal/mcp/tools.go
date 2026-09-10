@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/carryingon/courseplanner/server/internal/agent"
@@ -360,7 +361,49 @@ func BuildTools(d Deps) []Tool {
 			},
 		},
 	)
+	return applyMetadata(tools)
+}
+
+// applyMetadata gives every tool its title, behaviour hints and write
+// requirement (docs/mcp.md §12). The hints let a client auto-approve reads and
+// force a confirmation before anything destructive, so they must stay honest.
+func applyMetadata(tools []Tool) []Tool {
+	for i := range tools {
+		t := &tools[i]
+		if t.Title == "" {
+			t.Title = titleFor(t.Name)
+		}
+		switch {
+		case isReadTool(t.Name):
+			t.Annotations = map[string]any{"readOnlyHint": true, "idempotentHint": true, "openWorldHint": false}
+		case isDestructiveTool(t.Name):
+			t.RequiresWrite = true
+			t.Annotations = map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}
+		default:
+			t.RequiresWrite = true
+			t.Annotations = map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}
+		}
+	}
 	return tools
+}
+
+func isReadTool(name string) bool {
+	return strings.HasPrefix(name, "get_") || strings.HasPrefix(name, "search_")
+}
+
+// isDestructiveTool marks the tools whose confirmation is destructive, not
+// merely additive: deleting something, or committing a staged change set.
+func isDestructiveTool(name string) bool {
+	return strings.HasPrefix(name, "delete_") || name == "apply_changes"
+}
+
+// titleFor renders "get_free_slots" as "Get free slots" for client UIs.
+func titleFor(name string) string {
+	words := strings.Split(name, "_")
+	if len(words[0]) > 0 {
+		words[0] = strings.ToUpper(words[0][:1]) + words[0][1:]
+	}
+	return strings.Join(words, " ")
 }
 
 // buildWriteTool creates a single-change write tool that previews (never
