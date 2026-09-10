@@ -221,3 +221,78 @@ Accept: application/json, text/event-stream
 - `initialize` 返回 `instructions`，向 Agent 说明"写入必须走 preview → apply"
 - 每个工具带 `title` 与 `annotations`（`readOnlyHint` / `destructiveHint` /
   `idempotentHint`），让客户端能对只读工具自动放行、对破坏性工具强制确认
+
+## 13. 客户端接入
+
+端点是 `/api/v1/mcp`（不是 `/mcp` —— 那是给人看的登录页）。接入一个 Agent 客户端只需
+四个值：
+
+```text
+名称        course-planner（任意）
+transport   http —— 即 streamable HTTP；不要选 sse
+URL         <backend>/api/v1/mcp
+Header      Authorization: Bearer <token>   （MCP Token 或 access token，见 §10）
+```
+
+`/mcp/connect` 页面会连同 token 一起生成这段配置，直接复制即可。
+
+`mcpServers` 形式的配置（Claude Desktop、项目内 `.mcp.json`、Cursor 通用）：
+
+```json
+{
+  "mcpServers": {
+    "course-planner": {
+      "type": "http",
+      "url": "https://cp.example.com/api/v1/mcp",
+      "headers": { "Authorization": "Bearer cpmcp_..." }
+    }
+  }
+}
+```
+
+Claude Code 命令行：
+
+```bash
+claude mcp add --transport http course-planner https://cp.example.com/api/v1/mcp \
+  --header "Authorization: Bearer cpmcp_..."
+```
+
+VS Code / Copilot 的 `.vscode/mcp.json` 顶层键是 `servers` 而不是 `mcpServers`，其余相同。
+只支持 stdio 的客户端用 `mcp-remote` 桥接：
+
+```bash
+npx mcp-remote https://cp.example.com/api/v1/mcp --header "Authorization: Bearer cpmcp_..."
+```
+
+### 为什么必须是 http（streamable HTTP）
+
+服务端不提供 SSE 流，也不签发 session id（§12）：`GET /api/v1/mcp` 返回 405，只包含
+notification 的请求返回 202。把客户端配成 `sse` 会在 `initialize` 阶段直接失败。
+
+### 连接自检
+
+```bash
+curl -s https://cp.example.com/api/v1/mcp \
+  -H 'Authorization: Bearer cpmcp_...' -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+期望拿到 `result.tools` 数组。`initialize` 另有三样对 Agent 有用的东西：协议版本（回显
+客户端请求的版本，未知则回退到最新）、`serverInfo`、以及 `instructions`（写入必须走
+preview → apply 等行为约定），客户端可以把 `instructions` 直接喂给模型。
+
+### 常见失败
+
+| 现象 | 原因 |
+| --- | --- |
+| 连接即 401 | token 写错、已吊销或已过期；注意 `Bearer` 与 token 之间有一个空格 |
+| `initialize` 就失败 | 客户端被配成了 `sse`，或固定了不受支持的 `MCP-Protocol-Version`（支持 2025-06-18 / 2025-03-26 / 2024-11-05） |
+| 406 | 客户端的 `Accept` 不接受 `application/json`（本服务端只返回 JSON，不返回事件流） |
+| 只读 token 调写工具返回 isError | 预期行为：`read` scope 不能写（§10），换成含 `write` 的 token |
+| 写工具看起来"没生效" | 写工具只返回 `confirmationId`，必须再调 `apply_changes`（§4、§5） |
+| 不带 token 手工 curl 得到 401 而非 405 | 正常：认证墙先于传输层判断 |
+
+客户端可以依赖工具的 `annotations` 决定哪些调用自动放行、哪些强制用户确认——服务端
+写的是真实语义（只读工具确实是只读的，`delete_*` 与 `apply_changes` 确实需要确认）。
+
+部署侧的域名、TLS 与反向代理注意事项见 `docs/deploy.md` §8。

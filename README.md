@@ -59,11 +59,12 @@
 - `docs/openapi.yaml`：机器可读 API 契约
 - `docs/datetime.md`：UTC、用户时区、重复规则的时间处理
 - `docs/sync-protocol.md`：离线同步、Revision、Cursor、冲突
-- `docs/mcp.md`：MCP 工具、预览与批量确认
+- `docs/mcp.md`：MCP 工具、认证凭证、传输约定、客户端接入、预览与批量确认
 - `docs/csv-import.md`：课程 CSV 导入规范
 - `docs/ui-interaction.md`：周/月视图、拖拽、吸附、折叠
 - `docs/security.md`：认证、令牌、密码、安全边界
 - `docs/agent-behavior.md`：AI Agent 通用行为规范
+- `docs/deploy.md`：云端部署（Docker Compose / systemd、TLS 终结、运维与安全检查清单）
 
 Agent 专用提示词：
 
