@@ -54,24 +54,30 @@ class SyncUiState {
     this.syncing = false,
     this.lastSyncAt,
     this.lastError,
+    this.lastErrorDetail,
     this.hasRunOnce = false,
   });
 
   final bool syncing;
   final DateTime? lastSyncAt;
   final String? lastError;
+
+  /// Verbose report of the last failure, shown by the sync-status dialog.
+  final String? lastErrorDetail;
   final bool hasRunOnce;
 
   SyncUiState copyWith({
     bool? syncing,
     DateTime? lastSyncAt,
     String? lastError,
+    String? lastErrorDetail,
     bool? hasRunOnce,
   }) =>
       SyncUiState(
         syncing: syncing ?? this.syncing,
         lastSyncAt: lastSyncAt ?? this.lastSyncAt,
         lastError: lastError ?? this.lastError,
+        lastErrorDetail: lastErrorDetail ?? this.lastErrorDetail,
         hasRunOnce: hasRunOnce ?? this.hasRunOnce,
       );
 }
@@ -154,6 +160,11 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
         syncing: false,
         lastSyncAt: DateTime.now().toUtc(),
         lastError: result.error,
+        // Prefix the server so a report is self-contained when pasted.
+        lastErrorDetail: result.error == null
+            ? null
+            : 'server: ${ref.read(servicesProvider).http.baseUrl}\n'
+                '${result.errorDetail ?? result.error}',
         hasRunOnce: true,
       );
       return result;

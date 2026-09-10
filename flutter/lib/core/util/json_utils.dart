@@ -1,6 +1,8 @@
 /// Tolerant readers over decoded JSON maps (`Map<String, dynamic>`).
 library;
 
+import 'dart:convert';
+
 String readString(Map<String, dynamic> m, String key, {String fallback = ''}) {
   final v = m[key];
   if (v is String) return v;
@@ -89,3 +91,28 @@ String formatUtc(DateTime dt) {
       '${u.second.toString().padLeft(2, '0')}';
   return ms == 0 ? '$base' 'Z' : '$base.${ms.toString().padLeft(3, '0')}' 'Z';
 }
+
+/// Recursively rewrites a value into `dart:convert`-encodable form.
+///
+/// Callers frequently build `changes`/`payload` maps from `UserTime.localFromUtc`
+/// / `fromLocalParts`, which yield `TZDateTime` (a `DateTime` subclass). Those
+/// are not JSON-encodable, and the domain convention stores instants as RFC3339
+/// strings (see [formatUtc]). This rewrites any [DateTime] (incl. `TZDateTime`)
+/// into that string form, and walks nested maps/lists. Input maps are never
+/// mutated.
+dynamic jsonSafeValue(dynamic value) {
+  if (value is DateTime) return formatUtc(value);
+  if (value is Map) {
+    return value.map((k, v) => MapEntry(k.toString(), jsonSafeValue(v)));
+  }
+  if (value is List) return value.map(jsonSafeValue).toList();
+  return value;
+}
+
+/// [jsonSafeValue] on a string-keyed map (the shape stored in entity payloads
+/// and pending-operation `changes`).
+Map<String, dynamic> jsonSafeMap(Map<String, dynamic> m) =>
+    Map<String, dynamic>.from(m.map((k, v) => MapEntry(k, jsonSafeValue(v))));
+
+/// `jsonEncode` over [jsonSafeValue] — never throws on `DateTime`/`TZDateTime`.
+String jsonEncodeJsonSafe(dynamic value) => jsonEncode(jsonSafeValue(value));

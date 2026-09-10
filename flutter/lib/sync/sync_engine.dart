@@ -15,12 +15,18 @@ class SyncCycleResult {
     this.pulled = 0,
     this.conflictCount = 0,
     this.error,
+    this.errorDetail,
   });
 
   final int pushed;
   final int pulled;
   final int conflictCount;
   final String? error;
+
+  /// Verbose, copyable report of a failed cycle (cursor, queue depth,
+  /// exception code/status/message/details, stack). Surfaced in Settings so a
+  /// failure can be diagnosed without a debugger attached.
+  final String? errorDetail;
 
   bool get ok => error == null;
 }
@@ -79,6 +85,14 @@ class SyncEngine {
     final meta = await store.meta();
     final cursor = meta?.lastServerCursor ?? 0;
     debugPrint('[engine] syncOnce start cursor=$cursor');
+    // Cursor level at the moment the push round starts. The follow-up pull
+    // must anchor here (not on the post-push cursor): the push advances
+    // lastServerCursor to the server's new cursor, but the mirror has NOT yet
+    // applied the journal entries the push produced. Pulling from the
+    // post-push cursor skips them and leaves the mirror stale — an accepted
+    // move would revert to its old canonical ("snap back") and the next edit
+    // would carry a stale baseRevision and conflict.
+    int? pushBase;
     try {
       var pulled = 0;
       // 1. catch up on remote changes first
@@ -92,9 +106,9 @@ class SyncEngine {
       var pushed = 0;
       if (ops.isNotEmpty) {
         final fresh = await store.meta();
-        final base = fresh?.lastServerCursor ?? 0;
-        debugPrint('[engine] pushing ${ops.length} ops base=$base');
-        final result = await api.push(baseCursor: base, operations: ops);
+        pushBase = fresh?.lastServerCursor ?? 0;
+        debugPrint('[engine] pushing ${ops.length} ops base=$pushBase');
+        final result = await api.push(baseCursor: pushBase, operations: ops);
         debugPrint('[engine] push result accepted=${result.accepted.length} '
             'merged=${result.merged.length} conflicts=${result.conflicts.length}');
         await _handlePushResult(result, ops);
@@ -102,11 +116,13 @@ class SyncEngine {
       }
       // 3. fetch journal entries produced by the push (accepted + merged)
       final afterPush = await store.meta();
-      final tail = afterPush?.lastServerCursor ?? 0;
       final state2 = await api.serverCursor();
       debugPrint('[engine] after-push serverCursor=$state2');
-      if (state2 > tail) {
-        pulled += await pull(after: tail);
+      // Anchor on the push's base cursor so the pushed entries are actually
+      // applied to the mirror (see pushBase above).
+      final anchor = pushBase ?? afterPush?.lastServerCursor ?? 0;
+      if (state2 > anchor) {
+        pulled += await pull(after: anchor);
       }
       final conflicts = await store.conflicts();
       debugPrint('[engine] syncOnce done pulled=$pulled pushed=$pushed conflicts=${conflicts.length}');
@@ -115,16 +131,53 @@ class SyncEngine {
         pulled: pulled,
         conflictCount: conflicts.length,
       );
-    } on ApiException catch (e) {
+    } on ApiException catch (e, st) {
       debugPrint('[engine] syncOnce ApiException code=${e.code} msg=${e.message}');
+      final detail = await _failureReport(e, st, cursor);
       if (e is NetworkException) {
-        return SyncCycleResult(error: 'offline');
+        return SyncCycleResult(error: 'offline', errorDetail: detail);
       }
-      return SyncCycleResult(error: e.message);
-    } catch (e) {
+      return SyncCycleResult(error: e.message, errorDetail: detail);
+    } catch (e, st) {
       debugPrint('[engine] syncOnce error: $e');
-      return SyncCycleResult(error: '$e');
+      return SyncCycleResult(
+        error: '$e',
+        errorDetail: await _failureReport(e, st, cursor),
+      );
     }
+  }
+
+  /// Everything worth knowing about a failed cycle, as a copyable block.
+  Future<String> _failureReport(Object error, StackTrace? stack, int cursor) async {
+    final buf = StringBuffer()
+      ..writeln('time(UTC): ${DateTime.now().toUtc().toIso8601String()}')
+      ..writeln('cycle start cursor: $cursor');
+    try {
+      final meta = await store.meta();
+      final pending = await store.pendingOps();
+      buf
+        ..writeln('local cursor: ${meta?.lastServerCursor}')
+        ..writeln('pending ops: ${pending.length}')
+        ..writeln('account: ${meta?.username ?? '-'} tz=${meta?.timezone ?? '-'}');
+    } on Object catch (_) {
+      // Context is best-effort; never let it mask the real failure.
+    }
+    buf.writeln('error type: ${error.runtimeType}');
+    if (error is ApiException) {
+      buf
+        ..writeln('code: ${error.code}')
+        ..writeln('status: ${error.status}')
+        ..writeln('message: ${error.message}');
+      final details = error.details;
+      if (details != null && details.isNotEmpty) buf.writeln('details: $details');
+    } else {
+      buf.writeln('error: $error');
+    }
+    if (stack != null) {
+      buf.writeln('stack:');
+      buf.writeln(stack);
+    }
+    return buf.toString();
   }
 
   /// Hard refresh (docs/sync-protocol.md §16): preserve pending ops, wipe the
@@ -141,6 +194,32 @@ class SyncEngine {
   /// Wipes every local row (mirror, queue, conflicts, meta). Used on logout
   /// and on account switches so one user's data never leaks to another.
   Future<void> resetLocalData() => store.resetForNewUser();
+
+  /// Local→cloud migration: re-queues every mirrored entity as a `create` and
+  /// pushes it, so the freshly selected server ends up holding this device's
+  /// data. Entities keep their ids, so the server stores the same identifiers
+  /// (ids are client-generated everywhere — see [EntityRepo.localCreate]).
+  ///
+  /// Returns the number of queued creates.
+  Future<int> uploadAllLocal() async {
+    final rows = await store.allEntities();
+    final now = DateTime.now().toUtc();
+    for (final row in rows) {
+      final payload = Map<String, dynamic>.from(row.payload)..remove('revision');
+      await store.enqueueOp(PendingOperation(
+        operationId: _uuid.v4(),
+        entityType: row.entityType,
+        entityId: row.entityId,
+        operation: SyncOperations.create,
+        baseRevision: 0,
+        changes: payload,
+        createdAt: now,
+      ));
+    }
+    debugPrint('[engine] uploadAllLocal queued=${rows.length}');
+    await syncOnce();
+    return rows.length;
+  }
 
   /// Re-applies queued operations onto the freshly rebuilt mirror so local
   /// optimistic state survives a hard refresh / cache wipe.
@@ -165,9 +244,15 @@ class SyncEngine {
     final byId = {for (final o in sent) o.operationId: o};
 
     // Accepted + auto-merged operations: drop them; canonical snapshots
-    // arrive through the follow-up pull.
-    for (final opId in [...result.accepted, ...result.merged]) {
-      await store.removeOp(opId);
+    // arrive through the follow-up pull. Reflect the change on the mirror
+    // first so the entity does not flash back to its pre-push canonical
+    // between op removal and that pull (the residual "flicker").
+    final acceptedSet = {...result.accepted, ...result.merged};
+    for (final op in sent) {
+      if (acceptedSet.contains(op.operationId)) {
+        await _reflectAcceptedOnMirror(op);
+        await store.removeOp(op.operationId);
+      }
     }
 
     for (final conflict in result.conflicts) {
@@ -194,9 +279,41 @@ class SyncEngine {
       ));
     }
 
-    final meta = await store.meta();
-    await store.saveMeta((meta ?? const AppMetaSnapshot())
-        .copyWith(lastServerCursor: result.serverCursor));
+    // Deliberately do NOT advance lastServerCursor to result.serverCursor here.
+    // The mirror has not applied the journal entries the push produced yet —
+    // they arrive via the follow-up pull (syncOnce step 3). Advancing the
+    // cursor here would make that pull a no-op, leaving the mirror stale
+    // (an accepted move would revert to its old canonical) and the next edit
+    // would carry a stale baseRevision and conflict.
+  }
+
+  /// Applies an accepted operation's changes onto the mirror now, so the UI
+  /// stays on the optimistic state instead of flashing back to the pre-push
+  /// canonical in the window before the follow-up pull lands. The authoritative
+  /// server payload (with the real revision) overwrites this in step 3.
+  Future<void> _reflectAcceptedOnMirror(PendingOperation op) async {
+    final row = await store.entityRow(op.entityType, op.entityId);
+    if (row == null) {
+      // A local create that has no canonical row yet: promote the create
+      // snapshot so it does not vanish before the pull arrives.
+      await store.upsertEntityRow(EntityRow(
+        entityType: op.entityType,
+        entityId: op.entityId,
+        revision: op.baseRevision,
+        payload: Map<String, dynamic>.from(op.changes),
+        updatedAt: DateTime.now().toUtc(),
+      ));
+      return;
+    }
+    final merged = Map<String, dynamic>.from(row.payload)..addAll(op.changes);
+    await store.upsertEntityRow(EntityRow(
+      entityType: op.entityType,
+      entityId: op.entityId,
+      revision: row.revision,
+      payload: merged,
+      updatedAt: DateTime.now().toUtc(),
+      deletedAt: row.deletedAt,
+    ));
   }
 
   // ---- conflict resolution (docs/sync-protocol.md §12) ----------------------

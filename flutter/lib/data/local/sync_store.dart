@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../../core/util/json_utils.dart';
 import '../../domain/sync.dart';
 import '../db/app_database.dart';
 
@@ -70,7 +71,7 @@ class SyncStore {
     await db.into(db.entities).insertOnConflictUpdate(EntitiesCompanion.insert(
           entityType: row.entityType,
           entityId: row.entityId,
-          payload: jsonEncode(row.payload),
+          payload: jsonEncodeJsonSafe(row.payload),
           revision: row.revision,
           updatedAt: Value(row.updatedAt),
           deletedAt: Value(row.deletedAt),
@@ -122,6 +123,23 @@ class SyncStore {
     return rows.map(_fromDrift).toList();
   }
 
+  /// Every mirrored row (used by the full backup export and by the
+  /// local→cloud migration, which re-uploads the whole working copy).
+  Future<List<EntityRow>> allEntities() async {
+    final rows = await db.select(db.entities).get();
+    return rows.map(_fromDrift).toList();
+  }
+
+  /// Resets only the server cursor (keeps mirror + queue). Used when pointing
+  /// the same local data at a different server, whose journal cursors are
+  /// unrelated to the previous server's.
+  Future<void> resetCursor() async {
+    final current = await meta();
+    await saveMeta(
+      (current ?? const AppMetaSnapshot()).copyWith(lastServerCursor: 0),
+    );
+  }
+
   Stream<List<EntityRow>> watchEntitiesOfType(String entityType) {
     final query = db.select(db.entities)
       ..where((t) => t.entityType.equals(entityType));
@@ -151,7 +169,7 @@ class SyncStore {
             entityId: op.entityId,
             operation: op.operation,
             baseRevision: op.baseRevision,
-            changes: jsonEncode(op.changes),
+            changes: jsonEncodeJsonSafe(op.changes),
             createdAt: op.createdAt ?? DateTime.now().toUtc(),
             attempts: Value(op.attempts),
             lastError: Value(op.lastError),
@@ -211,9 +229,9 @@ class SyncStore {
             operationId: conflict.operationId,
             entityType: conflict.entityType,
             entityId: conflict.entityId,
-            base: jsonEncode(conflict.base),
-            local: jsonEncode(conflict.local),
-            server: jsonEncode(conflict.server),
+            base: jsonEncodeJsonSafe(conflict.base),
+            local: jsonEncodeJsonSafe(conflict.local),
+            server: jsonEncodeJsonSafe(conflict.server),
             conflictingFields: jsonEncode(conflict.conflictingFields),
             createdAt: conflict.createdAt,
           ),
