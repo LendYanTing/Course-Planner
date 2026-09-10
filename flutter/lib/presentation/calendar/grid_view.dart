@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../app/theme.dart';
@@ -7,6 +10,11 @@ import '../../data/local/entities_snapshot.dart';
 import '../../data/local/view_models.dart';
 import '../../domain/calendar.dart';
 import '../../domain/calendar_event.dart';
+import '../../domain/entities.dart';
+import '../../domain/todo.dart';
+import '../../state/app_services.dart';
+import '../../state/prefs.dart';
+import '../../state/sync_controller.dart';
 import 'event_projection.dart';
 
 /// Grid (纯课表) view — spec docs/grid-view-web.md.
@@ -29,6 +37,7 @@ class GridViewContent extends StatefulWidget {
     required this.snapshot,
     required this.nowUtc,
     required this.onCommitMove,
+    this.noonBoundaryMinutes = NoonBoundaryController.defaultMinutes,
   });
 
   final UserTime userTime;
@@ -38,6 +47,10 @@ class GridViewContent extends StatefulWidget {
   final List<UiEvent> events;
   final EntitiesSnapshot? snapshot;
   final DateTime? nowUtc;
+
+  /// Minute-of-day that starts the afternoon band (local preference; the
+  /// server has no such setting). Defaults to 12:00.
+  final int noonBoundaryMinutes;
 
   /// Commits a move/resize of a single event (block local-first; course /
   /// recurring occurrence via server series apply).
@@ -154,7 +167,6 @@ class _GridLayout {
 
 class _GridViewContentState extends State<GridViewContent> {
   bool _courseEditable = false;
-  bool _gridDragging = false;
   String? _calendarId;
 
   @override
@@ -193,32 +205,33 @@ class _GridViewContentState extends State<GridViewContent> {
           child: LayoutBuilder(builder: (context, constraints) {
             final dayWidth = (constraints.maxWidth - GridViewContent.leftWidth) / 7;
             final layout = _GridLayout(rows);
-            return ScrollConfiguration(
-              behavior: ScrollConfiguration.of(context).copyWith(dragDevices: {}),
-              child: SingleChildScrollView(
-                physics: _gridDragging
-                    ? const NeverScrollableScrollPhysics()
-                    : const AlwaysScrollableScrollPhysics(),
-                child: SizedBox(
-                  width: constraints.maxWidth,
-                  height: layout.height,
-                  child: _GridCanvas(
-                    userTime: widget.userTime,
-                    days: widget.days,
-                    events: widget.events,
-                    layout: layout,
-                    dayWidth: dayWidth,
-                    courseEditable: _courseEditable,
-                    nowLocal: todayVisible ? nowLocal : null,
-                    onCommitMove: widget.onCommitMove,
-                    onDragChanged: (v) => setState(() => _gridDragging = v),
-                    onMessage: (m) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text(m)));
-                      }
-                    },
-                  ),
+            // The scrollable keeps the DEFAULT drag devices: disabling them (an
+            // earlier workaround for tiles losing drags to the scroll view)
+            // kills touch scrolling outright. Tiles use a vertical-drag
+            // recogniser instead, which competes on equal footing and wins
+            // because it is hit-tested first.
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: SizedBox(
+                width: constraints.maxWidth,
+                height: layout.height,
+                child: _GridCanvas(
+                  userTime: widget.userTime,
+                  days: widget.days,
+                  events: widget.events,
+                  snapshot: widget.snapshot,
+                  layout: layout,
+                  dayWidth: dayWidth,
+                  courseEditable: _courseEditable,
+                  nowLocal: todayVisible ? nowLocal : null,
+                  noonBoundaryMinutes: widget.noonBoundaryMinutes,
+                  onCommitMove: widget.onCommitMove,
+                  onMessage: (m) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text(m)));
+                    }
+                  },
                 ),
               ),
             );
@@ -259,7 +272,7 @@ class _GridViewContentState extends State<GridViewContent> {
             ),
           ),
           const Spacer(),
-          const Text('课程可拖动', style: TextStyle(fontSize: 12)),
+          const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
           Switch(
             value: _courseEditable,
             onChanged: (v) => setState(() => _courseEditable = v),
@@ -327,29 +340,47 @@ class _Placed {
   final int laneCount;
 }
 
+/// A live drag target shown as a ghost while a tile is being moved/resized.
+class _GridDragPreview {
+  const _GridDragPreview({
+    required this.day,
+    required this.startMinute,
+    required this.endMinute,
+  });
+  final int day;
+  final int startMinute;
+  final int endMinute;
+}
+
 class _GridCanvas extends StatefulWidget {
   const _GridCanvas({
     required this.userTime,
     required this.days,
     required this.events,
+    required this.snapshot,
     required this.layout,
     required this.dayWidth,
     required this.courseEditable,
     required this.nowLocal,
+    required this.noonBoundaryMinutes,
     required this.onCommitMove,
-    required this.onDragChanged,
     required this.onMessage,
   });
 
   final UserTime userTime;
   final List<tz.TZDateTime> days;
   final List<UiEvent> events;
+
+  /// Used to resolve a deadline's todo blocks for its detail sheet.
+  final EntitiesSnapshot? snapshot;
   final _GridLayout layout;
   final double dayWidth;
   final bool courseEditable;
   final DateTime? nowLocal;
+
+  /// Minute-of-day where the afternoon band starts (local preference).
+  final int noonBoundaryMinutes;
   final void Function(UiEvent, DateTime, DateTime) onCommitMove;
-  final ValueChanged<bool> onDragChanged;
   final ValueChanged<String> onMessage;
 
   @override
@@ -358,6 +389,9 @@ class _GridCanvas extends StatefulWidget {
 
 class _GridCanvasState extends State<_GridCanvas> {
   final _canvasKey = GlobalKey();
+  _GridDragPreview? _preview;
+
+  void _setPreview(_GridDragPreview? p) => setState(() => _preview = p);
 
   @override
   Widget build(BuildContext context) {
@@ -365,7 +399,7 @@ class _GridCanvasState extends State<_GridCanvas> {
     final colors = Theme.of(context).colorScheme;
     var pmStart = -1;
     for (var i = 0; i < layout.rows.length; i++) {
-      if (layout.rows[i].start >= 12 * 60) {
+      if (layout.rows[i].start >= widget.noonBoundaryMinutes) {
         pmStart = i;
         break;
       }
@@ -463,9 +497,10 @@ class _GridCanvasState extends State<_GridCanvas> {
               canvasKey: _canvasKey,
               dayWidth: widget.dayWidth,
               onCommit: (ev, s, e) => widget.onCommitMove(ev, s, e),
-              onDragChanged: widget.onDragChanged,
+              onPreview: _setPreview,
               onMessage: widget.onMessage,
             ),
+          if (_preview != null) _previewGhost(_preview!),
           for (final e in widget.events)
             if (e.type == EventType.deadline) _deadline(e),
           if (widget.nowLocal != null) _nowLine(widget.nowLocal!, layout),
@@ -561,6 +596,31 @@ class _GridCanvasState extends State<_GridCanvas> {
     );
   }
 
+  /// Ghost at the drag target (docs/grid-view-web.md §4: a live dashed preview
+  /// in the pointer's column; the source block stays put and just dims). A
+  /// separate overlay avoids re-parenting the dragging tile, which is what
+  /// caused the A<->B flicker when the source was repositioned mid-drag.
+  Widget _previewGhost(_GridDragPreview p) {
+    final top = widget.layout.yForMinute(p.startMinute);
+    final bottom = widget.layout.yForMinute(p.endMinute);
+    return Positioned(
+      left: GridViewContent.leftWidth + p.day * widget.dayWidth + 1,
+      top: top,
+      width: widget.dayWidth - 2,
+      height: math.max(bottom - top, 14.0),
+      child: IgnorePointer(
+        key: const ValueKey('grid-drag-ghost'),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.black45, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _deadline(UiEvent e) {
     final local = widget.userTime.localFromUtc(e.startUtc);
     var day = -1;
@@ -579,57 +639,133 @@ class _GridCanvasState extends State<_GridCanvas> {
       left: GridViewContent.leftWidth + day * widget.dayWidth + 2,
       width: widget.dayWidth - 4,
       height: 18,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        alignment: Alignment.centerLeft,
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFEBEE),
-          border: Border.all(color: AppTheme.deadlineColor),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          '${e.title} · ${_hhmm(minute)}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 8.5,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.deadlineColor,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _showDeadlineDetail(e),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFEBEE),
+            border: Border.all(color: AppTheme.deadlineColor),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            '${e.title} · ${_hhmm(minute)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 8.5,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.deadlineColor,
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _pmDivider(int pmStart) {
-    const label = '上午 AM · 下午 PM';
-    return Stack(children: [
-      Positioned(
-        top: pmStart * GridViewContent.rowHeight,
-        left: GridViewContent.leftWidth,
-        width: 7 * widget.dayWidth,
-        height: 2,
-        child: Container(color: Colors.black.withValues(alpha: 0.35)),
-      ),
-      Positioned(
-        top: (pmStart * GridViewContent.rowHeight - 12).clamp(0.0, double.infinity),
-        left: 0,
-        width: GridViewContent.leftWidth + 7 * widget.dayWidth,
-        child: IgnorePointer(
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: Colors.black26),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
-            ),
+  /// Deadline detail: exact due instant, how many time blocks the task has,
+  /// and which of them are completed.
+  Future<void> _showDeadlineDetail(UiEvent e) async {
+    final snap = widget.snapshot;
+    final blocks = <TodoBlock>[
+      if (snap != null) ...liveBlocks(snap, todoId: e.sourceId).map((l) => l.value),
+    ]..sort((a, b) => a.startAt.compareTo(b.startAt));
+    final done = blocks.where((b) => b.status == BlockStatus.completed).length;
+    final local = widget.userTime.localFromUtc(e.startUtc);
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(e.title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.flag, size: 16, color: AppTheme.deadlineColor),
+                const SizedBox(width: 6),
+                Text('截止 ${_dateTime(local)}',
+                    style: const TextStyle(color: AppTheme.deadlineColor, fontWeight: FontWeight.w600)),
+              ]),
+              const SizedBox(height: 10),
+              Text('时间块 $done/${blocks.length} 已完成',
+                  style: const TextStyle(fontSize: 13)),
+              if (blocks.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text('尚未安排时间块', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                )
+              else
+                for (final b in blocks) _blockRow(b),
+            ],
           ),
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
       ),
-    ]);
+    );
+  }
+
+  Widget _blockRow(TodoBlock b) {
+    final s = widget.userTime.localFromUtc(b.startAt);
+    final e = widget.userTime.localFromUtc(b.endAt);
+    final completed = b.status == BlockStatus.completed;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            completed ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 15,
+            color: completed ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${s.month}月${s.day}日 ${_hhmm(s.hour * 60 + s.minute)}'
+                    ' – ${e.month}月${e.day}日 ${_hhmm(e.hour * 60 + e.minute)}'
+                    ' · ${_blockStatusLabel(b.status)}',
+                    style: const TextStyle(fontSize: 12)),
+                if (b.blockNote != null && b.blockNote!.isNotEmpty)
+                  Text(b.blockNote!,
+                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _blockStatusLabel(BlockStatus s) => switch (s) {
+        BlockStatus.scheduled => '已安排',
+        BlockStatus.inProgress => '进行中',
+        BlockStatus.completed => '已完成',
+        BlockStatus.skipped => '已跳过',
+      };
+
+  String _dateTime(DateTime local) =>
+      '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
+      '${_hhmm(local.hour * 60 + local.minute)}';
+
+  /// The 上午/下午 boundary: a solid rule between the two tinted halves. The
+  /// capsule label was removed — the background tint change plus this rule
+  /// already carry the distinction.
+  Widget _pmDivider(int pmStart) {
+    return Positioned(
+      top: pmStart * GridViewContent.rowHeight,
+      left: GridViewContent.leftWidth,
+      width: 7 * widget.dayWidth,
+      height: 2,
+      child: Container(color: Colors.black.withValues(alpha: 0.35)),
+    );
   }
 
   static String _hhmm(int minute) => '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
@@ -643,7 +779,7 @@ class _GridCanvasState extends State<_GridCanvas> {
 /// drag moves the occurrence (can change weekday for todo blocks), top/bottom
 /// edge drag resizes and snaps to 上课/下课 times. All local-time arithmetic
 /// happens in the user's fixed timezone.
-class _GridTile extends StatefulWidget {
+class _GridTile extends ConsumerStatefulWidget {
   const _GridTile({
     super.key,
     required this.event,
@@ -655,7 +791,7 @@ class _GridTile extends StatefulWidget {
     required this.canvasKey,
     required this.dayWidth,
     required this.onCommit,
-    required this.onDragChanged,
+    required this.onPreview,
     required this.onMessage,
   });
 
@@ -668,14 +804,14 @@ class _GridTile extends StatefulWidget {
   final GlobalKey canvasKey;
   final double dayWidth;
   final void Function(UiEvent, DateTime, DateTime) onCommit;
-  final ValueChanged<bool> onDragChanged;
+  final ValueChanged<_GridDragPreview?> onPreview;
   final ValueChanged<String> onMessage;
 
   @override
-  State<_GridTile> createState() => _GridTileState();
+  ConsumerState<_GridTile> createState() => _GridTileState();
 }
 
-class _GridTileState extends State<_GridTile> {
+class _GridTileState extends ConsumerState<_GridTile> {
   bool _dragging = false;
   int _mode = 0; // 0 body, 1 top resize, 2 bottom resize
   late int _origStart;
@@ -690,12 +826,17 @@ class _GridTileState extends State<_GridTile> {
   Widget build(BuildContext context) {
     final p = widget.placed;
     final laneW = (widget.dayWidth - 3) / p.laneCount;
+    final color = _colorFor(widget.event);
+    final conflict = widget.event.conflict;
+
+    // The source tile stays at its clipped slot (dimmed) while dragging; the
+    // target slot is shown by the parent's ghost preview. Repositioning the
+    // source here made the preview disagree with the row-clipped committed
+    // render, which flickered between the two positions.
     final left = GridViewContent.leftWidth +
         p.day * widget.dayWidth +
         1 +
         p.lane * laneW;
-    final color = _colorFor(widget.event);
-    final conflict = widget.event.conflict;
 
     return Positioned(
       left: left,
@@ -705,23 +846,30 @@ class _GridTileState extends State<_GridTile> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _openInfo(),
-        onPanStart: widget.editable ? _onPanStart : null,
-        onPanUpdate: widget.editable ? _onPanUpdate : null,
-        onPanEnd: widget.editable ? (_) => _finish() : null,
-        onPanCancel: widget.editable ? _finish : null,
+        // Long-press gating: a plain swipe must scroll the timetable (phones
+        // have no wheel), so a block is moved/resized by pressing and holding
+        // first. A long press is never claimed by the enclosing scrollable, so
+        // the two gestures cannot fight — and the details still carry
+        // globalPosition, so cross-day moves keep working.
+        onLongPressStart: widget.editable ? _onDragStart : null,
+        onLongPressMoveUpdate: widget.editable ? _onDragUpdate : null,
+        onLongPressEnd: widget.editable ? (_) => _finish() : null,
+        onLongPressCancel: widget.editable ? _finish : null,
         child: Container(
           decoration: BoxDecoration(
             color: _dragging
-                ? color.withValues(alpha: 0.45)
+                ? color.withValues(alpha: 0.35)
                 : color.withValues(alpha: 0.88),
             borderRadius: BorderRadius.circular(4),
             border: Border.all(
-              color: conflict == ConflictState.hard
-                  ? Colors.red
-                  : conflict == ConflictState.soft
-                      ? Colors.orangeAccent
-                      : Colors.transparent,
-              width: conflict == ConflictState.none ? 0 : 1.5,
+              color: _dragging
+                  ? color.withValues(alpha: 0.9)
+                  : conflict == ConflictState.hard
+                      ? Colors.red
+                      : conflict == ConflictState.soft
+                          ? Colors.orangeAccent
+                          : Colors.transparent,
+              width: _dragging ? 1.5 : (conflict == ConflictState.none ? 0 : 1.5),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -729,18 +877,22 @@ class _GridTileState extends State<_GridTile> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.event.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600)),
-                if (widget.event.location != null && widget.event.location!.isNotEmpty)
-                  Text(widget.event.location!,
-                      maxLines: 1,
+                Flexible(
+                  child: Text(widget.event.title,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600)),
+                ),
+                if (widget.event.location != null && widget.event.location!.isNotEmpty)
+                  Flexible(
+                    child: Text(widget.event.location!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                  ),
               ],
             ),
             if (widget.editable) ...[
@@ -773,28 +925,112 @@ class _GridTileState extends State<_GridTile> {
         EventType.deadline => AppTheme.deadlineColor,
       };
 
+  /// Full detail for the tapped tile: type, **start and end time**, room,
+  /// teacher and note. Todo blocks can also edit their block note here.
   void _openInfo() {
     final e = widget.event;
+    final start = widget.userTime.localFromUtc(e.startUtc);
+    final end = widget.userTime.localFromUtc(e.endUtc);
+    final typeLabel = switch (e.type) {
+      EventType.course => '课程',
+      EventType.recurringSchedule => '周期安排',
+      EventType.todoBlock => '待办时间块',
+      EventType.deadline => '截止',
+    };
+    final rows = <({String label, String value})>[
+      (label: '类型', value: typeLabel),
+      (label: '开始', value: _stamp(start)),
+      (label: '结束', value: _stamp(end)),
+      if (e.location != null && e.location!.isNotEmpty)
+        (label: '地点', value: e.location!),
+      if (e.teacher != null && e.teacher!.isNotEmpty)
+        (label: '教师', value: e.teacher!),
+      if (e.note != null && e.note!.isNotEmpty) (label: '备注', value: e.note!),
+    ];
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(e.title),
-        content: Text([
-          if (e.type == EventType.todoBlock) '待办时间块',
-          if (e.location != null && e.location!.isNotEmpty) e.location!,
-          if (e.teacher != null && e.teacher!.isNotEmpty) e.teacher!,
-          if (e.note != null && e.note!.isNotEmpty) e.note!,
-        ].join(' · ')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final r in rows)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 44,
+                        child: Text(r.label,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      ),
+                      Expanded(child: Text(r.value, style: const TextStyle(fontSize: 13))),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
         actions: [
+          if (e.type == EventType.todoBlock)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _editBlockNote();
+              },
+              child: const Text('编辑备注'),
+            ),
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
         ],
       ),
     );
   }
 
+  /// Edits the blockNote of this todo block (local-first: the mirror + queue
+  /// update immediately, the sync engine pushes in the background).
+  Future<void> _editBlockNote() async {
+    final controller = TextEditingController(text: widget.event.note ?? '');
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑备注'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: '备注', hintText: '例如：先做第 3 章习题'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (text == null) return; // cancelled
+    await ref.read(servicesProvider).repo.localUpdate(
+          entityType: EntityTypes.todoBlock,
+          entityId: widget.event.sourceId,
+          changes: {'blockNote': text.isEmpty ? null : text},
+        );
+    ref.read(syncCoordinatorProvider.notifier).syncNow();
+  }
+
+  /// `M月d日 HH:mm` in the user's fixed timezone.
+  String _stamp(DateTime local) =>
+      '${local.month}月${local.day}日 '
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+
   // ---- drag / resize -------------------------------------------------------
 
-  void _onPanStart(DragStartDetails details) {
+  void _onDragStart(LongPressStartDetails details) {
     final size = context.size;
     if (size == null) return;
     final dyLocal = details.localPosition.dy;
@@ -810,11 +1046,11 @@ class _GridTileState extends State<_GridTile> {
     _candEnd = null;
     _candDay = null;
     _canvasBox = widget.canvasKey.currentContext?.findRenderObject() as RenderBox?;
+    widget.onPreview(null);
     setState(() => _dragging = true);
-    widget.onDragChanged(true);
   }
 
-  void _onPanUpdate(DragUpdateDetails details) {
+  void _onDragUpdate(LongPressMoveUpdateDetails details) {
     if (!_dragging) return;
     final box = _canvasBox;
     if (box == null) return;
@@ -861,6 +1097,7 @@ class _GridTileState extends State<_GridTile> {
       _candEnd = newEnd;
       _candDay = day;
     });
+    widget.onPreview(_GridDragPreview(day: day, startMinute: newStart, endMinute: newEnd));
   }
 
   int _snap5(int minute) => _snapStep(minute, 5);
@@ -896,7 +1133,7 @@ class _GridTileState extends State<_GridTile> {
       _candDay = null;
     });
     _canvasBox = null;
-    widget.onDragChanged(false);
+    widget.onPreview(null);
     if (start == null || end == null) return;
     final date = widget.days[day];
     final userTime = widget.userTime;

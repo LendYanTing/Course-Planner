@@ -14,6 +14,7 @@ import '../../domain/entities.dart';
 import '../../domain/override.dart';
 import '../../domain/todo.dart';
 import '../../state/app_services.dart';
+import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../sync/expander.dart';
@@ -37,13 +38,19 @@ class WeekPage extends ConsumerStatefulWidget {
 class _WeekPageState extends ConsumerState<WeekPage> {
   late DateTime _anchor; // any instant whose local date is inside the shown week
   bool _dragActive = false;
-  WeekViewMode _viewMode = WeekViewMode.timeline;
 
   @override
   void initState() {
     super.initState();
     _anchor = DateTime.now().toUtc();
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToTodayIfNeeded());
+  }
+
+  void _toggleViewMode() {
+    final next = ref.read(weekViewModeProvider) == WeekViewModeController.grid
+        ? WeekViewModeController.timeline
+        : WeekViewModeController.grid;
+    ref.read(weekViewModeProvider.notifier).set(next);
   }
 
   void _jumpToTodayIfNeeded() {
@@ -78,6 +85,11 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
+    final viewMode =
+        ref.watch(weekViewModeProvider) == WeekViewModeController.grid
+            ? WeekViewMode.grid
+            : WeekViewMode.timeline;
+    final noonBoundary = ref.watch(noonBoundaryProvider);
     final now = ref.read(serverNowProvider).value;
     final snap = ref.watch(snapshotProvider).value;
     final syncState = ref.watch(syncCoordinatorProvider);
@@ -105,14 +117,10 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         title: Text(title),
         actions: [
           IconButton(
-            tooltip: _viewMode == WeekViewMode.timeline ? '切到课表视图' : '切到时间轴周视图',
-            onPressed: () => setState(() {
-              _viewMode = _viewMode == WeekViewMode.timeline
-                  ? WeekViewMode.grid
-                  : WeekViewMode.timeline;
-            }),
+            tooltip: viewMode == WeekViewMode.timeline ? '切到课表视图' : '切到时间轴周视图',
+            onPressed: _toggleViewMode,
             icon: Icon(
-              _viewMode == WeekViewMode.timeline
+              viewMode == WeekViewMode.timeline
                   ? Icons.view_agenda_outlined
                   : Icons.view_day_outlined,
             ),
@@ -127,7 +135,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         ],
       ),
       body: Column(
-        children: _viewMode == WeekViewMode.grid
+        children: viewMode == WeekViewMode.grid
             ? [
                 _WeekNavRow(
                   days: days,
@@ -143,6 +151,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                     events: events,
                     snapshot: snap,
                     nowUtc: now,
+                    noonBoundaryMinutes: noonBoundary,
                     onCommitMove: _commitEventMove,
                   ),
                 ),
@@ -167,15 +176,26 @@ class _WeekPageState extends ConsumerState<WeekPage> {
       final totalHeight = _hourPx * 24;
       final nowLocal = now == null ? null : userTime.localFromUtc(now);
 
-      return Stack(children: [
-        ScrollConfiguration(
-          behavior: ScrollConfiguration.of(context).copyWith(dragDevices: {}),
-          child: SingleChildScrollView(
-            physics: _dragActive ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
-            child: SizedBox(
-              width: constraints.maxWidth,
-              height: totalHeight,
-              child: Row(
+      // Everything (day columns, event layer, now line) lives inside ONE
+      // scrollable at the same origin, so the background and the events always
+      // scroll together. Keeping the event layer outside as a sibling Stack
+      // child pinned it to the viewport while the columns scrolled away.
+      //
+      // The scrollable keeps the DEFAULT drag devices. Disabling them (an
+      // earlier workaround so tiles would win their drags) also disables touch
+      // scrolling entirely — there is no mouse wheel on a phone. Tiles use a
+      // vertical-drag recogniser instead, which shares the scrollable's slop and
+      // wins the arena because it is hit-tested first.
+      return SingleChildScrollView(
+        physics: _dragActive
+            ? const NeverScrollableScrollPhysics()
+            : const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(
+          width: constraints.maxWidth,
+          height: totalHeight,
+          child: Stack(
+            children: [
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(width: _timeGutter, child: _TimeAxis()),
@@ -193,52 +213,50 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                     ),
                 ],
               ),
-            ),
+              // event layer, same coordinate origin as the day columns
+              if (dayWidth > 0)
+                Positioned(
+                  left: _timeGutter,
+                  top: 0,
+                  width: dayWidth * 7,
+                  height: totalHeight,
+                  child: ClipRect(
+                    child: Stack(children: [
+                      for (final e in events)
+                        if (e.type != EventType.deadline)
+                          _PositionedEvent(
+                            key: ValueKey('${e.id}:${e.sourceId}'),
+                            event: e,
+                            userTime: userTime,
+                            dayWidth: dayWidth,
+                            onDragChanged: (v) => setState(() => _dragActive = v),
+                            onCommit: (start, end) => _commitEventMove(e, start, end),
+                          ),
+                      // deadline markers
+                      for (final e in events)
+                        if (e.type == EventType.deadline && _localDayOf(e.startUtc, userTime) != null)
+                          _DeadlineMarker(
+                            event: e,
+                            userTime: userTime,
+                            dayIndex: _dayIndexOf(days, e, userTime),
+                            dayWidth: dayWidth,
+                            totalHeight: totalHeight,
+                          ),
+                    ]),
+                  ),
+                ),
+              // current-time line: isolated so the per-minute tick never
+              // rebuilds the event grid above. [_NowTicker] returns its own
+              // Positioned, so it must be a DIRECT child of this Stack —
+              // wrapping it in another Positioned broke the parent data (the
+              // outer geometry won and the line was laid out as a full-day
+              // orange block covering the events).
+              if (dayWidth > 0)
+                _NowTicker(days: days, dayWidth: dayWidth, totalHeight: totalHeight),
+            ],
           ),
         ),
-        // --- event layer (same coordinate system, non-scrolling) ---
-        if (dayWidth > 0)
-          Positioned(
-            left: _timeGutter,
-            top: 0,
-            width: dayWidth * 7,
-            height: totalHeight,
-            child: ClipRect(
-              child: Stack(children: [
-                for (final e in events)
-                  if (e.type != EventType.deadline)
-                    _PositionedEvent(
-                      key: ValueKey('${e.id}:${e.sourceId}'),
-                      event: e,
-                      userTime: userTime,
-                      dayWidth: dayWidth,
-                      onDragChanged: (v) => setState(() => _dragActive = v),
-                      onCommit: (start, end) => _commitEventMove(e, start, end),
-                    ),
-                // deadline markers
-                for (final e in events)
-                  if (e.type == EventType.deadline && _localDayOf(e.startUtc, userTime) != null)
-                    _DeadlineMarker(
-                      event: e,
-                      userTime: userTime,
-                      dayIndex: _dayIndexOf(days, e, userTime),
-                      dayWidth: dayWidth,
-                      totalHeight: totalHeight,
-                    ),
-              ]),
-            ),
-          ),
-        // current-time line: isolated so the per-minute tick never rebuilds
-        // the event grid above.
-        if (dayWidth > 0)
-          Positioned(
-            left: _timeGutter,
-            top: 0,
-            width: dayWidth * 7,
-            height: totalHeight,
-            child: _NowTicker(days: days, dayWidth: dayWidth, totalHeight: totalHeight),
-          ),
-      ]);
+      );
     });
   }
 
@@ -580,7 +598,10 @@ class _PositionedEventState extends State<_PositionedEvent> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _openEditor(),
-        onVerticalDragStart: (details) {
+        // Long-press gating: a plain swipe must scroll (phones have no wheel),
+        // so moving a block is initiated by a long press — a gesture the
+        // enclosing scrollable never claims.
+        onLongPressStart: (details) {
           final ls = userTime.localFromUtc(widget.event.startUtc);
           final le = userTime.localFromUtc(widget.event.endUtc);
           _startMinute0 = ls.hour * 60 + ls.minute;
@@ -592,14 +613,15 @@ class _PositionedEventState extends State<_PositionedEvent> {
           _crossMidnight = false;
           widget.onDragChanged(true);
         },
-        onVerticalDragUpdate: (details) {
+        onLongPressMoveUpdate: (details) {
           if (!_dragging) return;
-          final deltaMin = (details.delta.dy / _hourPx * 60).round();
-          _dragBaseMinute += deltaMin;
+          // Long-press details carry the TOTAL offset from the press origin
+          // (no per-event delta), so this is an assignment, not an accumulate.
+          _dragBaseMinute = (details.offsetFromOrigin.dy / _hourPx * 60).round();
           _applyDrag(userTime);
         },
-        onVerticalDragEnd: (_) => _finishDrag(userTime),
-        onVerticalDragCancel: () => _cancelDrag(userTime),
+        onLongPressEnd: (_) => _finishDrag(userTime),
+        onLongPressCancel: () => _cancelDrag(userTime),
         child: _EventVisual(
           event: widget.event,
           color: color,
@@ -738,7 +760,8 @@ class _NowTicker extends ConsumerWidget {
     if (dayIndex < 0) return const SizedBox.shrink();
     final minute = local.hour * 60 + local.minute;
     return Positioned(
-      left: dayIndex * dayWidth,
+      // The gutter offset lives here: this widget is the Stack child itself.
+      left: _timeGutter + dayIndex * dayWidth,
       top: minute / 1440 * totalHeight - 1,
       width: dayWidth,
       height: 2,
@@ -877,6 +900,8 @@ class _EventSheet extends ConsumerWidget {
             const SizedBox(height: 8),
             Text('${fmt.format(start)} – ${fmt.format(end)}',
                 style: const TextStyle(color: Colors.black54)),
+            const SizedBox(height: 6),
+            const Text('长按色块可拖动/缩放', style: TextStyle(fontSize: 11, color: Colors.grey)),
             if (event.type == EventType.todoBlock) ...[
               const SizedBox(height: 8),
               Text('待办事项时间块', style: Theme.of(context).textTheme.bodySmall),

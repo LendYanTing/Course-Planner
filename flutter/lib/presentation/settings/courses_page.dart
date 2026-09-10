@@ -218,7 +218,7 @@ class _CourseEditorState extends ConsumerState<CourseEditor> {
     _name = TextEditingController(text: widget.existing?.name ?? '');
     _teacher = TextEditingController(text: widget.existing?.teacher ?? '');
     _location = TextEditingController(text: widget.existing?.location ?? '');
-    _color = widget.existing?.color ?? kPalette.first;
+    _color = widget.existing?.color;
   }
 
   @override
@@ -247,9 +247,24 @@ class _CourseEditorState extends ConsumerState<CourseEditor> {
             const SizedBox(height: 10),
             TextField(controller: _location, decoration: const InputDecoration(labelText: '地点（可选）')),
             const SizedBox(height: 10),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('颜色（课表/周视图色块）', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+            const SizedBox(height: 6),
             Wrap(
               spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                // No explicit colour → the timetable falls back to its default
+                // course blue. Lets courses stay visually distinct from each
+                // other instead of every course sharing the first palette entry.
+                ChoiceChip(
+                  label: const Text('默认'),
+                  selected: _color == null,
+                  onSelected: (_) => setState(() => _color = null),
+                ),
                 for (final hex in kPalette)
                   InkWell(
                     onTap: () => setState(() => _color = hex),

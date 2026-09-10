@@ -6,10 +6,26 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../app/theme.dart';
 import '../../core/time/user_time.dart';
 import '../../domain/calendar_event.dart';
+import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../sync/expander.dart';
 import 'event_projection.dart';
+
+/// Buckets events by their local calendar day, keyed exactly like
+/// [UserTime.localDateString] (zero-padded `YYYY-MM-DD`) so the month grid's
+/// lookup matches. Using unpadded fields here silently emptied every day cell.
+Map<String, List<UiEvent>> groupEventsByLocalDay(
+  List<UiEvent> events,
+  UserTime userTime,
+) {
+  final byDay = <String, List<UiEvent>>{};
+  for (final e in events) {
+    final localDate = userTime.localFromUtc(e.startUtc);
+    byDay.putIfAbsent(userTime.localDateString(localDate), () => []).add(e);
+  }
+  return byDay;
+}
 
 /// Month grid (docs/ui-interaction.md §11). One range query worth of data is
 /// indexed locally per local calendar day (docs/flutter-agent §Month).
@@ -62,14 +78,7 @@ class _MonthPageState extends ConsumerState<MonthPage> {
           .project(snap, startUtc: window.start, endUtc: window.end)
           .events;
     }
-    final byDay = <String, List<UiEvent>>{};
-    for (final e in events) {
-      final localDate = userTime.localFromUtc(e.startUtc);
-      byDay.putIfAbsent(
-        '${localDate.year}-${localDate.month}-${localDate.day}',
-        () => [],
-      ).add(e);
-    }
+    final byDay = groupEventsByLocalDay(events, userTime);
 
     final today = ref.read(serverNowProvider).value;
     final todayLocal = today == null ? null : userTime.localFromUtc(today);
@@ -121,6 +130,7 @@ class _MonthPageState extends ConsumerState<MonthPage> {
                 userTime: userTime,
                 month: firstOfMonth,
                 byDay: byDay,
+                cellHeight: ref.watch(monthCellHeightProvider),
                 todayLocal: todayLocal == null ? null : tz.TZDateTime(userTime.location, todayLocal.year, todayLocal.month, todayLocal.day),
                 onDayTap: (day) => _showDay(day, byDay[userTime.localDateString(day)] ?? const [], userTime),
               ),
@@ -148,6 +158,7 @@ class _MonthGrid extends StatelessWidget {
     required this.byDay,
     required this.todayLocal,
     required this.onDayTap,
+    required this.cellHeight,
   });
 
   final UserTime userTime;
@@ -155,6 +166,9 @@ class _MonthGrid extends StatelessWidget {
   final Map<String, List<UiEvent>> byDay;
   final DateTime? todayLocal;
   final void Function(DateTime day) onDayTap;
+
+  /// Row height in dp (a local preference, see [monthCellHeightProvider]).
+  final double cellHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -176,15 +190,21 @@ class _MonthGrid extends StatelessWidget {
             tl.month == date.month &&
             tl.day == date.day,
         onTap: () => onDayTap(date),
+        userTime: userTime,
       ));
     }
-    return GridView.count(
-      crossAxisCount: 7,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: 0.78,
-      children: cells,
-    );
+    // Height is the user's choice, so derive the aspect ratio from the actual
+    // column width instead of hard-coding one.
+    return LayoutBuilder(builder: (context, constraints) {
+      final cellWidth = constraints.maxWidth / 7;
+      return GridView.count(
+        crossAxisCount: 7,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        childAspectRatio: cellWidth / cellHeight,
+        children: cells,
+      );
+    });
   }
 }
 
@@ -194,17 +214,21 @@ class _DayCell extends StatelessWidget {
     required this.events,
     required this.isToday,
     required this.onTap,
+    required this.userTime,
   });
 
   final DateTime date;
   final List<UiEvent> events;
   final bool isToday;
   final VoidCallback onTap;
+  final UserTime userTime;
 
   @override
   Widget build(BuildContext context) {
     final border = Theme.of(context).dividerColor.withValues(alpha: 0.6);
-    final deadlineCount = events.where((e) => e.type == EventType.deadline).length;
+    final deadlines = events.where((e) => e.type == EventType.deadline).toList()
+      ..sort((a, b) => a.startUtc.compareTo(b.startUtc));
+    final chips = events.where((e) => e.type != EventType.deadline).toList();
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -228,14 +252,19 @@ class _DayCell extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 1),
-            for (final e in events.where((e) => e.type != EventType.deadline).take(3))
-              _MiniChip(event: e),
-            if (deadlineCount > 0)
-              Row(children: [
-                const Icon(Icons.flag, size: 11, color: AppTheme.deadlineColor),
-                const SizedBox(width: 2),
-                Text('$deadlineCount', style: const TextStyle(fontSize: 10, color: AppTheme.deadlineColor)),
-              ]),
+            // A non-scrolling list clips instead of overflowing, so cells stay
+            // valid at any window size even with multi-line chips.
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  for (final e in chips)
+                    _MiniChip(event: e, meta: eventMeta(e)),
+                  if (deadlines.isNotEmpty) _DeadlineLine(events: deadlines, userTime: userTime),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -243,10 +272,78 @@ class _DayCell extends StatelessWidget {
   }
 }
 
+/// Secondary line for a month cell chip: classroom/teacher for classes, the
+/// block note for todo blocks. Null when there is nothing to show — the
+/// requirement is to leave it blank, never print a placeholder.
+String? eventMeta(UiEvent e) {
+  switch (e.type) {
+    case EventType.course:
+      final parts = <String>[
+        if (e.location != null && e.location!.isNotEmpty) e.location!,
+        if (e.teacher != null && e.teacher!.isNotEmpty) e.teacher!,
+      ];
+      return parts.isEmpty ? null : parts.join(' · ');
+    case EventType.todoBlock:
+      final note = e.note;
+      return (note != null && note.isNotEmpty) ? note : null;
+    case EventType.recurringSchedule:
+    case EventType.deadline:
+      return null;
+  }
+}
+
+String _hhmmLocal(DateTime utc, UserTime userTime) {
+  final local = userTime.localFromUtc(utc);
+  return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+}
+
+/// Whether two local wall-clock instants fall on the same calendar day.
+bool _isSameDayLocal(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// Deadline marker for a day cell: the actual due **time** (not just a flag),
+/// plus a `+N` when the day holds more than one deadline.
+class _DeadlineLine extends StatelessWidget {
+  const _DeadlineLine({required this.events, required this.userTime});
+
+  final List<UiEvent> events;
+  final UserTime userTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = events.first;
+    final extra = events.length - 1;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppTheme.deadlineColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(2),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.flag, size: 10, color: AppTheme.deadlineColor),
+          const SizedBox(width: 2),
+          Expanded(
+            child: Text(
+              '${first.title} ${_hhmmLocal(first.startUtc, userTime)}'
+              '${extra > 0 ? ' +$extra' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9, color: AppTheme.deadlineColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MiniChip extends StatelessWidget {
-  const _MiniChip({required this.event});
+  const _MiniChip({required this.event, this.meta});
 
   final UiEvent event;
+  final String? meta;
 
   @override
   Widget build(BuildContext context) {
@@ -261,18 +358,34 @@ class _MiniChip extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 1),
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(2)),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 4, height: 4, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 2),
-          Expanded(
-            child: Text(
-              event.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 9),
-            ),
+          Row(
+            children: [
+              Container(width: 4, height: 4, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              const SizedBox(width: 2),
+              Expanded(
+                child: Text(
+                  event.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 9),
+                ),
+              ),
+            ],
           ),
+          if (meta != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 6, top: 1),
+              child: Text(
+                meta!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 8, color: Colors.black54),
+              ),
+            ),
         ],
       ),
     );
@@ -322,13 +435,20 @@ class _DaySheet extends StatelessWidget {
                   final endLocal = userTime.localFromUtc(e.endUtc);
                   final startText = fmt.format(startLocal);
                   final endText = fmt.format(endLocal);
+                  // Deadlines show their actual due time, not a bare "截止".
                   final showTime = e.type == EventType.deadline
-                      ? '截止'
-                      : (startText == endText ? startText : '$startText-$endText');
+                      ? '截止 $startText'
+                      : '${_isSameDayLocal(startLocal, endLocal) ? '' : '${endLocal.month}/${endLocal.day} '}'
+                          '$startText-$endText';
+                  final meta = eventMeta(e);
                   return ListTile(
                     dense: true,
                     leading: Icon(Icons.circle, size: 12, color: color),
                     title: Text(e.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: meta == null
+                        ? null
+                        : Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, color: Colors.black54)),
                     trailing: Text(showTime, style: TextStyle(fontSize: 12, color: e.type == EventType.deadline ? AppTheme.deadlineColor : Colors.grey)),
                   );
                 },

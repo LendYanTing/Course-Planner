@@ -143,6 +143,7 @@ class EventProjection {
     }
 
     final todosById = {for (final t in todos) t.id: t};
+    final categoriesById = {for (final c in liveCategories(snapshot)) c.value.id: c.value};
     for (final b in blocks) {
       final todo = todosById[b.todoId];
       if (todo == null) continue;
@@ -153,6 +154,11 @@ class EventProjection {
           break;
         }
       }
+      // Time blocks are tinted by their todo's category (the todo editor has
+      // no colour of its own), falling back to an explicit todo colour.
+      final categoryColor = todo.categoryId == null
+          ? null
+          : categoriesById[todo.categoryId!]?.color;
       events.add(UiEvent(
         id: 'todo_block:${b.id}',
         type: EventType.todoBlock,
@@ -162,7 +168,7 @@ class EventProjection {
         sourceType: EntityTypes.todoBlock,
         sourceId: b.id,
         conflict: conflict,
-        color: todo.color,
+        color: todo.color ?? categoryColor,
         note: b.blockNote,
       ));
     }
