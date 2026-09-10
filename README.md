@@ -6,7 +6,7 @@ Go 后端 + PostgreSQL，Next.js 网页端，Flutter 客户端（Windows / Andro
 
 ## ✨ 立即体验（免部署）
 
-已经部署好了公网实例，打开就能用：
+打开就能用：
 
 | | 地址 |
 | --- | --- |
@@ -17,7 +17,7 @@ Go 后端 + PostgreSQL，Next.js 网页端，Flutter 客户端（Windows / Andro
 - **Android**：到 Releases 下载最新 APK。首次启动在「服务器地址」填 `https://course.lendwishes.moe` 即可（不带路径时会自动补 `/api/v1`）。
 - 想要自己的数据？直接注册一个账号。
 
-## 软件特色
+## Features
 
 **双形态周视图**
 - **时间轴周视图**：7×24 连续网格，可拖动/缩放时间块，当前时间橙线，截止时间红线。
@@ -105,7 +105,7 @@ VS Code / Copilot 的 `.vscode/mcp.json` 顶层键是 `servers` 而不是 `mcpSe
 
 ## 🚀 快速上手
 
-### 方式一：直接用云端实例（推荐）
+### 方式一：直接用云端实例
 
 见上面的「立即体验」。网页版打开即用；Android 装好 APK 后在登录页填 `https://course.lendwishes.moe`。
 
@@ -146,7 +146,7 @@ cp flutter/android/key.properties.example flutter/android/key.properties   # 填
 cd flutter && flutter build apk --release --split-per-abi
 ```
 
-`key.properties` 与 `*.jks` 已在 `.gitignore` 中，**不要提交**。完整说明见 [`flutter/android/README-signing.md`](flutter/android/README-signing.md)。
+完整说明见 [`flutter/android/README-signing.md`](flutter/android/README-signing.md)。
 
 ## 📥 如何导入课程
 
@@ -224,6 +224,3 @@ UI (presentation)  →  Riverpod state  →  Repo / SyncEngine  →  SQLite 镜�
 | [`docs/grid-view-web.md`](docs/grid-view-web.md) | 课表（Grid）视图规格 |
 | [`docs/ui-interaction.md`](docs/ui-interaction.md) | 交互规格 |
 
-## 状态
-
-后端（REST + 同步 + MCP）、网页端、Flutter 客户端均可用；Android 包名 `com.trysting.courseplanner`。
