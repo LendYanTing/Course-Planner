@@ -85,7 +85,11 @@ class _MonthPageState extends ConsumerState<MonthPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('${local.year}年${local.month}月'),
+        // Tapping the title jumps to any date; swiping left/right steps a month.
+        title: InkWell(
+          onTap: () => _pickDate(userTime),
+          child: Text('${local.year}年${local.month}月'),
+        ),
         actions: [
           IconButton(
             onPressed: syncState.syncing
@@ -97,7 +101,13 @@ class _MonthPageState extends ConsumerState<MonthPage> {
           ),
         ],
       ),
-      body: Column(
+      body: GestureDetector(
+        onHorizontalDragEnd: (d) {
+          final v = d.primaryVelocity ?? 0;
+          if (v.abs() < 120) return;
+          _shiftMonth(v < 0 ? 1 : -1);
+        },
+        child: Column(
         children: [
           Row(
             children: [
@@ -137,8 +147,22 @@ class _MonthPageState extends ConsumerState<MonthPage> {
             ),
           ),
         ],
+        ),
       ),
     );
+  }
+
+  /// Jump to a specific month (the header is the entry point).
+  Future<void> _pickDate(UserTime userTime) async {
+    final local = userTime.localFromUtc(_month);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(local.year, local.month, 1),
+      firstDate: DateTime(local.year - 5),
+      lastDate: DateTime(local.year + 5),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _month = tz.TZDateTime(userTime.location, picked.year, picked.month, 1));
   }
 
   void _showDay(DateTime day, List<UiEvent> events, UserTime userTime) {

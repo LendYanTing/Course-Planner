@@ -28,7 +28,7 @@ import 'event_projection.dart';
 /// Todo blocks are always draggable/resizable; course & recurring-schedule
 /// tiles only when the toolbar switch is on (single occurrence edits pushed
 /// through the parent commit callback — server series apply).
-class GridViewContent extends StatefulWidget {
+class GridViewContent extends ConsumerStatefulWidget {
   const GridViewContent({
     super.key,
     required this.userTime,
@@ -37,6 +37,7 @@ class GridViewContent extends StatefulWidget {
     required this.snapshot,
     required this.nowUtc,
     required this.onCommitMove,
+    this.courseEditable = false,
     this.noonBoundaryMinutes = NoonBoundaryController.defaultMinutes,
   });
 
@@ -47,6 +48,11 @@ class GridViewContent extends StatefulWidget {
   final List<UiEvent> events;
   final EntitiesSnapshot? snapshot;
   final DateTime? nowUtc;
+
+  /// Whether course/recurring tiles can be moved. Owned by the surrounding
+  /// week view (its switch sits in the navigation row, together with the
+  /// semester choice that lives in Settings).
+  final bool courseEditable;
 
   /// Minute-of-day that starts the afternoon band (local preference; the
   /// server has no such setting). Defaults to 12:00.
@@ -61,7 +67,7 @@ class GridViewContent extends StatefulWidget {
   static const int splitGapMinutes = 45;
 
   @override
-  State<GridViewContent> createState() => _GridViewContentState();
+  ConsumerState<GridViewContent> createState() => _GridViewContentState();
 }
 
 class _PeriodRow {
@@ -165,9 +171,7 @@ class _GridLayout {
   }
 }
 
-class _GridViewContentState extends State<GridViewContent> {
-  bool _courseEditable = false;
-  String? _calendarId;
+class _GridViewContentState extends ConsumerState<GridViewContent> {
 
   @override
   Widget build(BuildContext context) {
@@ -180,14 +184,16 @@ class _GridViewContentState extends State<GridViewContent> {
     if (usable.isEmpty) {
       return const Center(child: Text('暂无学期节次模板（设置 → 学期管理）'));
     }
-    if (_calendarId == null || !usable.any((c) => c.id == _calendarId)) {
-      _calendarId = usable.first.id;
-    }
-    final rows = _rowsFor(periods.where((p) => p.calendarId == _calendarId).toList());
+    // The active semester is a local preference (设置 → 学期管理); fall back to
+    // the first one that actually has periods when it is unset or stale.
+    final preferred = ref.watch(activeSemesterProvider);
+    final calendarId = usable.any((c) => c.id == preferred)
+        ? preferred!
+        : usable.first.id;
+    final active = usable.firstWhere((c) => c.id == calendarId);
+    final rows = _rowsFor(periods.where((p) => p.calendarId == calendarId).toList());
     if (rows.isEmpty) {
-      return Center(
-        child: Text('学期「${usable.firstWhere((c) => c.id == _calendarId).name}」还没有节次'),
-      );
+      return Center(child: Text('学期「${active.name}」还没有节次'));
     }
     final nowLocal =
         widget.nowUtc == null ? null : widget.userTime.localFromUtc(widget.nowUtc!);
@@ -199,7 +205,6 @@ class _GridViewContentState extends State<GridViewContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _toolbar(usable),
         _weekHeader(nowLocal),
         Expanded(
           child: LayoutBuilder(builder: (context, constraints) {
@@ -222,7 +227,7 @@ class _GridViewContentState extends State<GridViewContent> {
                   snapshot: widget.snapshot,
                   layout: layout,
                   dayWidth: dayWidth,
-                  courseEditable: _courseEditable,
+                  courseEditable: widget.courseEditable,
                   nowLocal: todayVisible ? nowLocal : null,
                   noonBoundaryMinutes: widget.noonBoundaryMinutes,
                   onCommitMove: widget.onCommitMove,
@@ -253,34 +258,6 @@ class _GridViewContentState extends State<GridViewContent> {
       out.add(_PeriodRow(periodNo: p.periodNo, start: p.startMinute, end: p.endMinute));
     }
     return out;
-  }
-
-  Widget _toolbar(List<AcademicCalendar> usable) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 8, 0),
-      child: Row(
-        children: [
-          DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _calendarId,
-              isDense: true,
-              items: [
-                for (final c in usable)
-                  DropdownMenuItem(value: c.id, child: Text(c.name, style: const TextStyle(fontSize: 13))),
-              ],
-              onChanged: (v) => setState(() => _calendarId = v),
-            ),
-          ),
-          const Spacer(),
-          const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
-          Switch(
-            value: _courseEditable,
-            onChanged: (v) => setState(() => _courseEditable = v),
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _weekHeader(DateTime? nowLocal) {

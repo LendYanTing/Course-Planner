@@ -1,6 +1,5 @@
 import 'package:course_planner/app/theme.dart';
 import 'package:course_planner/core/time/user_time.dart';
-import 'package:course_planner/data/auth/pref_store.dart';
 import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/domain/entities.dart';
@@ -13,16 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// In-memory preference store (the real one writes to platform secure storage).
-class _MemoryPrefs extends PrefStore {
-  final _values = <String, String>{};
-
-  @override
-  Future<String?> read(String key) async => _values[key];
-
-  @override
-  Future<void> write(String key, String value) async => _values[key] = value;
-}
+import 'helpers/memory_prefs.dart';
 
 /// Regression: repeatedly toggling the week view between 时间轴 and 课表 must
 /// keep rendering the events (previously the grid could come back empty).
@@ -99,7 +89,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          prefStoreProvider.overrideWithValue(_MemoryPrefs()),
+          prefStoreProvider.overrideWithValue(MemoryPrefs()),
           snapshotProvider.overrideWith((ref) => Stream.value(snapshot)),
           sessionControllerProvider.overrideWith(_FakeSession.new),
           // "now" must fall inside the displayed week so the current-time line

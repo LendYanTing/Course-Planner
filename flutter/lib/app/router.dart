@@ -8,6 +8,7 @@ import '../presentation/calendar/week_page.dart';
 import '../presentation/home_shell.dart';
 import '../presentation/settings/courses_page.dart';
 import '../presentation/settings/import_page.dart';
+import '../presentation/settings/about_page.dart';
 import '../presentation/settings/mcp_page.dart';
 import '../presentation/settings/restore_page.dart';
 import '../presentation/settings/schedules_page.dart';
@@ -100,6 +101,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/server',
         pageBuilder: (context, state) => const MaterialPage(child: ServerPage()),
+      ),
+      GoRoute(
+        path: '/settings/about',
+        pageBuilder: (context, state) => const MaterialPage(child: AboutPage()),
       ),
       GoRoute(
         path: '/settings/mcp',

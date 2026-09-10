@@ -1,5 +1,6 @@
 import '../data/api/auth_api.dart';
 import '../data/api/data_api.dart';
+import '../data/api/github_api.dart';
 import '../data/api/http_client.dart';
 import '../data/api/import_api.dart';
 import '../data/api/mcp_api.dart';
@@ -50,6 +51,7 @@ class AppServices {
     required this.dataApi,
     required this.importApi,
     required this.mcpApi,
+    required this.githubApi,
     required this.clock,
     required this.syncEngine,
     required this.refreshCoordinator,
@@ -74,6 +76,7 @@ class AppServices {
     final dataApi = DataApi(http);
     final importApi = ImportApi(http);
     final mcpApi = McpApi(http);
+    final githubApi = GithubApi();
     final repo = EntityRepo(db, store);
     final clock = ServerClock();
     final syncEngine = SyncEngine(db: db, store: store, api: syncApi);
@@ -99,6 +102,7 @@ class AppServices {
       dataApi: dataApi,
       importApi: importApi,
       mcpApi: mcpApi,
+      githubApi: githubApi,
       clock: clock,
       syncEngine: syncEngine,
       refreshCoordinator: coordinator,
@@ -120,6 +124,7 @@ class AppServices {
   final DataApi dataApi;
   final ImportApi importApi;
   final McpApi mcpApi;
+  final GithubApi githubApi;
   final ServerClock clock;
   final SyncEngine syncEngine;
   final RefreshCoordinator refreshCoordinator;

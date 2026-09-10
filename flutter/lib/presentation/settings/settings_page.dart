@@ -704,10 +704,19 @@ class SemestersPage extends ConsumerWidget {
           : ListView(
               children: [
                 for (final cal in calendars)
-                  ExpansionTile(
-                    leading: const Icon(Icons.calendar_month),
+                  Builder(builder: (context) {
+                  final isActive =
+                      ref.watch(activeSemesterProvider) == cal.value.id;
+                  return ExpansionTile(
+                    leading: Icon(
+                      isActive ? Icons.radio_button_checked : Icons.calendar_month,
+                      color: isActive ? Theme.of(context).colorScheme.primary : null,
+                    ),
                     title: Text('${cal.value.name}${cal.pending ? ' ⏳' : ''}'),
-                    subtitle: Text('${cal.value.totalWeeks} 周 · 起始 ${cal.value.firstDay}'),
+                    subtitle: Text(
+                      '${cal.value.totalWeeks} 周 · 起始 ${cal.value.firstDay}'
+                      '${isActive ? ' · 课表当前使用' : ''}',
+                    ),
                     children: [
                       for (final p in periodsByCal[cal.value.id] ?? const [])
                         ListTile(
@@ -727,6 +736,14 @@ class SemestersPage extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Row(
                           children: [
+                            if (!isActive)
+                              TextButton.icon(
+                                icon: const Icon(Icons.check_circle_outline),
+                                label: const Text('设为课表学期'),
+                                onPressed: () => ref
+                                    .read(activeSemesterProvider.notifier)
+                                    .set(cal.value.id),
+                              ),
                             TextButton.icon(
                               icon: const Icon(Icons.add),
                               label: const Text('添加节次'),
@@ -757,7 +774,8 @@ class SemestersPage extends ConsumerWidget {
                         ),
                       ),
                     ],
-                  ),
+                  );
+                  }),
               ],
             ),
     );

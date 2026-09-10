@@ -9,6 +9,8 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../app/theme.dart';
 import '../../core/error/api_exception.dart';
 import '../../core/time/user_time.dart';
+import '../../data/local/view_models.dart';
+import '../../domain/calendar.dart';
 import '../../domain/calendar_event.dart';
 import '../../domain/entities.dart';
 import '../../domain/override.dart';
@@ -26,6 +28,24 @@ const double _timeGutter = 46.0;
 
 /// Week tab view modes: continuous 7×24 timeline vs period Grid (纯课表).
 enum WeekViewMode { timeline, grid }
+
+/// Which week of which semester the given local Monday falls in.
+///
+/// Returns null when the week is outside every known semester, which the header
+/// then renders as 「不在本学期」 rather than guessing a number.
+({int week, String calendarId})? semesterWeekFor(
+  List<AcademicCalendar> calendars,
+  UserTime userTime,
+  DateTime weekMondayLocal,
+) {
+  final dateStr = userTime.localDateString(weekMondayLocal);
+  final expander = EventExpander(userTime);
+  for (final c in calendars) {
+    final n = expander.weekOf(c.firstDay, dateStr);
+    if (n >= 1 && n <= c.totalWeeks) return (week: n, calendarId: c.id);
+  }
+  return null;
+}
 
 /// 7-column × 24-hour week grid (docs/ui-interaction.md §1).
 class WeekPage extends ConsumerStatefulWidget {
@@ -108,13 +128,39 @@ class _WeekPageState extends ConsumerState<WeekPage> {
           .events;
     }
 
-    final title = days.length == 7
+    final calendars = snap == null
+        ? const <AcademicCalendar>[]
+        : liveCalendars(snap).map((e) => e.value).toList();
+    final semesterWeek = semesterWeekFor(calendars, userTime, days.first);
+    final rangeText = days.length == 7
         ? '${days.first.month}月${days.first.day}日 – ${days.last.month}月${days.last.day}日'
         : '';
+    final semesterText =
+        semesterWeek == null ? '不在本学期' : '第${semesterWeek.week}周';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        // Tapping the title jumps to any date (also reachable by swiping the
+        // body left/right to step a week).
+        title: InkWell(
+          onTap: () => _pickDate(userTime),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(rangeText, style: const TextStyle(fontSize: 16)),
+              Text(
+                semesterText,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: semesterWeek == null
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
           IconButton(
             tooltip: viewMode == WeekViewMode.timeline ? '切到课表视图' : '切到时间轴周视图',
@@ -134,7 +180,15 @@ class _WeekPageState extends ConsumerState<WeekPage> {
           ),
         ],
       ),
-      body: Column(
+      // Swiping left/right steps a week (both view modes); vertical drags stay
+      // with the scrollable inside.
+      body: GestureDetector(
+        onHorizontalDragEnd: (d) {
+          final v = d.primaryVelocity ?? 0;
+          if (v.abs() < 120) return;
+          _moveWeek(v < 0 ? 1 : -1);
+        },
+        child: Column(
         children: viewMode == WeekViewMode.grid
             ? [
                 _WeekNavRow(
@@ -142,6 +196,20 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                   onPrev: () => _moveWeek(-1),
                   onNext: () => _moveWeek(1),
                   onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
+                  // The course-drag switch lives with the period navigation.
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
+                      Switch(
+                        value: ref.watch(courseEditableInCourseViewProvider),
+                        onChanged: (v) => ref
+                            .read(courseEditableInCourseViewProvider.notifier)
+                            .set(v),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ],
+                  ),
                 ),
                 const Divider(height: 1),
                 Expanded(
@@ -151,6 +219,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                     events: events,
                     snapshot: snap,
                     nowUtc: now,
+                    courseEditable: ref.watch(courseEditableInCourseViewProvider),
                     noonBoundaryMinutes: noonBoundary,
                     onCommitMove: _commitEventMove,
                   ),
@@ -166,8 +235,23 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                 ),
                 Expanded(child: _buildGrid(userTime, days, events, now)),
               ],
+        ),
       ),
     );
+  }
+
+  /// Jump straight to a date (the header is the entry point).
+  Future<void> _pickDate(UserTime userTime) async {
+    final current = userTime.localFromUtc(_anchor);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(current.year, current.month, current.day),
+      firstDate: DateTime(current.year - 3),
+      lastDate: DateTime(current.year + 3),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _anchor =
+        userTime.fromLocalParts(picked.year, picked.month, picked.day, 12, 0).toUtc());
   }
 
   Widget _buildGrid(UserTime userTime, List<tz.TZDateTime> days, List<UiEvent> events, DateTime? now) {
@@ -387,12 +471,14 @@ class _WeekNavRow extends StatelessWidget {
     required this.onPrev,
     required this.onNext,
     required this.onToday,
+    this.trailing,
   });
 
   final List<tz.TZDateTime> days;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onToday;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -402,6 +488,7 @@ class _WeekNavRow extends StatelessWidget {
         TextButton(onPressed: onToday, child: const Text('今天')),
         IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_right)),
         const Spacer(),
+        ?trailing,
       ],
     );
   }
@@ -568,6 +655,9 @@ class _PositionedEventState extends State<_PositionedEvent> {
   late DateTime _dragEndUtc;
   bool _dragging = false;
   int _dragBaseMinute = 0;
+
+  /// 0 = move the whole block, 1 = drag the top edge, 2 = drag the bottom edge.
+  int _mode = 0;
   int _startMinute0 = 0;
   int _endMinute0 = 0;
   bool _crossMidnight = false;
@@ -611,6 +701,15 @@ class _PositionedEventState extends State<_PositionedEvent> {
           _dragEndUtc = widget.event.endUtc;
           _dragging = true;
           _crossMidnight = false;
+          // A long press near an edge resizes that edge, anywhere else moves.
+          final h = context.size?.height ?? 0;
+          _mode = h < 26
+              ? 0
+              : details.localPosition.dy < 8
+                  ? 1
+                  : details.localPosition.dy > h - 8
+                      ? 2
+                      : 0;
           widget.onDragChanged(true);
         },
         onLongPressMoveUpdate: (details) {
@@ -626,6 +725,8 @@ class _PositionedEventState extends State<_PositionedEvent> {
           event: widget.event,
           color: color,
           dragOverlay: _dragging && _crossMidnight,
+          // Edge handles only when there is room to grab them.
+          showHandles: math.max(14.0, durationMinutes / 1440 * (_hourPx * 24)) >= 26,
         ),
       ),
     );
@@ -633,8 +734,21 @@ class _PositionedEventState extends State<_PositionedEvent> {
 
   void _applyDrag(UserTime userTime) {
     final localDate = userTime.localFromUtc(widget.event.startUtc);
-    var newStart = (_startMinute0 + _dragBaseMinute).clamp(0, 1439);
-    var newEnd = (_endMinute0 + _dragBaseMinute).clamp(0, 1440);
+    int newStart;
+    int newEnd;
+    switch (_mode) {
+      case 1: // top edge, snapped to 5 minutes
+        newStart = _snap5((_startMinute0 + _dragBaseMinute).clamp(0, 1439));
+        newEnd = _endMinute0;
+        if (newEnd - newStart < 15) return;
+      case 2: // bottom edge
+        newStart = _startMinute0;
+        newEnd = _snap5((_endMinute0 + _dragBaseMinute).clamp(0, 1440));
+        if (newEnd - newStart < 15) return;
+      default: // whole block
+        newStart = (_startMinute0 + _dragBaseMinute).clamp(0, 1439);
+        newEnd = (_endMinute0 + _dragBaseMinute).clamp(0, 1440);
+    }
     final crosses = !_sameDayMinutes(newStart, newEnd);
     setState(() {
       _crossMidnight = crosses;
@@ -650,6 +764,8 @@ class _PositionedEventState extends State<_PositionedEvent> {
   }
 
   bool _sameDayMinutes(int a, int b) => a >= 0 && a <= 1440 && b >= 0 && b <= 1440 && a < b;
+
+  int _snap5(int minute) => ((minute / 5).round() * 5).clamp(0, 1440);
 
   void _finishDrag(UserTime userTime) {
     if (!_dragging) return;
@@ -688,11 +804,17 @@ class _PositionedEventState extends State<_PositionedEvent> {
 }
 
 class _EventVisual extends StatelessWidget {
-  const _EventVisual({required this.event, required this.color, this.dragOverlay = false});
+  const _EventVisual({
+    required this.event,
+    required this.color,
+    this.dragOverlay = false,
+    this.showHandles = false,
+  });
 
   final UiEvent event;
   final Color color;
   final bool dragOverlay;
+  final bool showHandles;
 
   @override
   Widget build(BuildContext context) {
@@ -710,7 +832,8 @@ class _EventVisual extends StatelessWidget {
         border: Border.all(color: borderColor, width: conflict == ConflictState.none ? 0 : 1.5),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-      child: Column(
+      child: Stack(children: [
+        Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -723,7 +846,14 @@ class _EventVisual extends StatelessWidget {
           if (event.location != null && event.location!.isNotEmpty)
             Text(event.location!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9)),
         ],
-      ),
+        ),
+        if (showHandles) ...[
+          Positioned(left: 0, right: 0, top: 0, height: 4,
+              child: Container(color: Colors.white.withValues(alpha: 0.35))),
+          Positioned(left: 0, right: 0, bottom: 0, height: 4,
+              child: Container(color: Colors.white.withValues(alpha: 0.35))),
+        ],
+      ]),
     );
   }
 }

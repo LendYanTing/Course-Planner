@@ -7,7 +7,10 @@ import 'package:course_planner/presentation/calendar/event_projection.dart';
 import 'package:course_planner/presentation/calendar/grid_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:course_planner/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'helpers/memory_prefs.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 void main() {
@@ -131,6 +134,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [prefStoreProvider.overrideWithValue(MemoryPrefs())],
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(

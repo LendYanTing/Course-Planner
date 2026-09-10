@@ -8,7 +8,10 @@ import 'package:course_planner/presentation/calendar/grid_view.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:course_planner/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'helpers/memory_prefs.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 /// Grid (课表) tile gestures.
@@ -90,11 +93,14 @@ void main() {
   Future<void> pumpGrid(WidgetTester tester, void Function() onCommit) async {
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [prefStoreProvider.overrideWithValue(MemoryPrefs())],
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
               width: 900,
-              height: 700,
+              // Short viewport on purpose: 10 period rows (540px) must exceed it
+              // for the swipe test to have anywhere to scroll.
+              height: 400,
               child: GridViewContent(
                 userTime: ut,
                 days: days,

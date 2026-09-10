@@ -130,3 +130,70 @@ class MonthCellHeightController extends Notifier<double> {
 
 final monthCellHeightProvider =
     NotifierProvider<MonthCellHeightController, double>(MonthCellHeightController.new);
+
+/// Semester shown by the 课表 (Grid) view. Chosen in 设置 → 学期管理, so the
+/// grid itself carries no picker.
+class ActiveSemesterController extends Notifier<String?> {
+  static const _key = 'active_semester_id';
+
+  @override
+  String? build() {
+    _restore();
+    return null;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      if (v != null && v.isNotEmpty) state = v;
+    } on Object {
+      // Best effort: the grid falls back to the first usable semester.
+    }
+  }
+
+  Future<void> set(String? id) async {
+    state = (id == null || id.isEmpty) ? null : id;
+    try {
+      await ref.read(prefStoreProvider).write(_key, state ?? '');
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final activeSemesterProvider =
+    NotifierProvider<ActiveSemesterController, String?>(ActiveSemesterController.new);
+
+/// Whether course / recurring tiles can be moved in the 课表 view. The switch
+/// moved into the week-navigation row, so its state is persisted here instead
+/// of living in the page.
+class CourseEditableController extends Notifier<bool> {
+  static const _key = 'course_editable';
+
+  @override
+  bool build() {
+    _restore();
+    return false;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      if (v != null) state = v == 'true';
+    } on Object {
+      // Best effort: courses stay locked by default.
+    }
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    try {
+      await ref.read(prefStoreProvider).write(_key, '$value');
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final courseEditableInCourseViewProvider =
+    NotifierProvider<CourseEditableController, bool>(CourseEditableController.new);

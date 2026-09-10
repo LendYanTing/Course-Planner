@@ -10,7 +10,10 @@ import 'package:course_planner/state/session.dart';
 import 'package:course_planner/state/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:course_planner/state/prefs.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'helpers/memory_prefs.dart';
 
 /// Month view adjustments: time blocks show their note, classes show the room
 /// and teacher (blank when absent), and deadlines show the actual due time
@@ -160,6 +163,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          prefStoreProvider.overrideWithValue(MemoryPrefs()),
           snapshotProvider.overrideWith((ref) => Stream.value(snapshot)),
           sessionControllerProvider.overrideWith(_FakeSession.new),
         ],
