@@ -51,7 +51,10 @@ services:
     ports:
       # Loopback only: the TLS edge runs on this host and reaches the backend
       # over 127.0.0.1. Never publish 8080 to the internet.
-      - "127.0.0.1:8080:8080"
+      # SERVER_PORT is the *host* port the edge (Caddy/nginx/cloudflared) dials;
+      # set it in .env when 8080 is already taken on the host. It must match the
+      # port in the tunnel/reverse-proxy config.
+      - "127.0.0.1:${SERVER_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
       interval: 30s

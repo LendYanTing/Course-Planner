@@ -57,6 +57,7 @@ $EDITOR .env
 | `CORS_ALLOWED_ORIGINS` | 例如 `https://app.example.com` | 只有 Web 前端需要；MCP 和原生客户端不受影响。**不要填 `*`** |
 | `CP_DOMAIN` | 例如 `cp.example.com` | 仅 Caddy 方案使用 |
 | `LOG_LEVEL` | `info` | 排障时临时 `debug` |
+| `SERVER_PORT` | `8080`（默认） | Compose 在**宿主机**上发布的端口，只绑 `127.0.0.1`。宿主机 8080 已被占用时改这里（例如 `32579`），并让反向代理/Tunnel 指向同一个端口 |
 
 `gen-secrets.sh` 默认只打印到标准输出，`--write .env` 会就地替换占位值。
 
@@ -75,7 +76,7 @@ compose 做了这些事：
 - `postgres` 只在 compose 内部网络上，**不映射任何端口**，数据落在命名卷 `pgdata`
 - `server` 用 `bin/` 里的预编译二进制构建镜像（无需 Go、无需联网）
 - 镜像 entrypoint 按 `uname -m` 选择 amd64 / arm64 二进制，省掉 build-arg 的坑
-- `server` 只发布到 `127.0.0.1:8080`，即只有本机的反向代理能访问
+- `server` 只发布到 `127.0.0.1:${SERVER_PORT:-8080}`，即只有本机的反向代理能访问
 - 首次启动自动执行迁移（`server/migrations` 已编译进二进制）
 
 升级：`docker compose up -d --build`（迁移在启动时自动跑）。
@@ -130,6 +131,10 @@ cloudflared tunnel create courseplanner
 cloudflared tunnel route dns courseplanner cp.example.com
 cloudflared tunnel run --url http://127.0.0.1:8080 courseplanner
 ```
+
+`--url` 里的端口要和 `.env` 的 `SERVER_PORT`（默认 8080）一致。已经在 dashboard 里配好
+ingress 的情况下，规则里的 `service` 直接写成 `http://localhost:<SERVER_PORT>` 即可，
+例如 `{"hostname":"cp.example.com","service":"http://localhost:32579"}`。
 
 把 `cloudflared` 装成服务（`cloudflared service install`）后它随开机启动。这种方式
 服务器不需要公网入站端口，适合内网/家宽/云厂商安全组默认拒绝入站的场景。
@@ -221,7 +226,7 @@ refresh token 是不透明数据库行、不受影响，客户端走一次 `/aut
 
 ## 10. 安全清单（上线前逐条确认）
 
-- [ ] 8080 没有暴露到公网（`ss -ltnp | grep 8080` 应只看到 `127.0.0.1`）
+- [ ] 8080（或 `SERVER_PORT`）没有暴露到公网（`ss -ltnp | grep 8080` 应只看到 `127.0.0.1`）
 - [ ] PostgreSQL 端口没有暴露（Compose 默认不映射；裸机则 `listen_addresses` 保持 localhost）
 - [ ] `COOKIE_SECURE=true`
 - [ ] `JWT_SECRET` 是服务器上新生成的随机值，未进过仓库

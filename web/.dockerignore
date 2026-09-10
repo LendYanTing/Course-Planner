@@ -1,0 +1,11 @@
+# Build context is the Next.js app (deploy/web.Dockerfile). Keep the local
+# build artifacts and dependencies out of the image context: the image installs
+# its own dependencies with `npm ci`.
+node_modules
+.next
+.git
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+.env*

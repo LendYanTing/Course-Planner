@@ -1,0 +1,43 @@
+# Web (Next.js) stack for the server deployment (docs/deploy.md §12).
+#
+# Layout on the server — the app sources live next to these two files:
+#
+#   /opt/courseplanner-web/
+#     app/ components/ lib/ public/ package.json ...   <- web/ sources
+#     Dockerfile          (deploy/web.Dockerfile)
+#     docker-compose.yml  (this file)
+#     .env                WEB_PORT=32580
+#
+# Two things make it work without touching CORS:
+#   * the client talks to /api/v1 on its *own* origin, and the Next rewrites
+#     proxy that to the backend, so no cross-origin request ever happens;
+#   * this stack joins the backend's compose network, so the rewrite target is
+#     the backend service name (server:8080) rather than a published port.
+#
+# Note: `docker compose down` on the *backend* stack deletes
+# courseplanner_default; restart this stack afterwards (or use
+# `docker compose stop` there instead of `down`).
+name: courseplanner-web
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        API_PROXY_TARGET: ${API_PROXY_TARGET:-http://server:8080}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://server:8080}
+    ports:
+      # Loopback only: the TLS edge (cloudflared/Caddy) runs on this host and
+      # dials this port. Keep it in sync with the tunnel ingress rule.
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    networks:
+      - backend
+
+networks:
+  backend:
+    external: true
+    name: ${BACKEND_NETWORK:-courseplanner_default}
