@@ -18,6 +18,12 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	// Zoneinfo is embedded as a fallback: the app resolves user timezones with
+	// time.LoadLocation, and minimal server images (scratch, distroless, slim
+	// images without tzdata) have no /usr/share/zoneinfo. Without this a
+	// deployment would fail registration with INVALID_TIMEZONE. The system
+	// database still wins when it exists.
+	_ "time/tzdata"
 
 	"github.com/carryingon/courseplanner/server/internal/app"
 	"github.com/carryingon/courseplanner/server/internal/platform/config"

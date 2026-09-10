@@ -1,0 +1,34 @@
+# Caddy terminates TLS with an automatic Let's Encrypt certificate and proxies
+# to the backend, which listens on loopback only (docs/deploy.md §6.1).
+#
+#   sudo cp Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Replace cp.example.com below, or export CP_DOMAIN for the caddy service:
+#   sudo systemctl edit caddy
+#   [Service]
+#   Environment=CP_DOMAIN=your.domain
+{$CP_DOMAIN:cp.example.com} {
+	encode zstd gzip
+
+	# No client_max_body_size here on purpose: the backend caps bodies at
+	# 4 MiB itself, which CSV import needs.
+	reverse_proxy 127.0.0.1:8080 {
+		# Caddy sets both by default. They are spelled out because the app
+		# reads X-Forwarded-Proto to render the https:// endpoint address on
+		# the MCP connect page, and Host for its same-origin form check.
+		header_up X-Forwarded-Proto {scheme}
+		header_up Host {host}
+
+		transport http {
+			dial_timeout 5s
+		}
+	}
+}
+
+# To close self-service registration (docs/deploy.md §10), add a matcher:
+#
+#	@register path /api/v1/auth/register
+#	handle @register {
+#		respond 404
+#	}

@@ -1,0 +1,50 @@
+[Unit]
+Description=Course Planner backend
+Documentation=https://github.com/carryingon/courseplanner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=courseplanner
+Group=courseplanner
+WorkingDirectory=/opt/courseplanner
+
+# All configuration comes from here; it holds JWT_SECRET and the database URL,
+# so keep it root-owned with mode 600 (docs/security.md §10).
+EnvironmentFile=/etc/courseplanner/server.env
+ExecStart=/opt/courseplanner/bin/courseplanner-server
+
+# The process shuts down gracefully on SIGTERM (in-flight requests finish).
+KillSignal=SIGTERM
+TimeoutStopSec=20
+Restart=always
+RestartSec=2
+
+# --- hardening ---------------------------------------------------------------
+# Port 8080 needs no privilege, so the process gets zero capabilities and a
+# read-only filesystem: it writes nothing but logs to stdout.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadWritePaths=-/var/lib/courseplanner
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=courseplanner
+
+[Install]
+WantedBy=multi-user.target

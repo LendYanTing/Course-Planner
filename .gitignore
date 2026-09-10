@@ -48,3 +48,4 @@ pubspec.lock
 *.swp
 .DS_Store
 Thumbs.db
+dist/
