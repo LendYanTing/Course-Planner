@@ -502,6 +502,52 @@ paths:
                 confirmationId: { type: string, format: uuid }
       responses:
         '200': { description: Change set applied }
+  /mcp-tokens:
+    get:
+      operationId: listMcpTokens
+      summary: List long-lived MCP credentials (never returns the secret)
+      responses:
+        '200':
+          description: MCP token list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/McpToken' }
+    post:
+      operationId: createMcpToken
+      summary: Mint a long-lived MCP token (secret is returned once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/McpTokenCreateRequest' }
+      responses:
+        '200':
+          description: Created MCP token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: '#/components/schemas/McpTokenWithSecret' }
+        '422':
+          $ref: '#/components/responses/ErrorResponse'
+  /mcp-tokens/{tokenId}:
+    delete:
+      operationId: revokeMcpToken
+      summary: Revoke an MCP token immediately
+      parameters:
+        - { $ref: '#/components/parameters/McpTokenId' }
+      responses:
+        '204': { description: Revoked }
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
 
 components:
   securitySchemes:
@@ -509,6 +555,9 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: |
+        Either a short-lived session access token (JWT) or a long-lived MCP
+        token prefixed with `cpmcp_` (docs/mcp.md §10).
   parameters:
 
     CalendarId:
@@ -551,6 +600,11 @@ components:
       in: query
       required: true
       schema: { type: string, format: date-time }
+    McpTokenId:
+      name: tokenId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
   responses:
     UserResponse:
       description: Current user
@@ -823,6 +877,44 @@ components:
               items:
                 $ref: '#/components/schemas/SyncConflict'
             serverCursor: { type: integer }
+    McpTokenCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 64 }
+        scopes:
+          type: array
+          items: { type: string, enum: [read, write] }
+          default: [read, write]
+        expiresInDays:
+          type: integer
+          minimum: 0
+          maximum: 3650
+          description: 0 (default) means the token never expires.
+    McpToken:
+      type: object
+      required: [id, name, tokenPrefix, scopes, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        tokenPrefix: { type: string, example: cpmcp_AbCdEfGh }
+        scopes:
+          type: array
+          items: { type: string, enum: [read, write] }
+        createdAt: { type: string, format: date-time }
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+    McpTokenWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/McpToken'
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: Returned exactly once; store it in a secret manager.
+              example: cpmcp_...
     ErrorResponse:
       type: object
       required: [error]

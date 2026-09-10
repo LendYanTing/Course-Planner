@@ -15,6 +15,13 @@ Authorization: Bearer <access-token>
 Content-Type: application/json
 ```
 
+`Authorization` 接受两种凭证：
+
+```text
+access token    会话用，15 分钟寿命（见 §3）
+MCP token       cpmcp_ 前缀的长效令牌，用于 Agent / MCP 客户端（见 §18）
+```
+
 写操作推荐支持：
 
 ```http
@@ -422,3 +429,91 @@ CONFIRMATION_EXPIRED
 - 所有写入必须产生 revision / sync change
 - 删除必须留下 tombstone
 - API 不暴露数据库结构细节
+
+## 18. MCP Credentials
+
+长效 MCP 凭证的增删查。这类接口只接受会话 access token：不能用一枚 MCP token
+去铸造或吊销另一枚 MCP token。
+
+```text
+GET    /mcp-tokens
+POST   /mcp-tokens
+DELETE /mcp-tokens/{tokenId}
+```
+
+### Create
+
+Request：
+
+```json
+{
+  "name": "Claude Desktop",
+  "scopes": ["read", "write"],
+  "expiresInDays": 0
+}
+```
+
+`scopes` 缺省 `["read","write"]`；`expiresInDays` 为 0 / 缺省表示长期有效。
+
+Response（`token` 只在这里出现一次，之后无法再取回）：
+
+```json
+{
+  "data": {
+    "id": "0b0a2c1e-...",
+    "name": "Claude Desktop",
+    "token": "cpmcp_...",
+    "tokenPrefix": "cpmcp_AbCdEfGh",
+    "scopes": ["read", "write"],
+    "createdAt": "2026-09-10T03:00:00Z",
+    "expiresAt": null
+  }
+}
+```
+
+### List
+
+```json
+{
+  "data": [
+    {
+      "id": "0b0a2c1e-...",
+      "name": "Claude Desktop",
+      "tokenPrefix": "cpmcp_AbCdEfGh",
+      "scopes": ["read", "write"],
+      "createdAt": "2026-09-10T03:00:00Z",
+      "lastUsedAt": "2026-09-10T04:00:00Z",
+      "expiresAt": null,
+      "revokedAt": null
+    }
+  ]
+}
+```
+
+### Revoke
+
+```http
+DELETE /mcp-tokens/{tokenId}
+```
+
+返回 204。吊销立即生效，列表保留该记录（带 `revokedAt`）以便审计。
+
+### 浏览器 Connect
+
+```text
+GET  /mcp/connect
+POST /mcp/connect
+```
+
+不属于 `/api/v1`：这是给人用的 HTML 页面，登录后直接签发 MCP token 并给出客户端
+配置片段。流程与安全约束见 `docs/mcp.md` §11。
+
+### Scope 语义
+
+`read` 只读令牌可以调用所有读接口（含 MCP 只读工具），写路径一律返回
+`FORBIDDEN`：
+
+```text
+POST/PATCH/DELETE  /api/v1/**（除 /mcp，其按工具粒度判断）
+MCP write 工具、preview_changes、apply_changes
+```

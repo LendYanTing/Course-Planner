@@ -109,3 +109,18 @@ Access-Control-Allow-Origin: *
 - Cloudflare token
 
 使用环境变量或 secret manager。
+
+## 11. MCP Credentials
+
+长效 MCP token 是典型的"高价值、长期有效"凭证，按以下规则处理：
+
+- 明文只在创建响应中出现一次；服务端只保存 SHA-256 哈希
+- 默认永不过期，因此吊销能力必须可用：`DELETE /mcp-tokens/{id}` 立即失效
+- 只读 scope：`read` 令牌不能调用任何写路径（MCP write 工具、`preview_changes`、
+  `apply_changes`、`/agent/changes/*`、`/sync/push`，以及其余非 GET 请求），
+  越权返回 `FORBIDDEN`
+- 令牌只能在 HTTPS 边界之后分发；`/mcp/connect` 的 `redirect_uri` 白名单限定
+  回环地址，避免登录页变成 token 外泄渠道
+- 不要写进仓库、日志或示例文件；`.mcp.json` 之类的本地客户端配置必须 gitignore
+- 登录失败与越权访问写入 `auth_events`（`login_failure` / `denied`），
+  日志中绝不出现 token 明文或 `Authorization` 头
