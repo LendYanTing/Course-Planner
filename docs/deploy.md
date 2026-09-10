@@ -261,10 +261,51 @@ refresh token 是不透明数据库行、不受影响，客户端走一次 `/aut
 
 ## 12. Web / Flutter
 
-- **Web**：`web/` 是独立的 Next.js 应用，`NEXT_PUBLIC_API_BASE` 指向
-  `https://cp.example.com/api/v1`，部署到 Vercel 或同机 Node 服务即可；记得把它的源
-  加进 `CORS_ALLOWED_ORIGINS`。它调用 `/agent/changes/preview|apply` 走的是同一套
-  Domain Service，与 MCP 完全等价。
-- **Flutter**：把 API base 指向同一个 https 地址即可；refresh token 走 secure storage。
+### 12.1 Web（Next.js，同机 Node/容器部署）
+
+`web/` 是独立的 Next.js 应用。它**不在浏览器里跨域调用后端**：`lib/api/http.ts` 里的
+`API_BASE` 是同源的 `/api/v1`，由 `next.config.ts` 的 rewrites 在服务端代理到后端
+（refresh cookie 因此能自然往返）。所以：
+
+- **不需要** `NEXT_PUBLIC_API_BASE`，也**不需要**把 Web 的源加进 `CORS_ALLOWED_ORIGINS`
+  （那条配置只在浏览器真的发起跨域请求时才用得上）；
+- `API_PROXY_TARGET` 指向**从 Web 容器/进程看得到**的后端地址。同机 Compose 部署时让它
+  加入后端的 compose 网络、直接写服务名 `http://server:8080` 最省事；裸机 Node 进程则写
+  `http://127.0.0.1:${SERVER_PORT}`。
+- rewrites 会在 `next build` 时写进 routes manifest，所以 `API_PROXY_TARGET` 必须在
+  **构建时**就定好（`deploy/web.Dockerfile` 把它做成 build arg）。
+
+同机 Compose 的完整流程（源目录 + 两个部署文件，与后端互不影响）：
+
+```bash
+# 服务器上
+mkdir -p /opt/courseplanner-web && cd /opt/courseplanner-web
+#   1) 把 web/ 的源码放进来（node_modules/.next 不用传，镜像里 npm ci）
+#   2) 放部署文件
+cp <repo>/deploy/web.Dockerfile  Dockerfile
+cp <repo>/deploy/web-compose.yml docker-compose.yml
+cat > .env <<'EOF'
+WEB_PORT=32580                                   # 宿主机发布端口，需与隧道 ingress 一致
+API_PROXY_TARGET=http://server:8080              # 后端 compose 服务名
+BACKEND_NETWORK=courseplanner_default            # 后端 compose 网络
+EOF
+docker compose up -d --build
+curl -s http://127.0.0.1:32580/api/v1/meta/time   # 代理链路自检
+```
+
+宿主机没有公网出口到 npm 时，镜像默认走 `registry.npmmirror.com`；能直连官方源就加
+`--build-arg NPM_REGISTRY=https://registry.npmjs.org`。Web 只发布到 `127.0.0.1:<WEB_PORT>`，
+TLS 仍由 §6 的边缘（Tunnel/Caddy/nginx）终结。
+
+> 注意：对**后端**跑 `docker compose down` 会删掉 `courseplanner_default` 网络，Web 容器
+> 会随之失去到后端的内网连通，需 `docker compose up -d` 重启 Web 栈（后端用
+> `docker compose stop` 可避免）。日志：`docker compose logs -f web`。
+
+前端调用 `/agent/changes/preview|apply` 走的是同一套 Domain Service，与 MCP 完全等价。
+
+### 12.2 Flutter
+
+把 API base 指向同一个 https 地址即可；refresh token 走 secure storage。Flutter 是跨域
+原生客户端，同样不受 `CORS_ALLOWED_ORIGINS` 影响。
 
 后端不需要为了这两端做任何额外配置。
