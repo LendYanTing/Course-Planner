@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/auth/server_store.dart';
+import '../../state/app_services.dart';
 import '../../state/session.dart';
 
 /// Common timezones offered at registration (docs/datetime.md §2). The
@@ -36,12 +38,30 @@ class LoginPage extends ConsumerStatefulWidget {
 
 class _LoginPageState extends ConsumerState<LoginPage> {
   final _formKey = GlobalKey<FormState>();
+  final _server = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
+  List<KnownServer> _known = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill with the server we would talk to right now (last used, or the
+    // build-time default) so a first-time user sees the expected address.
+    _server.text = ref.read(servicesProvider).http.baseUrl;
+    _loadKnown();
+  }
+
+  Future<void> _loadKnown() async {
+    final known = await ref.read(servicesProvider).serverStore.known();
+    if (!mounted) return;
+    setState(() => _known = known);
+  }
 
   @override
   void dispose() {
+    _server.dispose();
     _username.dispose();
     _password.dispose();
     super.dispose();
@@ -52,6 +72,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final err = await ref.read(sessionControllerProvider.notifier).login(
           username: _username.text.trim(),
           password: _password.text,
+          serverUrl: _server.text.trim(),
         );
     if (err != null && mounted) {
       _showError(err);
@@ -66,7 +87,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   String _friendly(String raw) {
     final e = raw;
     if (e.contains('UNAUTHORIZED')) return '用户名或密码错误';
-    if (e.contains('NETWORK_ERROR')) return '无法连接服务器，请检查网络';
+    if (e.contains('NETWORK_ERROR')) return '无法连接服务器，请检查地址与网络';
     return e.replaceFirst(RegExp(r'^ApiException\([^)]*\):\s*'), '');
   }
 
@@ -89,6 +110,32 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   const SizedBox(height: 8),
                   Text('Course Planner', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _server,
+                    decoration: const InputDecoration(
+                      labelText: '服务器地址',
+                      hintText: 'http://127.0.0.1:8080',
+                      helperText: '不带路径时会自动补 /api/v1',
+                    ),
+                    keyboardType: TextInputType.url,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? '请输入服务器地址' : null,
+                    textInputAction: TextInputAction.next,
+                  ),
+                  if (_known.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final s in _known)
+                          ActionChip(
+                            avatar: const Icon(Icons.dns_outlined, size: 16),
+                            label: Text(s.baseUrl),
+                            onPressed: () => setState(() => _server.text = s.baseUrl),
+                          ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _username,
                     decoration: const InputDecoration(labelText: '用户名'),
@@ -140,6 +187,7 @@ class RegisterPage extends ConsumerStatefulWidget {
 
 class _RegisterPageState extends ConsumerState<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
+  final _server = TextEditingController();
   final _username = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -148,7 +196,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   bool _obscure = true;
 
   @override
+  void initState() {
+    super.initState();
+    _server.text = ref.read(servicesProvider).http.baseUrl;
+  }
+
+  @override
   void dispose() {
+    _server.dispose();
     _username.dispose();
     _email.dispose();
     _password.dispose();
@@ -164,6 +219,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       email: _email.text.trim().isEmpty ? null : _email.text.trim(),
       password: _password.text,
       timezone: _timezone!,
+      serverUrl: _server.text.trim(),
     );
     if (err != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
@@ -186,6 +242,18 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  TextFormField(
+                    controller: _server,
+                    decoration: const InputDecoration(
+                      labelText: '服务器地址',
+                      hintText: 'http://127.0.0.1:8080',
+                      helperText: '不带路径时会自动补 /api/v1',
+                    ),
+                    keyboardType: TextInputType.url,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? '请输入服务器地址' : null,
+                    textInputAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _username,
                     decoration: const InputDecoration(labelText: '用户名'),

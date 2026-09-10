@@ -8,7 +8,10 @@ import '../presentation/calendar/week_page.dart';
 import '../presentation/home_shell.dart';
 import '../presentation/settings/courses_page.dart';
 import '../presentation/settings/import_page.dart';
+import '../presentation/settings/mcp_page.dart';
+import '../presentation/settings/restore_page.dart';
 import '../presentation/settings/schedules_page.dart';
+import '../presentation/settings/server_page.dart';
 import '../presentation/settings/settings_page.dart';
 import '../presentation/settings/tags_page.dart';
 import '../presentation/todo/todo_page.dart';
@@ -23,19 +26,10 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     refreshListenable: revision,
     initialLocation: '/',
-    redirect: (context, state) {
-      final phase = ref.read(sessionControllerProvider).phase;
-      final location = state.matchedLocation;
-      final onAuthPage = location == '/login' || location == '/register';
-      if (phase == AuthPhase.unknown) {
-        return location == '/' ? null : '/';
-      }
-      if (phase != AuthPhase.signedIn) {
-        return onAuthPage ? null : '/login';
-      }
-      if (onAuthPage) return '/home/week';
-      return null;
-    },
+    redirect: (context, state) => resolveAuthRedirect(
+      phase: ref.read(sessionControllerProvider).phase,
+      location: state.matchedLocation,
+    ),
     routes: [
       GoRoute(
         path: '/',
@@ -103,9 +97,43 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/import',
         pageBuilder: (context, state) => const MaterialPage(child: ImportPage()),
       ),
+      GoRoute(
+        path: '/settings/server',
+        pageBuilder: (context, state) => const MaterialPage(child: ServerPage()),
+      ),
+      GoRoute(
+        path: '/settings/mcp',
+        pageBuilder: (context, state) => const MaterialPage(child: McpPage()),
+      ),
+      GoRoute(
+        path: '/settings/restore',
+        pageBuilder: (context, state) => const MaterialPage(child: RestorePage()),
+      ),
     ],
   );
 });
+
+/// Pure auth-aware redirect decision (kept out of the provider so it is
+/// unit-testable). Returns the location to navigate to, or `null` to stay.
+@visibleForTesting
+String? resolveAuthRedirect({
+  required AuthPhase phase,
+  required String location,
+}) {
+  final onAuthPage = location == '/login' || location == '/register';
+  if (phase == AuthPhase.unknown) {
+    return location == '/' ? null : '/';
+  }
+  if (phase != AuthPhase.signedIn) {
+    return onAuthPage ? null : '/login';
+  }
+  // A signed-in user never belongs on the splash or auth pages. A cached
+  // profile restart boots at '/' while already signed in — without this the
+  // splash spinner would never leave (/home/week on auth pages was already
+  // handled, but '/' was not).
+  if (onAuthPage || location == '/') return '/home/week';
+  return null;
+}
 
 class _SplashPage extends StatelessWidget {
   const _SplashPage();

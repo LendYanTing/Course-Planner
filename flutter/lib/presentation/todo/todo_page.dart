@@ -8,6 +8,8 @@ import '../../domain/todo.dart';
 import '../../state/app_services.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
+import '../settings/courses_page.dart' show kPalette;
+import 'todo_blocks_sheet.dart';
 
 /// Todo list (docs/domain-model.md §7-9): one_off / project, priority, status,
 /// deadline, estimated duration, tags/categories, linked blocks.
@@ -20,6 +22,13 @@ class TodoPage extends ConsumerStatefulWidget {
 
 class _TodoPageState extends ConsumerState<TodoPage> {
   bool _showCompleted = false;
+  final Set<String> _filterTagIds = {};
+  final Set<String> _collapsed = {};
+
+  bool _matchesFilters(Todo t) {
+    if (_filterTagIds.isNotEmpty && !_filterTagIds.any(t.tagIds.contains)) return false;
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,8 +39,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
     final blocks = snap == null ? <Live<TodoBlock>>[] : liveBlocks(snap);
 
-    final open = todos.where((t) => !t.value.isCompleted).toList();
-    final done = todos.where((t) => t.value.isCompleted).toList();
+    final open = todos.where((t) => !t.value.isCompleted && _matchesFilters(t.value)).toList();
+    final done = todos.where((t) => t.value.isCompleted && _matchesFilters(t.value)).toList();
 
     final tagById = {for (final t in tags) t.value.id: t.value};
     final categoryById = {for (final c in categories) c.value.id: c.value};
@@ -39,6 +48,23 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     for (final b in blocks) {
       blocksByTodo.putIfAbsent(b.value.todoId, () => []).add(b.value);
     }
+
+    // Group by category so the list reads as collapsible sections instead of
+    // one flat run. Uncategorised todos get their own trailing group.
+    final groups = <({String? id, List<Live<Todo>> items})>[
+      for (final c in categories)
+        if (open.any((t) => t.value.categoryId == c.value.id))
+          (id: c.value.id, items: open.where((t) => t.value.categoryId == c.value.id).toList()),
+      if (open.any((t) => t.value.categoryId == null ||
+          !categoryById.containsKey(t.value.categoryId)))
+        (
+          id: null,
+          items: open
+              .where((t) => t.value.categoryId == null ||
+                  !categoryById.containsKey(t.value.categoryId))
+              .toList(),
+        ),
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -67,40 +93,106 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         icon: const Icon(Icons.add),
         label: const Text('新建待办'),
       ),
-      body: todos.isEmpty && snap != null
-          ? const Center(child: Text('还没有待办，点右下角新建'))
-          : ListView(
-              children: [
-                for (final live in open)
-                  _TodoTile(
-                    todo: live.value,
-                    pending: live.pending,
-                    tagById: tagById,
-                    categoryById: categoryById,
-                    blocks: blocksByTodo[live.value.id] ?? const [],
-                    onChanged: (status) => _setStatus(live.value, status),
-                    onDelete: () => _delete(live.value),
-                    onEdit: () => _openEditor(context, existing: live.value),
-                  ),
-                if (_showCompleted && done.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
-                    child: Text('已完成', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  ),
-                  for (final live in done)
-                    _TodoTile(
-                      todo: live.value,
-                      pending: live.pending,
-                      tagById: tagById,
-                      categoryById: categoryById,
-                      blocks: blocksByTodo[live.value.id] ?? const [],
-                      onChanged: (status) => _setStatus(live.value, status),
-                      onDelete: () => _delete(live.value),
-                      onEdit: () => _openEditor(context, existing: live.value),
-                    ),
-                ],
-              ],
-            ),
+      body: Column(
+        children: [
+          if (tags.isNotEmpty) _buildFilters(context, tags),
+          Expanded(
+            child: todos.isEmpty && snap != null
+                ? const Center(child: Text('还没有待办，点右下角新建'))
+                : open.isEmpty && done.isEmpty
+                    ? const Center(child: Text('没有符合条件的待办'))
+                    : ListView(
+                        children: [
+                          for (final g in groups)
+                            _CategoryGroup(
+                              title: g.id == null ? '未分类' : categoryById[g.id]!.name,
+                              color: g.id == null ? null : categoryById[g.id]!.color,
+                              count: g.items.length,
+                              expanded: !_collapsed.contains(g.id ?? '__none__'),
+                              onToggle: () => setState(() {
+                                final key = g.id ?? '__none__';
+                                if (!_collapsed.remove(key)) _collapsed.add(key);
+                              }),
+                              children: [
+                                for (final live in g.items)
+                                  _TodoTile(
+                                    todo: live.value,
+                                    pending: live.pending,
+                                    tagById: tagById,
+                                    categoryById: categoryById,
+                                    blocks: blocksByTodo[live.value.id] ?? const [],
+                                    onChanged: (status) => _setStatus(live.value, status),
+                                    onDelete: () => _delete(live.value),
+                                    onEdit: () => _openEditor(context, existing: live.value),
+                                    onManageBlocks: () => _openBlocks(context, live.value),
+                                  ),
+                              ],
+                            ),
+                          if (_showCompleted && done.isNotEmpty) ...[
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+                              child: Text('已完成', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            ),
+                            for (final live in done)
+                              _TodoTile(
+                                todo: live.value,
+                                pending: live.pending,
+                                tagById: tagById,
+                                categoryById: categoryById,
+                                blocks: blocksByTodo[live.value.id] ?? const [],
+                                onChanged: (status) => _setStatus(live.value, status),
+                                onDelete: () => _delete(live.value),
+                                onEdit: () => _openEditor(context, existing: live.value),
+                                onManageBlocks: () => _openBlocks(context, live.value),
+                              ),
+                          ],
+                        ],
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilters(BuildContext context, List<Live<Tag>> tags) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('按标签筛选', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final t in tags)
+                FilterChip(
+                  label: Text(t.value.name),
+                  selected: _filterTagIds.contains(t.value.id),
+                  onSelected: (v) => setState(() {
+                    if (v) {
+                      _filterTagIds.add(t.value.id);
+                    } else {
+                      _filterTagIds.remove(t.value.id);
+                    }
+                  }),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openBlocks(BuildContext context, Todo todo) async {
+    final userTime = ref.read(userTimeProvider);
+    if (userTime == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => TodoBlocksSheet(todo: todo, userTime: userTime),
     );
   }
 
@@ -137,6 +229,56 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   }
 }
 
+/// A collapsible category section of the todo list. Tapping the header
+/// expands/collapses it; the count stays visible when collapsed.
+class _CategoryGroup extends StatelessWidget {
+  const _CategoryGroup({
+    required this.title,
+    required this.count,
+    required this.expanded,
+    required this.onToggle,
+    required this.children,
+    this.color,
+  });
+
+  final String title;
+  final int count;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final List<Widget> children;
+  final String? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppTheme.parseHex(color) ?? Theme.of(context).colorScheme.primary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Row(
+              children: [
+                Icon(expanded ? Icons.expand_more : Icons.chevron_right, size: 20),
+                const SizedBox(width: 4),
+                Container(width: 10, height: 10, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(title,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: accent)),
+                ),
+                Text('$count', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ),
+        if (expanded) ...children,
+      ],
+    );
+  }
+}
+
 class _TodoTile extends StatelessWidget {
   const _TodoTile({
     required this.todo,
@@ -147,6 +289,7 @@ class _TodoTile extends StatelessWidget {
     required this.onChanged,
     required this.onDelete,
     required this.onEdit,
+    this.onManageBlocks,
   });
 
   final Todo todo;
@@ -157,6 +300,7 @@ class _TodoTile extends StatelessWidget {
   final ValueChanged<TodoStatus> onChanged;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
+  final VoidCallback? onManageBlocks;
 
   @override
   Widget build(BuildContext context) {
@@ -213,9 +357,12 @@ class _TodoTile extends StatelessWidget {
       trailing: PopupMenuButton<String>(
         onSelected: (v) {
           if (v == 'delete') onDelete();
+          if (v == 'blocks') onManageBlocks?.call();
         },
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: 'delete', child: Text('删除', style: TextStyle(color: Colors.red))),
+        itemBuilder: (_) => [
+          if (onManageBlocks != null)
+            const PopupMenuItem(value: 'blocks', child: Text('时间块')),
+          const PopupMenuItem(value: 'delete', child: Text('删除', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -280,6 +427,8 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   DateTime? _deadline;
   String? _categoryId;
   late final Set<String> _tagIds;
+  late final List<Tag> _tags;
+  late final List<Category> _categories;
 
   @override
   void initState() {
@@ -292,6 +441,8 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
     _deadline = widget.existing?.deadlineAt;
     _categoryId = widget.existing?.categoryId;
     _tagIds = {...(widget.existing?.tagIds ?? const [])};
+    _tags = [...widget.tags];
+    _categories = [...widget.categories];
   }
 
   @override
@@ -343,6 +494,18 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
                 ),
               ),
             ]),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                // A one-off is a single errand / meeting / shopping list: at
+                // most one block and no deadline. The server imposes neither —
+                // this is our own model.
+                _type == TodoType.oneOff
+                    ? '临时活动、会议或购物清单：最多 1 个时间块，不设截止时间'
+                    : '多阶段任务：可拆成多个时间块，可设截止时间',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ),
             const SizedBox(height: 10),
             DropdownButtonFormField<TodoPriority>(
               initialValue: _priority,
@@ -356,15 +519,26 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
               onChanged: (v) => setState(() => _priority = v ?? TodoPriority.normal),
             ),
             const SizedBox(height: 10),
-            DropdownButtonFormField<String?>(
-              initialValue: _categoryId,
-              decoration: const InputDecoration(labelText: '分类'),
-              items: [
-                const DropdownMenuItem<String?>(value: null, child: Text('无')),
-                for (final c in widget.categories)
-                  DropdownMenuItem(value: c.id, child: Text(c.name)),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String?>(
+                    initialValue: _categoryId,
+                    decoration: const InputDecoration(labelText: '分类'),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('无')),
+                      for (final c in _categories)
+                        DropdownMenuItem(value: c.id, child: Text(c.name)),
+                    ],
+                    onChanged: (v) => setState(() => _categoryId = v),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: '新建分类',
+                  onPressed: _createCategory,
+                ),
               ],
-              onChanged: (v) => setState(() => _categoryId = v),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -372,30 +546,45 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: '预计时长（分钟，可选）', suffixText: '分'),
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.schedule),
-                    label: Text(_deadline == null
-                        ? '设置截止时间'
-                        : '截止 ${_formatLocal(_deadline!)}'),
-                    onPressed: _pickDeadline,
+            if (_type == TodoType.project) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.schedule),
+                      label: Text(_deadline == null
+                          ? '设置截止时间'
+                          : '截止 ${_formatLocal(_deadline!)}'),
+                      onPressed: _pickDeadline,
+                    ),
                   ),
+                  if (_deadline != null)
+                    IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => setState(() => _deadline = null),
+                    ),
+                ],
+              ),
+            ] else if (_deadline != null)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  '一次性待办不使用截止时间；保存后会清除原有的截止时间。',
+                  style: TextStyle(fontSize: 11, color: Colors.orange),
                 ),
-                if (_deadline != null)
-                  IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () => setState(() => _deadline = null),
-                  ),
-              ],
-            ),
+              ),
             const SizedBox(height: 10),
+            if (_tags.isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text('标签', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ),
             Wrap(
               spacing: 6,
+              runSpacing: 4,
               children: [
-                for (final t in widget.tags)
+                for (final t in _tags)
                   FilterChip(
                     label: Text(t.name),
                     selected: _tagIds.contains(t.id),
@@ -407,6 +596,11 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
                       }
                     }),
                   ),
+                ActionChip(
+                  avatar: const Icon(Icons.add, size: 16),
+                  label: const Text('新建标签'),
+                  onPressed: _createTag,
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -446,6 +640,96 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
     setState(() => _deadline = local.toUtc());
   }
 
+  Future<void> _createCategory() async {
+    final r = await _showCreateDialog('新建分类');
+    if (r == null || !mounted) return;
+    final id = await ref.read(servicesProvider).repo.localCreate(
+      entityType: EntityTypes.category,
+      snapshot: {'name': r.name, 'color': r.color},
+    );
+    ref.read(syncCoordinatorProvider.notifier).syncNow();
+    if (!mounted) return;
+    setState(() {
+      _categories.add(Category(id: id, name: r.name, color: r.color, revision: 0));
+      _categoryId = id;
+    });
+  }
+
+  Future<void> _createTag() async {
+    final r = await _showCreateDialog('新建标签');
+    if (r == null || !mounted) return;
+    final id = await ref.read(servicesProvider).repo.localCreate(
+      entityType: EntityTypes.tag,
+      snapshot: {'name': r.name, 'color': r.color},
+    );
+    ref.read(syncCoordinatorProvider.notifier).syncNow();
+    if (!mounted) return;
+    setState(() {
+      _tags.add(Tag(id: id, name: r.name, color: r.color, revision: 0));
+      _tagIds.add(id);
+    });
+  }
+
+  /// Inline picker for a new category/tag: name + palette. Returns the entered
+  /// name and chosen color, or null when cancelled.
+  Future<({String name, String? color})?> _showCreateDialog(String title) async {
+    final nameCtrl = TextEditingController();
+    String? color;
+    final result = await showDialog<({String name, String? color})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '名称'),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final hex in kPalette)
+                    InkWell(
+                      onTap: () => setDialogState(() => color = hex),
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: AppTheme.parseHex(hex),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: color == hex ? Colors.black : Colors.transparent,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                Navigator.pop(ctx, (name: name, color: color));
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    return result;
+  }
+
   Future<void> _save() async {
     final services = ref.read(servicesProvider);
     final title = _title.text.trim();
@@ -458,7 +742,8 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
       'categoryId': _categoryId,
       'tagIds': _tagIds.toList(),
       'priority': _priority.wire,
-      'deadlineAt': _deadline,
+      // One-off tasks carry no deadline; switching type clears it.
+      'deadlineAt': _type == TodoType.project ? _deadline : null,
     };
     if (est != null) {
       changes['estimatedMinutes'] = est;

@@ -1,7 +1,7 @@
 name: course_planner
 description: "Course Planner Flutter client - offline-first timetable, calendar, todo and sync (docs/openapi.yaml contract)."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.2+4
 
 environment:
   sdk: ^3.12.2
@@ -29,6 +29,16 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.6
   build_runner: ^2.15.1
+
+# The `sqlite3` package's build hook defaults to downloading a prebuilt
+# libsqlite3 from GitHub releases. That is unavailable in this (offline)
+# environment, so compile the vendored amalgamation instead — see
+# third_party/sqlite3/README.md. `path` is relative to this package.
+hooks:
+  user_defines:
+    sqlite3:
+      source: source
+      path: third_party/sqlite3/sqlite3.c
 
 flutter:
   uses-material-design: true

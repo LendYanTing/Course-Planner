@@ -17,32 +17,54 @@ class TagsPage extends ConsumerStatefulWidget {
   ConsumerState<TagsPage> createState() => _TagsPageState();
 }
 
-class _TagsPageState extends ConsumerState<TagsPage> {
+class _TagsPageState extends ConsumerState<TagsPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 2, vsync: this)
+    ..addListener(() => setState(() {}));
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final snap = ref.watch(snapshotProvider).value;
     final tags = snap == null ? <Live<Tag>>[] : liveTags(snap);
     final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
+    final onTagTab = _tabs.index == 0;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('标签 / 分类'),
         bottom: TabBar(
+          controller: _tabs,
           tabs: [
             Tab(text: '标签 (${tags.length})'),
             Tab(text: '分类 (${categories.length})'),
           ],
         ),
       ),
+      // Always available: previously "add" only appeared when a list was
+      // empty, so an existing non-empty list had no way to add another entry.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _add(onTagTab ? EntityTypes.tag : EntityTypes.category),
+        icon: const Icon(Icons.add),
+        label: Text(onTagTab ? '新建标签' : '新建分类'),
+      ),
       body: TabBarView(
+        controller: _tabs,
         children: [
           _List(
             entries: tags.map((e) => (id: e.value.id, name: e.value.name, color: e.value.color, pending: e.pending)).toList(),
+            emptyLabel: '还没有标签',
             onAdd: () => _add(EntityTypes.tag),
             onDelete: (id) => _delete(EntityTypes.tag, id),
           ),
           _List(
             entries: categories.map((e) => (id: e.value.id, name: e.value.name, color: e.value.color, pending: e.pending)).toList(),
+            emptyLabel: '还没有分类',
             onAdd: () => _add(EntityTypes.category),
             onDelete: (id) => _delete(EntityTypes.category, id),
           ),
@@ -117,11 +139,13 @@ class _List extends StatelessWidget {
     required this.entries,
     required this.onAdd,
     required this.onDelete,
+    this.emptyLabel = '暂无数据',
   });
 
   final List<({String id, String name, String? color, bool pending})> entries;
   final VoidCallback onAdd;
   final ValueChanged<String> onDelete;
+  final String emptyLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -130,13 +154,15 @@ class _List extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('暂无数据'),
+            Text(emptyLabel),
             TextButton(onPressed: onAdd, child: const Text('添加')),
           ],
         ),
       );
     }
     return ListView(
+      // Leave room for the floating action button.
+      padding: const EdgeInsets.only(bottom: 88),
       children: [
         for (final e in entries)
           ListTile(

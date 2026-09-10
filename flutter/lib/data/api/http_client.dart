@@ -15,12 +15,13 @@ typedef RefreshCallback = Future<bool> Function();
 /// * one retry after a successful token refresh (never blindly retries
 ///   non-idempotent requests).
 class ApiHttp {
-  ApiHttp._(this.dio, this._setAccessToken);
+  ApiHttp._(this.dio, this._setAccessToken, this._baseUrl);
 
-  factory ApiHttp.create({required RefreshCallback onRefresh}) {
+  factory ApiHttp.create({required RefreshCallback onRefresh, String? baseUrl}) {
+    final initial = baseUrl ?? AppConfig.apiBaseUrl;
     final dio = Dio(
       BaseOptions(
-        baseUrl: AppConfig.apiBaseUrl,
+        baseUrl: initial,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 30),
         sendTimeout: const Duration(seconds: 15),
@@ -33,11 +34,22 @@ class ApiHttp {
       onRefresh: onRefresh,
       dio: dio,
     ));
-    return ApiHttp._(dio, (t) => token = t);
+    return ApiHttp._(dio, (t) => token = t, initial);
   }
 
   final Dio dio;
   final void Function(String? token) _setAccessToken;
+  String _baseUrl;
+
+  /// The server currently in use.
+  String get baseUrl => _baseUrl;
+
+  /// Repoints the client at another server. Tokens are server-scoped by the
+  /// caller ([TokenBox.serverKey]); this only rewrites the transport target.
+  void setBaseUrl(String url) {
+    _baseUrl = url;
+    dio.options.baseUrl = url;
+  }
 
   /// Injects the in-memory access token used by the auth interceptor.
   void setAccessToken(String? token) => _setAccessToken(token);
