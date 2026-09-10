@@ -1,0 +1,7 @@
+# Copy to android/key.properties and fill in your own values.
+# The real key.properties and the keystore are gitignored — never commit them.
+# See README-signing.md for the keytool command and what each field means.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=upload
+storeFile=/absolute/path/to/course-planner-upload.jks

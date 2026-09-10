@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adaptive icon field: Material Indigo 600 (matches the app's theme seed). -->
+    <color name="ic_launcher_background">#3949AB</color>
+</resources>

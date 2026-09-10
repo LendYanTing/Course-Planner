@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon foreground: check mark (top-left) + pen (bottom-right).
+  108x108 viewport; glyphs stay inside the central 72dp safe zone (and its
+  inscribed circle) so no launcher mask clips them.
+  Coordinates mirror scripts/generate_android_icon.py — keep them in sync.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- check mark: (25,37) -> (32,46) -> (50,27), round caps and joins -->
+    <path
+        android:pathData="M32,44 L39,53 L57,34"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- pen: nib apex at the lower-left, body running up-right at 45° -->
+    <path
+        android:pathData="M49,80 L61.73,75.75 L81.51,55.97 L73.03,47.49 L53.24,67.26 Z"
+        android:fillColor="#FFFFFFFF" />
+</vector>

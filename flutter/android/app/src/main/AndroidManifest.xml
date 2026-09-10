@@ -1,8 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The client talks to a Course Planner backend over HTTP(S). The Flutter
+         template declares INTERNET only in the debug/profile manifests, so
+         without it here a RELEASE build would have no network access at all. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="course_planner"
+        android:label="Course Planner"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -1,4 +1,4 @@
-package com.carryingon.course_planner
+package com.trysting.courseplanner
 
 import io.flutter.embedding.android.FlutterActivity
 
