@@ -356,6 +356,14 @@ class SettingsPage extends ConsumerWidget {
           ),
           const Divider(),
           ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('关于'),
+            subtitle: const Text('版本、检查更新、项目主页'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/about'),
+          ),
+          const Divider(),
+          ListTile(
             leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
             title: Text('退出登录', style: TextStyle(color: Theme.of(context).colorScheme.error)),
             onTap: () async {
