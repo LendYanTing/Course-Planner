@@ -16,6 +16,7 @@ import '../../state/app_services.dart';
 import '../../state/prefs.dart';
 import '../../state/sync_controller.dart';
 import 'event_projection.dart';
+import 'month_page.dart' show weekGutterLabel;
 
 /// Grid (纯课表) view — spec docs/grid-view-web.md.
 ///
@@ -265,7 +266,18 @@ class _GridViewContentState extends ConsumerState<GridViewContent> {
     final colors = Theme.of(context).colorScheme;
     return Row(
       children: [
-        const SizedBox(width: GridViewContent.leftWidth),
+        // The gutter over the period column carries the month.
+        SizedBox(
+          width: GridViewContent.leftWidth,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Text(
+              weekGutterLabel(widget.days),
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 11, color: colors.outline),
+            ),
+          ),
+        ),
         for (var i = 0; i < 7; i++)
           Expanded(
             child: Padding(

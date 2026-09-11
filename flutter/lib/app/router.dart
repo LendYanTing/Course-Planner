@@ -168,13 +168,35 @@ class CoursePlannerApp extends ConsumerStatefulWidget {
   ConsumerState<CoursePlannerApp> createState() => _CoursePlannerAppState();
 }
 
-class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp> {
+class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(sessionControllerProvider.notifier).bootstrap();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Android suspends timers in the background, so the once-a-minute ticker
+  /// behind the current-time line can be hours stale on return. Re-read the
+  /// server clock (the device clock may also have moved) and catch up.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (ref.read(sessionControllerProvider).phase != AuthPhase.signedIn) return;
+    final coordinator = ref.read(syncCoordinatorProvider.notifier);
+    // ignore: unawaited_futures
+    coordinator.syncClock();
+    // ignore: unawaited_futures
+    coordinator.syncNow();
   }
 
   @override

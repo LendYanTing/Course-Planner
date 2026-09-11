@@ -1,6 +1,7 @@
 import 'package:course_planner/core/config/app_info.dart';
 import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/domain/calendar.dart';
+import 'package:course_planner/presentation/calendar/month_page.dart';
 import 'package:course_planner/presentation/calendar/week_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -44,6 +45,26 @@ void main() {
 
     test('no semesters at all is simply "not in a semester"', () {
       expect(semesterWeekFor(const [], ut, monday(2026, 9, 7)), isNull);
+    });
+  });
+
+  group('weekGutterLabel', () {
+    test('single month', () {
+      expect(
+        weekGutterLabel([DateTime(2026, 9, 7), DateTime(2026, 9, 13)]),
+        '9月',
+      );
+    });
+
+    test('week spanning two months names both', () {
+      expect(
+        weekGutterLabel([DateTime(2026, 8, 31), DateTime(2026, 9, 6)]),
+        '8/9月',
+      );
+    });
+
+    test('empty is blank', () {
+      expect(weekGutterLabel(const []), '');
     });
   });
 

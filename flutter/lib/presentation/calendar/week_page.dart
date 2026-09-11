@@ -22,6 +22,7 @@ import '../../state/sync_controller.dart';
 import '../../sync/expander.dart';
 import 'event_projection.dart';
 import 'grid_view.dart';
+import 'month_page.dart' show weekGutterLabel;
 
 const double _hourPx = 48.0;
 const double _timeGutter = 46.0;
@@ -67,6 +68,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
   }
 
   void _toggleViewMode() {
+    _slideDir = 1;
     final next = ref.read(weekViewModeProvider) == WeekViewModeController.grid
         ? WeekViewModeController.timeline
         : WeekViewModeController.grid;
@@ -89,9 +91,13 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     return tz.TZDateTime(userTime.location, local.year, local.month, local.day - (wd - 1));
   }
 
+  /// Which way the last period change went, so the slide runs the right way.
+  int _slideDir = 1;
+
   void _moveWeek(int deltaWeeks) {
     final userTime = ref.read(userTimeProvider);
     if (userTime == null) return;
+    if (deltaWeeks != 0) _slideDir = deltaWeeks > 0 ? 1 : -1;
     final local = userTime.localFromUtc(_anchor);
     setState(() => _anchor = userTime.addLocalDays(local, deltaWeeks * 7));
   }
@@ -188,7 +194,28 @@ class _WeekPageState extends ConsumerState<WeekPage> {
           if (v.abs() < 120) return;
           _moveWeek(v < 0 ? 1 : -1);
         },
-        child: Column(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            // The incoming page comes in from the swipe direction; the outgoing
+            // one leaves the other way, otherwise both travel together.
+            final incoming = child.key == ValueKey(_pageKey(days, viewMode));
+            final dx = (incoming ? _slideDir : -_slideDir).toDouble();
+            return ClipRect(
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: Offset(dx, 0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: KeyedSubtree(
+            key: ValueKey(_pageKey(days, viewMode)),
+            child: Column(
         children: viewMode == WeekViewMode.grid
             ? [
                 _WeekNavRow(
@@ -235,10 +262,17 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                 ),
                 Expanded(child: _buildGrid(userTime, days, events, now)),
               ],
+            ),
+          ),
         ),
       ),
     );
   }
+
+  /// Identity of the shown period (week + mode) so the switcher animates on a
+  /// period change and stays still on unrelated rebuilds.
+  String _pageKey(List<tz.TZDateTime> days, WeekViewMode mode) =>
+      '${days.first.year}-${days.first.month}-${days.first.day}-${mode.name}';
 
   /// Jump straight to a date (the header is the entry point).
   Future<void> _pickDate(UserTime userTime) async {
@@ -525,7 +559,18 @@ class _WeekHeader extends StatelessWidget {
         ),
         Row(
           children: [
-            const SizedBox(width: _timeGutter),
+            // The gutter over the time axis carries the month.
+            SizedBox(
+              width: _timeGutter,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(
+                  weekGutterLabel(days),
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 11, color: colors.outline),
+                ),
+              ),
+            ),
             for (var i = 0; i < 7; i++)
               Expanded(
                 child: _DayHeader(

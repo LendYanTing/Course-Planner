@@ -17,10 +17,26 @@ final serverClockProvider = Provider<ServerClock>(
   (ref) => ref.watch(servicesProvider).clock,
 );
 
+/// Bumped when the clock needs re-reading right now (e.g. the app came back
+/// from the background and the per-minute ticker had been suspended).
+class ClockRevisionController extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state = state + 1;
+}
+
+final clockRevisionProvider =
+    NotifierProvider<ClockRevisionController, int>(ClockRevisionController.new);
+
 /// Estimated server "now", refreshed once per minute (docs/datetime.md §8-9).
 /// Only the current-time indicator watches this provider — calendar data has
 /// its own provider, so a tick never rebuilds event grids.
+///
+/// Watching [clockRevisionProvider] restarts the generator, so a bump emits a
+/// fresh value immediately instead of waiting out the suspended delay.
 final serverNowProvider = StreamProvider<DateTime>((ref) async* {
+  ref.watch(clockRevisionProvider);
   final clock = ref.watch(serverClockProvider);
   while (true) {
     yield clock.estimateNow().toUtc();
@@ -118,9 +134,10 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
     });
   }
 
-  /// Clock sync + initial pull after login/startup.
-  Future<void> syncClockAndPull() async {
-    debugPrint('[sync] syncClockAndPull start');
+  /// Reads `/meta/time` (or falls back to the persisted observation). Kept
+  /// separate so returning from the background can refresh the clock without
+  /// running a whole sync cycle.
+  Future<void> syncClock() async {
     final services = ref.read(servicesProvider);
     try {
       final serverNow = await services.authApi.serverTime();
@@ -134,12 +151,21 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
       debugPrint('[sync] clock fetched: ${serverNow.toIso8601String()}');
     } on Object catch (e) {
       debugPrint('[sync] clock fetch failed: $e');
-      // offline: fall back to the persisted clock observation below
+      final meta = await services.store.meta();
+      if (!services.clock.synced &&
+          meta?.clockServerUtc != null &&
+          meta?.clockFetchedAt != null) {
+        services.clock.restore(meta!.clockServerUtc!, meta.clockFetchedAt!);
+      }
     }
-    final meta = await services.store.meta();
-    if (!services.clock.synced && meta?.clockServerUtc != null && meta?.clockFetchedAt != null) {
-      services.clock.restore(meta!.clockServerUtc!, meta.clockFetchedAt!);
-    }
+    // The ticker may have been asleep for a long time; force it to re-emit.
+    ref.read(clockRevisionProvider.notifier).bump();
+  }
+
+  /// Clock sync + initial pull after login/startup.
+  Future<void> syncClockAndPull() async {
+    debugPrint('[sync] syncClockAndPull start');
+    await syncClock();
     await syncNow();
     startPeriodicSync();
     debugPrint('[sync] syncClockAndPull done');

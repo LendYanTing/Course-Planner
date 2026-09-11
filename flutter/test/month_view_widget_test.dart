@@ -208,6 +208,36 @@ void main() {
     expect(reminderTop, lessThan(blockTop),
         reason: 'the deadline line must sit above the block chip in the cell');
   });
+
+  testWidgets('swiping steps to the next month', (tester) async {
+    final ut = UserTime.tryCreate('Asia/Shanghai')!;
+    final nowLocal = ut.localFromUtc(DateTime.now().toUtc());
+    final next = DateTime(nowLocal.year, nowLocal.month + 1, 1);
+    String label(int y, int m) => '$y年$m月';
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          prefStoreProvider.overrideWithValue(MemoryPrefs()),
+          snapshotProvider.overrideWith((ref) => Stream.value(EntitiesSnapshot(
+                rows: const [], pendingOps: const [], conflicts: const []))),
+          sessionControllerProvider.overrideWith(_FakeSession.new),
+        ],
+        child: const MaterialApp(home: MonthPage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text(label(nowLocal.year, nowLocal.month)), findsOneWidget);
+
+    // A fling: the page reacts to velocity, and the switch animates.
+    await tester.fling(find.byType(MonthPage), const Offset(-320, 0), 1200);
+    await tester.pumpAndSettle();
+
+    expect(find.text(label(next.year, next.month)), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 /// Signed-in session with a fixed timezone (no providers touched).

@@ -12,6 +12,16 @@ import '../../state/sync_controller.dart';
 import '../../sync/expander.dart';
 import 'event_projection.dart';
 
+/// Fills the blank gutter left of the weekday row: the month(s) the week spans.
+String weekGutterLabel(List<DateTime> days) {
+  if (days.isEmpty) return '';
+  final first = days.first;
+  final last = days.last;
+  return first.month == last.month
+      ? '${first.month}月'
+      : '${first.month}/${last.month}月';
+}
+
 /// Buckets events by their local calendar day, keyed exactly like
 /// [UserTime.localDateString] (zero-padded `YYYY-MM-DD`) so the month grid's
 /// lookup matches. Using unpadded fields here silently emptied every day cell.
@@ -46,9 +56,13 @@ class _MonthPageState extends ConsumerState<MonthPage> {
     _month = now;
   }
 
+  /// Which way the last month change went, so the slide runs the right way.
+  int _slideDir = 1;
+
   void _shiftMonth(int delta) {
     final userTime = ref.read(userTimeProvider);
     if (userTime == null) return;
+    if (delta != 0) _slideDir = delta > 0 ? 1 : -1;
     final local = userTime.localFromUtc(_month);
     setState(() {
       _month = tz.TZDateTime(userTime.location, local.year, local.month + delta, 1);
@@ -107,7 +121,26 @@ class _MonthPageState extends ConsumerState<MonthPage> {
           if (v.abs() < 120) return;
           _shiftMonth(v < 0 ? 1 : -1);
         },
-        child: Column(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            final incoming = child.key == ValueKey(_monthKey(local));
+            final dx = (incoming ? _slideDir : -_slideDir).toDouble();
+            return ClipRect(
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: Offset(dx, 0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: KeyedSubtree(
+            key: ValueKey(_monthKey(local)),
+            child: Column(
         children: [
           Row(
             children: [
@@ -147,10 +180,16 @@ class _MonthPageState extends ConsumerState<MonthPage> {
             ),
           ),
         ],
+            ),
+          ),
         ),
       ),
     );
   }
+
+  /// Identity of the shown month so the switcher animates on a month change and
+  /// stays still on unrelated rebuilds.
+  String _monthKey(DateTime local) => '${local.year}-${local.month}';
 
   /// Jump to a specific month (the header is the entry point).
   Future<void> _pickDate(UserTime userTime) async {
