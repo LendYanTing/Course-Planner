@@ -20,6 +20,58 @@ import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../state/sync_controller.dart';
 
+/// Line budget for course tiles: long room names ("逸夫楼201-阶梯教室") need more
+/// than one line, long course names more than two.
+Future<void> _pickTileTextLines(BuildContext context, WidgetRef ref) async {
+  var lines = ref.read(tileTextLinesProvider);
+  final picked = await showDialog<({int title, int location})>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) {
+        Widget slider(String label, int value, ValueChanged<int> onChanged) => Column(
+              children: [
+                Text('$label：$value 行', style: const TextStyle(fontSize: 14)),
+                Slider(
+                  value: value.toDouble(),
+                  min: TileTextLinesController.minLines.toDouble(),
+                  max: TileTextLinesController.maxLines.toDouble(),
+                  divisions: TileTextLinesController.maxLines -
+                      TileTextLinesController.minLines,
+                  label: '$value',
+                  onChanged: (v) => setLocal(() => onChanged(v.round())),
+                ),
+              ],
+            );
+        return AlertDialog(
+          title: const Text('课表文字行数'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              slider('课程名称', lines.title,
+                  (v) => lines = (title: v, location: lines.location)),
+              slider('上课地点', lines.location,
+                  (v) => lines = (title: lines.title, location: v)),
+              const Text('地点较长的教室（如「逸夫楼201-阶梯教室」）可以调成 2 行。',
+                  style: TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, lines),
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  if (picked == null) return;
+  final notifier = ref.read(tileTextLinesProvider.notifier);
+  await notifier.setTitle(picked.title);
+  await notifier.setLocation(picked.location);
+}
+
 /// Row-height picker for the month grid.
 Future<void> _pickMonthCellHeight(BuildContext context, WidgetRef ref) async {
   var value = ref.read(monthCellHeightProvider);
@@ -316,6 +368,16 @@ class SettingsPage extends ConsumerWidget {
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _pickMonthCellHeight(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.format_line_spacing),
+            title: const Text('课表文字行数'),
+            subtitle: Text(
+              '课程名称 ${ref.watch(tileTextLinesProvider).title} 行 · '
+              '上课地点 ${ref.watch(tileTextLinesProvider).location} 行',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _pickTileTextLines(context, ref),
           ),
           const Divider(),
           const _SectionHeader('服务器与数据'),

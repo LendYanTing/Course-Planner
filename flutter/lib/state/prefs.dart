@@ -197,3 +197,65 @@ class CourseEditableController extends Notifier<bool> {
 
 final courseEditableInCourseViewProvider =
     NotifierProvider<CourseEditableController, bool>(CourseEditableController.new);
+
+/// How many lines a course/schedule tile gives to its title and to its
+/// location. Long room names ("逸夫楼201-阶梯教室") do not fit on one line, so
+/// both are adjustable.
+class TileTextLinesController
+    extends Notifier<({int title, int location})> {
+  static const defaultTitle = 2;
+  static const defaultLocation = 1;
+  static const minLines = 1;
+  static const maxLines = 4;
+
+  static const _titleKey = 'tile_title_lines';
+  static const _locationKey = 'tile_location_lines';
+
+  static ({int title, int location}) get defaults =>
+      (title: defaultTitle, location: defaultLocation);
+
+  @override
+  ({int title, int location}) build() {
+    _restore();
+    return defaults;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final prefs = ref.read(prefStoreProvider);
+      final t = int.tryParse(await prefs.read(_titleKey) ?? '');
+      final l = int.tryParse(await prefs.read(_locationKey) ?? '');
+      state = (
+        title: _clamp(t ?? defaultTitle),
+        location: _clamp(l ?? defaultLocation),
+      );
+    } on Object {
+      // Best effort: keep the defaults.
+    }
+  }
+
+  Future<void> setTitle(int lines) async {
+    state = (title: _clamp(lines), location: state.location);
+    await _write(_titleKey, state.title);
+  }
+
+  Future<void> setLocation(int lines) async {
+    state = (title: state.title, location: _clamp(lines));
+    await _write(_locationKey, state.location);
+  }
+
+  static int _clamp(int v) => v.clamp(minLines, maxLines);
+
+  Future<void> _write(String key, int value) async {
+    try {
+      await ref.read(prefStoreProvider).write(key, '$value');
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final tileTextLinesProvider =
+    NotifierProvider<TileTextLinesController, ({int title, int location})>(
+  TileTextLinesController.new,
+);

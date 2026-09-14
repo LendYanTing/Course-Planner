@@ -260,4 +260,95 @@ void main() {
     expect(late.am, 2, reason: '13:00 is still morning at a 14:00 boundary');
     expect(late.pm, 1, reason: 'only 15:00 is afternoon at 14:00');
   });
+
+  testWidgets('tile title/location line counts follow the preference',
+      (tester) async {
+    final ut = UserTime.tryCreate('Asia/Shanghai')!;
+    final days = <tz.TZDateTime>[
+      for (var i = 0; i < 7; i++) tz.TZDateTime(ut.location, 2026, 9, 7 + i),
+    ];
+    final snapshot = EntitiesSnapshot(
+      rows: [
+        EntityRow(
+          entityType: EntityTypes.calendar,
+          entityId: 'cal1',
+          revision: 1,
+          payload: {
+            'id': 'cal1', 'name': '2026秋', 'firstDay': '2026-09-07',
+            'totalWeeks': 16, 'revision': 1,
+          },
+        ),
+        EntityRow(
+          entityType: EntityTypes.period,
+          entityId: 'p1',
+          revision: 1,
+          payload: {
+            'id': 'p1', 'calendarId': 'cal1', 'periodNo': 1,
+            'startLocal': '08:00', 'endLocal': '08:45', 'revision': 1,
+          },
+        ),
+      ],
+      pendingOps: const [],
+      conflicts: const [],
+    );
+    final events = <UiEvent>[
+      UiEvent(
+        id: 'course:m1:2026-09-07',
+        type: EventType.course,
+        title: '中国近现代史纲要',
+        startUtc: DateTime.utc(2026, 9, 7, 0, 0),
+        endUtc: DateTime.utc(2026, 9, 7, 0, 45),
+        sourceType: EntityTypes.courseMeeting,
+        sourceId: 'm1',
+        conflict: ConflictState.none,
+        location: '逸夫楼201-阶梯教室',
+      ),
+    ];
+
+    // A container we can drive directly: re-pumping a ProviderScope would reuse
+    // the same notifier, so a second set of overrides would never be read.
+    final container = ProviderContainer(
+      overrides: [prefStoreProvider.overrideWithValue(MemoryPrefs())],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 900,
+              height: 700,
+              child: GridViewContent(
+                userTime: ut,
+                days: days,
+                events: events,
+                snapshot: snapshot,
+                nowUtc: null,
+                onCommitMove: (e, s, en) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    int titleLines() =>
+        tester.widget<Text>(find.text('中国近现代史纲要').first).maxLines!;
+    int locationLines() =>
+        tester.widget<Text>(find.text('逸夫楼201-阶梯教室').first).maxLines!;
+
+    // Defaults.
+    expect(titleLines(), 2);
+    expect(locationLines(), 1);
+
+    // A long room name can be given two lines, the name one.
+    await container.read(tileTextLinesProvider.notifier).setTitle(1);
+    await container.read(tileTextLinesProvider.notifier).setLocation(2);
+    await tester.pumpAndSettle();
+    expect(titleLines(), 1);
+    expect(locationLines(), 2);
+  });
 }

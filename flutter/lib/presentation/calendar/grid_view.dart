@@ -817,6 +817,8 @@ class _GridTileState extends ConsumerState<_GridTile> {
     final laneW = (widget.dayWidth - 3) / p.laneCount;
     final color = _colorFor(widget.event);
     final conflict = widget.event.conflict;
+    // Line budget for the title / location, adjustable in Settings.
+    final lines = ref.watch(tileTextLinesProvider);
 
     // The source tile stays at its clipped slot (dimmed) while dragging; the
     // target slot is shown by the parent's ghost preview. Repositioning the
@@ -868,7 +870,7 @@ class _GridTileState extends ConsumerState<_GridTile> {
               children: [
                 Flexible(
                   child: Text(widget.event.title,
-                      maxLines: 2,
+                      maxLines: lines.title,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           color: Colors.white,
@@ -878,7 +880,7 @@ class _GridTileState extends ConsumerState<_GridTile> {
                 if (widget.event.location != null && widget.event.location!.isNotEmpty)
                   Flexible(
                     child: Text(widget.event.location!,
-                        maxLines: 1,
+                        maxLines: lines.location,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: Colors.white70, fontSize: 9)),
                   ),

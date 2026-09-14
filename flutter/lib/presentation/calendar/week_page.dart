@@ -347,6 +347,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                             event: e,
                             userTime: userTime,
                             dayWidth: dayWidth,
+                            textLines: ref.watch(tileTextLinesProvider),
                             onDragChanged: (v) => setState(() => _dragActive = v),
                             onCommit: (start, end) => _commitEventMove(e, start, end),
                           ),
@@ -683,6 +684,7 @@ class _PositionedEvent extends StatefulWidget {
     required this.dayWidth,
     required this.onDragChanged,
     required this.onCommit,
+    required this.textLines,
   });
 
   final UiEvent event;
@@ -690,6 +692,9 @@ class _PositionedEvent extends StatefulWidget {
   final double dayWidth;
   final ValueChanged<bool> onDragChanged;
   final void Function(DateTime startUtc, DateTime endUtc) onCommit;
+
+  /// Line budget for the title / location (Settings → 外观与界面).
+  final ({int title, int location}) textLines;
 
   @override
   State<_PositionedEvent> createState() => _PositionedEventState();
@@ -769,6 +774,7 @@ class _PositionedEventState extends State<_PositionedEvent> {
         child: _EventVisual(
           event: widget.event,
           color: color,
+          textLines: widget.textLines,
           dragOverlay: _dragging && _crossMidnight,
           // Edge handles only when there is room to grab them.
           showHandles: math.max(14.0, durationMinutes / 1440 * (_hourPx * 24)) >= 26,
@@ -852,12 +858,14 @@ class _EventVisual extends StatelessWidget {
   const _EventVisual({
     required this.event,
     required this.color,
+    required this.textLines,
     this.dragOverlay = false,
     this.showHandles = false,
   });
 
   final UiEvent event;
   final Color color;
+  final ({int title, int location}) textLines;
   final bool dragOverlay;
   final bool showHandles;
 
@@ -884,12 +892,15 @@ class _EventVisual extends StatelessWidget {
         children: [
           Text(
             event.title,
-            maxLines: 2,
+            maxLines: textLines.title,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w600),
           ),
           if (event.location != null && event.location!.isNotEmpty)
-            Text(event.location!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 9)),
+            Text(event.location!,
+                maxLines: textLines.location,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white70, fontSize: 9)),
         ],
         ),
         if (showHandles) ...[
