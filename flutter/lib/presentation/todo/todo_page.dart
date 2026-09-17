@@ -102,6 +102,9 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                 : open.isEmpty && done.isEmpty
                     ? const Center(child: Text('没有符合条件的待办'))
                     : ListView(
+                        // Room for the FAB, which otherwise sits on top of the
+                        // last row when the list is scrolled to the bottom.
+                        padding: const EdgeInsets.only(bottom: 96),
                         children: [
                           for (final g in groups)
                             _CategoryGroup(

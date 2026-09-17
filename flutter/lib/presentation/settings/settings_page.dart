@@ -20,6 +20,28 @@ import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../state/sync_controller.dart';
 
+/// Drops the current connections and re-syncs. The same thing happens
+/// automatically after a sync timeout, but a manual trigger makes a wedged app
+/// recoverable without killing it.
+Future<void> _resetNetwork(BuildContext context, WidgetRef ref) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('重置网络连接？'),
+      content: const Text('会中断正在进行的同步，丢弃现有连接后重新读取服务器时间并同步一次。'
+          '不会删除本地数据。'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('重置')),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  final messenger = ScaffoldMessenger.of(context);
+  await ref.read(syncCoordinatorProvider.notifier).resetNetworkState(reason: '手动');
+  messenger.showSnackBar(const SnackBar(content: Text('已重置网络连接并重新同步')));
+}
+
 /// Line budget for course tiles: long room names ("逸夫楼201-阶梯教室") need more
 /// than one line, long course names more than two.
 Future<void> _pickTileTextLines(BuildContext context, WidgetRef ref) async {
@@ -296,6 +318,12 @@ class SettingsPage extends ConsumerWidget {
               onPressed: () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
               child: const Text('立即同步'),
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.wifi_off_outlined),
+            title: const Text('重置网络连接'),
+            subtitle: const Text('同步一直卡住或超时时用：丢弃现有连接并重新同步（超时会自动执行）'),
+            onTap: () => _resetNetwork(context, ref),
           ),
           ListTile(
             leading: const Icon(Icons.refresh),

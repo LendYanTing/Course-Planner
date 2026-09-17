@@ -105,6 +105,18 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
   Timer? _periodic;
   bool _running = false;
 
+  /// When the clock offset was last read from the server.
+  DateTime? _clockFetchedAt;
+
+  /// Consecutive timeouts, so the automatic network reset cannot loop.
+  int _timeouts = 0;
+
+  /// Consecutive offline cycles, for the same reason.
+  int _transportFailures = 0;
+
+  /// A hung request must not leave the UI spinning for ever.
+  static const _cycleTimeout = Duration(seconds: 45);
+
   @override
   SyncUiState build() {
     return const SyncUiState();
@@ -158,6 +170,7 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
         services.clock.restore(meta!.clockServerUtc!, meta.clockFetchedAt!);
       }
     }
+    _clockFetchedAt = DateTime.now();
     // The ticker may have been asleep for a long time; force it to re-emit.
     ref.read(clockRevisionProvider.notifier).bump();
   }
@@ -178,8 +191,18 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
     state = state.copyWith(syncing: true, lastError: null);
     debugPrint('[sync] syncNow start');
     try {
+      // Any sync — automatic or the toolbar button — also puts the current-time
+      // line back on the correct minute: refresh the offset when it is stale
+      // and always re-emit so the line redraws now.
+      final stale = _clockFetchedAt == null ||
+          DateTime.now().difference(_clockFetchedAt!) > const Duration(minutes: 2);
+      if (stale) {
+        await syncClock();
+      } else {
+        ref.read(clockRevisionProvider.notifier).bump();
+      }
       final engine = ref.read(servicesProvider).syncEngine;
-      final result = await engine.syncOnce();
+      final result = await engine.syncOnce().timeout(_cycleTimeout);
       debugPrint('[sync] syncNow done: pushed=${result.pushed} pulled=${result.pulled} '
           'conflicts=${result.conflictCount} err=${result.error}');
       state = state.copyWith(
@@ -193,7 +216,32 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
                 '${result.errorDetail ?? result.error}',
         hasRunOnce: true,
       );
+      if (result.error == 'offline') {
+        // Two offline cycles in a row usually mean a dead socket rather than an
+        // unhappy server: rebuild it once.
+        _transportFailures++;
+        if (_transportFailures == 2) {
+          unawaited(resetNetworkState(reason: '连续离线'));
+        }
+      } else if (result.error == null) {
+        _transportFailures = 0;
+        _timeouts = 0;
+      }
       return result;
+    } on TimeoutException {
+      // A half-open socket can outlive Dio's own timeouts; rebuild the transport
+      // instead of leaving the UI stuck on "正在同步".
+      debugPrint('[sync] syncNow timed out after ${_cycleTimeout.inSeconds}s');
+      _timeouts++;
+      state = state.copyWith(
+        syncing: false,
+        lastError: '同步超时',
+        lastErrorDetail: 'server: ${ref.read(servicesProvider).http.baseUrl}\n'
+            '请求超过 ${_cycleTimeout.inSeconds} 秒没有返回，已自动重置网络连接。',
+        hasRunOnce: true,
+      );
+      if (_timeouts <= 1) unawaited(resetNetworkState(reason: '同步超时'));
+      return null;
     } catch (e) {
       // Should not happen (engine catches), but keep the UI unstuck.
       debugPrint('[sync] syncNow threw: $e');
@@ -202,6 +250,32 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
     } finally {
       _running = false;
     }
+  }
+
+  /// Throws the transport away and starts over: fresh sockets, a fresh clock
+  /// reading, no stuck "syncing" flag. Runs automatically after a timeout (or
+  /// two offline cycles) and is available from Settings when the app looks
+  /// wedged.
+  Future<void> resetNetworkState({String? reason}) async {
+    final services = ref.read(servicesProvider);
+    debugPrint('[sync] resetNetworkState${reason == null ? '' : ' ($reason)'}');
+    _debounce?.cancel();
+    _periodic?.cancel();
+    _periodic = null;
+    _running = false;
+    _timeouts = 0;
+    _transportFailures = 0;
+    _clockFetchedAt = null;
+    final rebuilt = services.http.resetConnections();
+    state = SyncUiState(
+      lastSyncAt: state.lastSyncAt,
+      hasRunOnce: state.hasRunOnce,
+      lastError: rebuilt ? null : '无法重建网络连接',
+      lastErrorDetail: rebuilt ? null : '当前平台不支持重建连接，请重启应用。',
+    );
+    await syncClock();
+    await syncNow();
+    startPeriodicSync();
   }
 
   /// Hard refresh: preserve pending ops, wipe + rebuild the mirror, replay

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/error/api_exception.dart';
@@ -40,6 +41,23 @@ class ApiHttp {
   final Dio dio;
   final void Function(String? token) _setAccessToken;
   String _baseUrl;
+
+  /// Throws away pooled/half-open connections and any in-flight request state.
+  ///
+  /// A mobile network that changed underneath us can leave sockets that never
+  /// complete and never time out, which shows up as a sync that hangs forever;
+  /// a fresh client is the reliable way out. Returns false when the platform
+  /// has no IO adapter to rebuild.
+  bool resetConnections() {
+    try {
+      final old = dio.httpClientAdapter;
+      dio.httpClientAdapter = IOHttpClientAdapter();
+      if (old is IOHttpClientAdapter) old.close(force: true);
+      return true;
+    } on Object {
+      return false;
+    }
+  }
 
   /// The server currently in use.
   String get baseUrl => _baseUrl;

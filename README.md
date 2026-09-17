@@ -36,6 +36,8 @@ Todo 分一次性（临时活动、会议、购物清单，最多 1 个时间块
 
 离线优先：改动先写本地 SQLite 并立刻上屏，联网后按 pull → push → pull 自动同步。冲突按字段对比「本次修改 vs 服务器」并说明实体来源，逐条决定保留哪边。
 
+同步有 45 秒超时保护：超时或连续离线会自动重建网络连接再同步一次（手机换网后最怕请求挂在半死的连接上一直转圈）。设置里也有手动的「重置网络连接」。每次同步都会顺带校正当前时间那条线的位置。
+
 多服务器：登录时填地址，设置里可切换，切换时选云端覆盖本地或本地覆盖云端，各服务器凭据分开保存。
 
 备份：导出全部本地数据和登录凭据为 JSON；导入时按类别勾选，导入前自动先导出一份当前数据。
@@ -105,13 +107,19 @@ sudo ./deploy/install.sh --domain course.example.com
 
 脚本会生成密钥、建库、起服务并冒烟测试。另有 `deploy/gen-secrets.sh`、`deploy/backup-db.sh`、`deploy/smoke.sh`。网页端单独一个 Compose 栈，见 [docs/deploy.md](docs/deploy.md) §12。
 
-打包 Android：
+打包发布产物：
 
 ```bash
-keytool -genkeypair -v -keystore "%USERPROFILE%\keys\course-planner-upload.jks" ^
-  -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+bash scripts/package-flutter.sh      # 产物都进 dist/
+```
+
+会分别构建三个 APK（arm64-v8a / armeabi-v7a / x86_64）和一个 Windows x64 的 zip。每个 APK 都把 ABI 名编进包里，App 的「检查更新」据此下载对应文件，而不是随便挑一个。
+
+签名密钥配一次即可：
+
+```powershell
+keytool -genkeypair -v -keystore "$env:USERPROFILE\keys\course-planner-upload.jks" -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 -alias upload
 copy flutter\android\key.properties.example flutter\android\key.properties
-cd flutter && flutter build apk --release --split-per-abi
 ```
 
 `key.properties` 和 `*.jks` 不提交。详见 [flutter/android/README-signing.md](flutter/android/README-signing.md)。

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -68,6 +70,15 @@ class _AboutPageState extends ConsumerState<AboutPage> {
     final release = _release;
     final hasUpdate =
         release != null && compareVersions(release.tag, AppInfo.version) > 0;
+    // Releases carry one artifact per platform/ABI; pick ours.
+    final asset = release == null
+        ? null
+        : pickReleaseAsset(
+            release.assets,
+            isAndroid: Platform.isAndroid,
+            isWindows: Platform.isWindows,
+            abi: AppInfo.abi,
+          );
 
     return Scaffold(
       appBar: AppBar(title: const Text('关于')),
@@ -138,34 +149,43 @@ class _AboutPageState extends ConsumerState<AboutPage> {
                         ),
                       ),
                     const SizedBox(height: 10),
+                    if (asset != null)
+                      Text('适用本机：${asset.name}',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    const SizedBox(height: 6),
                     Row(children: [
-                      if (release.apkUrl != null)
+                      if (asset != null)
                         Expanded(
                           child: FilledButton.icon(
                             icon: const Icon(Icons.download),
                             label: const Text('下载更新'),
-                            onPressed: () => _open(release.apkUrl!),
+                            onPressed: () => _open(asset.url),
                           ),
                         ),
-                      if (release.apkUrl != null) const SizedBox(width: 8),
+                      if (asset != null) const SizedBox(width: 8),
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () => _open(release.htmlUrl),
-                          child: const Text('打开发布页'),
+                          child: Text(asset == null ? '打开发布页' : '全部文件'),
                         ),
                       ),
                     ]),
-                    if (release.apkUrl != null) ...[
+                    if (asset != null) ...[
                       const SizedBox(height: 4),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
                           icon: const Icon(Icons.copy, size: 16),
-                          label: const Text('复制 APK 链接', style: TextStyle(fontSize: 12)),
-                          onPressed: () => _copy('APK 链接', release.apkUrl!),
+                          label: const Text('复制下载链接', style: TextStyle(fontSize: 12)),
+                          onPressed: () => _copy('下载链接', asset.url),
                         ),
                       ),
-                    ],
+                    ] else
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text('这个平台没有单独的安装包，请到发布页查看。',
+                            style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ),
                   ],
                 ),
               ),

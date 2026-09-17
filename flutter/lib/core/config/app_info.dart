@@ -7,10 +7,15 @@ class AppInfo {
   AppInfo._();
 
   /// `version:` in pubspec.yaml, without the `+build` part.
-  static const version = '0.2.7';
-  static const build = 9;
+  static const version = '0.2.8';
+  static const build = 10;
 
   static const versionLabel = '$version+$build';
+
+  /// Android ABI this build targets, injected per split build:
+  /// `--dart-define=APP_ABI=arm64-v8a`. Empty for universal/desktop builds.
+  /// Lets the update check pick the matching artifact instead of guessing.
+  static const abi = String.fromEnvironment('APP_ABI');
 
   static const repo = 'LendYanTing/Course-Planner';
   static const repoUrl = 'https://github.com/$repo';

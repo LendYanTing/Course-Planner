@@ -2,6 +2,14 @@ import 'package:dio/dio.dart';
 
 import '../../core/util/json_utils.dart';
 
+/// One downloadable file attached to a release.
+class ReleaseAsset {
+  const ReleaseAsset({required this.name, required this.url});
+
+  final String name;
+  final String url;
+}
+
 /// A published release, reduced to what the About page needs.
 class ReleaseInfo {
   const ReleaseInfo({
@@ -9,8 +17,7 @@ class ReleaseInfo {
     required this.name,
     required this.notes,
     required this.htmlUrl,
-    this.apkUrl,
-    this.apkName,
+    this.assets = const [],
     this.publishedAt,
   });
 
@@ -18,11 +25,37 @@ class ReleaseInfo {
   final String name;
   final String notes;
   final String htmlUrl;
-
-  /// Direct download for the Android build, when the release carries one.
-  final String? apkUrl;
-  final String? apkName;
+  final List<ReleaseAsset> assets;
   final String? publishedAt;
+}
+
+/// Picks the artifact that belongs on this device.
+///
+/// Android releases ship one APK per ABI (plus optionally a universal one); the
+/// build injects [AppInfo.abi] so the right file is chosen rather than the
+/// first `.apk` in the list. Desktop releases ship an archive.
+ReleaseAsset? pickReleaseAsset(
+  List<ReleaseAsset> assets, {
+  required bool isAndroid,
+  required bool isWindows,
+  required String abi,
+}) {
+  bool has(ReleaseAsset a, String needle) =>
+      a.name.toLowerCase().contains(needle.toLowerCase());
+
+  if (isAndroid) {
+    final apks = assets.where((a) => a.name.toLowerCase().endsWith('.apk')).toList();
+    if (apks.isEmpty) return null;
+    if (abi.isNotEmpty) {
+      final exact = apks.where((a) => has(a, abi)).firstOrNull;
+      if (exact != null) return exact;
+    }
+    return apks.where((a) => has(a, 'universal')).firstOrNull ?? apks.first;
+  }
+  if (isWindows) {
+    return assets.where((a) => has(a, 'windows')).firstOrNull;
+  }
+  return null;
 }
 
 /// Reads public release metadata from the GitHub REST API.
@@ -47,18 +80,16 @@ class GithubApi {
     if (body is! Map) throw const FormatException('unexpected release payload');
     final m = Map<String, dynamic>.from(body);
 
-    String? apkUrl;
-    String? apkName;
+    final parsed = <ReleaseAsset>[];
     final assets = m['assets'];
     if (assets is List) {
       for (final raw in assets) {
         if (raw is! Map) continue;
         final a = Map<String, dynamic>.from(raw);
         final name = readStringOrNull(a, 'name') ?? '';
-        if (!name.toLowerCase().endsWith('.apk')) continue;
-        apkName = name;
-        apkUrl = readStringOrNull(a, 'browser_download_url');
-        break;
+        final url = readStringOrNull(a, 'browser_download_url');
+        if (name.isEmpty || url == null) continue;
+        parsed.add(ReleaseAsset(name: name, url: url));
       }
     }
 
@@ -67,8 +98,7 @@ class GithubApi {
       name: readString(m, 'name', fallback: readString(m, 'tag_name')),
       notes: readString(m, 'body'),
       htmlUrl: readString(m, 'html_url'),
-      apkUrl: apkUrl,
-      apkName: apkName,
+      assets: parsed,
       publishedAt: readStringOrNull(m, 'published_at'),
     );
   }
