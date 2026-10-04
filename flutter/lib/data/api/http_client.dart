@@ -16,29 +16,43 @@ typedef RefreshCallback = Future<bool> Function();
 /// * one retry after a successful token refresh (never blindly retries
 ///   non-idempotent requests).
 class ApiHttp {
-  ApiHttp._(this.dio, this._setAccessToken, this._baseUrl);
+  ApiHttp._(this.dio, this._bareDio, this._setAccessToken, this._baseUrl);
 
-  factory ApiHttp.create({required RefreshCallback onRefresh, String? baseUrl}) {
+  factory ApiHttp.create({
+    required RefreshCallback onRefresh,
+    String? baseUrl,
+    HttpClientAdapter? adapter,
+  }) {
     final initial = baseUrl ?? AppConfig.apiBaseUrl;
-    final dio = Dio(
-      BaseOptions(
-        baseUrl: initial,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 30),
-        sendTimeout: const Duration(seconds: 15),
-        headers: {'Content-Type': 'application/json'},
-      ),
-    );
+    BaseOptions options() => BaseOptions(
+          baseUrl: initial,
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 15),
+          headers: {'Content-Type': 'application/json'},
+        );
+    final dio = Dio(options());
+    // Bare transport for the token endpoints (refresh/logout): they carry the
+    // refresh token in the body, need no access token, and must NEVER share
+    // the auth interceptor's queues — onError awaits its own refresh, and an
+    // await inside a QueuedInterceptor blocks the very response that would
+    // unblock it (a permanent wedge where no 401 ever reaches the caller).
+    final bareDio = Dio(options());
+    if (adapter != null) {
+      dio.httpClientAdapter = adapter;
+      bareDio.httpClientAdapter = adapter;
+    }
     String? token;
     dio.interceptors.add(_AuthInterceptor(
       tokenOf: () => token,
       onRefresh: onRefresh,
       dio: dio,
     ));
-    return ApiHttp._(dio, (t) => token = t, initial);
+    return ApiHttp._(dio, bareDio, (t) => token = t, initial);
   }
 
   final Dio dio;
+  final Dio _bareDio;
   final void Function(String? token) _setAccessToken;
   String _baseUrl;
 
@@ -53,6 +67,9 @@ class ApiHttp {
       final old = dio.httpClientAdapter;
       dio.httpClientAdapter = IOHttpClientAdapter();
       if (old is IOHttpClientAdapter) old.close(force: true);
+      final oldBare = _bareDio.httpClientAdapter;
+      _bareDio.httpClientAdapter = IOHttpClientAdapter();
+      if (oldBare is IOHttpClientAdapter) oldBare.close(force: true);
       return true;
     } on Object {
       return false;
@@ -67,6 +84,7 @@ class ApiHttp {
   void setBaseUrl(String url) {
     _baseUrl = url;
     dio.options.baseUrl = url;
+    _bareDio.options.baseUrl = url;
   }
 
   /// Injects the in-memory access token used by the auth interceptor.
@@ -92,6 +110,11 @@ class ApiHttp {
                 contentType != null ? Options(contentType: contentType) : null,
           ));
 
+  /// POST on the bare transport: no auth interceptor, no shared queues. Only
+  /// for the token endpoints whose body itself carries the credential.
+  Future<Response<dynamic>> postBare(String path, {Object? body}) =>
+      _guard(() => _bareDio.post<dynamic>(path, data: body));
+
   Future<Response<dynamic>> patch(String path, {Object? body}) =>
       _guard(() => dio.patch<dynamic>(path, data: body));
 
@@ -111,6 +134,12 @@ class ApiHttp {
 }
 
 /// Queued interceptor implementing bearer injection + single refresh-retry.
+///
+/// The refresh itself runs on [ApiHttp]'s bare transport (never through
+/// [dio]), so the `await onRefresh()` below can never deadlock the error
+/// queue it is blocking. A hard 20s ceiling bounds the wait even if the
+/// refresh transport wedges, so a stalled cycle degrades into an error
+/// instead of an eternal spinner.
 class _AuthInterceptor extends QueuedInterceptor {
   _AuthInterceptor({
     required this.tokenOf,
@@ -122,6 +151,8 @@ class _AuthInterceptor extends QueuedInterceptor {
   final RefreshCallback onRefresh;
   final Dio dio;
   final Set<String> _retried = {};
+
+  static const _refreshWait = Duration(seconds: 20);
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
@@ -144,7 +175,7 @@ class _AuthInterceptor extends QueuedInterceptor {
     if (status == 401 && !isAuthCall && !_retried.contains(cacheKey)) {
       _retried.add(cacheKey);
       try {
-        final ok = await onRefresh();
+        final ok = await onRefresh().timeout(_refreshWait);
         if (ok) {
           final token = tokenOf();
           final clone = await dio.fetch<dynamic>(request

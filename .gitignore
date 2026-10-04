@@ -49,3 +49,6 @@ pubspec.lock
 .DS_Store
 Thumbs.db
 dist/
+
+# Release signing keystore (never commit)
+/key/

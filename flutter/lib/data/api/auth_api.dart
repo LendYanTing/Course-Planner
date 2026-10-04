@@ -38,8 +38,11 @@ class AuthApi {
     return SessionData.fromJson(unwrapDataObject(res));
   }
 
+  /// Refresh runs on the bare transport (no auth interceptor): the
+  /// interceptor's 401 handler awaits this call, and routing it through the
+  /// shared QueuedInterceptor would deadlock the queue it is blocking.
   Future<SessionData> refresh(String refreshToken) async {
-    final res = await _http.post('/auth/refresh', body: {
+    final res = await _http.postBare('/auth/refresh', body: {
       'refreshToken': refreshToken,
     });
     return SessionData.fromJson(unwrapDataObject(res));
@@ -47,7 +50,7 @@ class AuthApi {
 
   /// Revokes the refresh token on the server. Pass the stored refresh token.
   Future<void> logout(String refreshToken) async {
-    await _http.post('/auth/logout', body: {'refreshToken': refreshToken});
+    await _http.postBare('/auth/logout', body: {'refreshToken': refreshToken});
   }
 
   Future<User> me() async {

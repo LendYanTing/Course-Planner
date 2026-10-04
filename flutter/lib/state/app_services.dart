@@ -5,6 +5,7 @@ import '../data/api/http_client.dart';
 import '../data/api/import_api.dart';
 import '../data/api/mcp_api.dart';
 import '../data/api/sync_api.dart';
+import '../core/error/api_exception.dart';
 import '../data/auth/pref_store.dart';
 import '../data/auth/server_store.dart';
 import '../data/auth/token_box.dart';
@@ -34,6 +35,18 @@ class RefreshCoordinator {
   }
 }
 
+/// Hook holder for auth events that must reach the session UI. Registered by
+/// [SessionController] (built after [AppServices]) — same pattern as
+/// [RefreshCoordinator].
+class SessionSignals {
+  /// Fired when the server has definitively rejected the stored refresh
+  /// token. The session holder must send the user to sign in again (keeping
+  /// local data) instead of retrying forever.
+  void Function(String reason)? onSessionInvalidated;
+
+  void invalidateSession(String reason) => onSessionInvalidated?.call(reason);
+}
+
 /// The application service graph. Built once in `main()` and exposed through
 /// [servicesProvider]; UI code never constructs API/DB objects itself.
 class AppServices {
@@ -55,6 +68,7 @@ class AppServices {
     required this.clock,
     required this.syncEngine,
     required this.refreshCoordinator,
+    required this.sessionSignals,
   });
 
   static Future<AppServices> create() async {
@@ -106,6 +120,7 @@ class AppServices {
       clock: clock,
       syncEngine: syncEngine,
       refreshCoordinator: coordinator,
+      sessionSignals: SessionSignals(),
     );
     coordinator.callback = () => services.refreshAccessToken();
     return services;
@@ -128,28 +143,60 @@ class AppServices {
   final ServerClock clock;
   final SyncEngine syncEngine;
   final RefreshCoordinator refreshCoordinator;
+  final SessionSignals sessionSignals;
 
   /// Background 401 handling: rotate the refresh token and update the
   /// in-memory access token. Returns false when there is nothing to refresh.
+  ///
+  /// A 401 UNAUTHORIZED from /auth/refresh is treated as definitive (the
+  /// server reached us and rejected the token — never a network flake):
+  /// after one retry in case a concurrent refresh rotated the stored token
+  /// behind us, the dead token is dropped and
+  /// [SessionSignals.onSessionInvalidated] fires so the UI asks for a fresh
+  /// sign-in instead of retrying forever.
   Future<bool> refreshAccessToken() async {
-    final refresh = await tokenBox.readRefreshToken();
-    if (refresh == null || refresh.isEmpty) return false;
+    String? refresh;
     try {
-      final session = await authApi.refresh(refresh);
-      await tokenBox.writeRefreshToken(session.refreshToken);
-      tokenBox.setAccessToken(session.accessToken);
-      http.setAccessToken(session.accessToken);
-      final profile = SessionProfile(
-        userId: session.user.id,
-        username: session.user.username,
-        email: session.user.email,
-        timezone: session.user.timezone,
-      );
-      await _persistProfile(profile);
-      return true;
+      // A wedged Keystore read must not hang the caller forever.
+      refresh = await tokenBox
+          .readRefreshToken()
+          .timeout(const Duration(seconds: 10));
     } on Object {
       return false;
     }
+    if (refresh == null || refresh.isEmpty) return false;
+    var current = refresh;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final session = await authApi.refresh(current);
+        await tokenBox.writeRefreshToken(session.refreshToken);
+        tokenBox.setAccessToken(session.accessToken);
+        http.setAccessToken(session.accessToken);
+        final profile = SessionProfile(
+          userId: session.user.id,
+          username: session.user.username,
+          email: session.user.email,
+          timezone: session.user.timezone,
+        );
+        await _persistProfile(profile);
+        return true;
+      } on ApiException catch (e) {
+        if (!e.isUnauthorized) return false;
+        final latest = await tokenBox.readRefreshToken();
+        if (latest == null || latest.isEmpty || latest == current) {
+          // Nobody rotated behind us: the stored token is dead. Drop it —
+          // but only if a concurrent refresh has not just replaced it — and
+          // surface the sign-in flow.
+          if (latest == current) await tokenBox.clearRefreshToken();
+          sessionSignals.invalidateSession('登录已过期，请重新登录');
+          return false;
+        }
+        current = latest;
+      } on Object {
+        return false;
+      }
+    }
+    return false;
   }
 
   /// Points the client at [rawUrl]: normalizes it, repoints the transport and

@@ -57,7 +57,25 @@ class SessionController extends Notifier<SessionState> {
   PendingServerSwitch? get pendingSwitch => _pendingSwitch;
 
   @override
-  SessionState build() => const SessionState(phase: AuthPhase.unknown);
+  SessionState build() {
+    ref
+        .read(servicesProvider)
+        .sessionSignals
+        .onSessionInvalidated = _onSessionInvalidated;
+    return const SessionState(phase: AuthPhase.unknown);
+  }
+
+  /// The server rejected the stored refresh token (see
+  /// [AppServices.refreshAccessToken]): send the user to sign in again.
+  /// Local data is deliberately kept — the mirror and the pending queue
+  /// survive and re-attach on the next sign-in with the same account.
+  void _onSessionInvalidated(String reason) {
+    if (state.phase == AuthPhase.signedIn) {
+      debugPrint('[session] session invalidated: $reason');
+      state = SessionState(phase: AuthPhase.signedOut, error: reason);
+      bumpSessionRevision(ref);
+    }
+  }
 
   /// Startup: show the cached profile immediately (offline-first), then
   /// refresh the access token in the background. The UI never blocks on a
@@ -98,7 +116,7 @@ class SessionController extends Notifier<SessionState> {
         bumpSessionRevision(ref);
         // Fire-and-forget token refresh; do not hold the homepage hostage.
         if (refresh != null && refresh.isNotEmpty) {
-          unawaited(_ensureAccessToken(refresh));
+          unawaited(_ensureAccessToken());
         }
         // Start the sync coordinator (clock + initial pull) like a normal
         // sign-in so restart doesn't leave the app without periodic sync.
@@ -135,24 +153,15 @@ class SessionController extends Notifier<SessionState> {
     }
   }
 
-  /// Background access-token refresh using the stored refresh token. Updates
-  /// the in-memory token + metadata; any failure is non-fatal (the Dio
-  /// interceptor retries a refresh on the next 401 anyway).
-  Future<void> _ensureAccessToken(String refresh) async {
+  /// Background access-token refresh using the stored refresh token. Delegates
+  /// to [AppServices.refreshAccessToken] so every refresh path shares the same
+  /// 401 classification, race retry and session-invalidation handling.
+  Future<void> _ensureAccessToken() async {
     try {
       debugPrint('[session] background access-token refresh…');
-      final session = await ref.read(servicesProvider).authApi.refresh(refresh);
-      final services = ref.read(servicesProvider);
-      await services.tokenBox.writeRefreshToken(session.refreshToken);
-      services.tokenBox.setAccessToken(session.accessToken);
-      services.http.setAccessToken(session.accessToken);
-      await services.persistUser(SessionProfile(
-        userId: session.user.id,
-        username: session.user.username,
-        email: session.user.email,
-        timezone: session.user.timezone,
-      ));
-      debugPrint('[session] background refresh ok');
+      final ok = await ref.read(servicesProvider).refreshAccessToken();
+      debugPrint(
+          ok ? '[session] background refresh ok' : '[session] background refresh failed');
     } on Object catch (e) {
       debugPrint('[session] background refresh failed: $e');
     }

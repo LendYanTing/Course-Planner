@@ -94,6 +94,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final busy = ref.watch(sessionControllerProvider.select((s) => s.busy));
+    final notice = ref.watch(sessionControllerProvider.select((s) => s.error));
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
@@ -109,6 +110,30 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   Icon(Icons.event_note, size: 56, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(height: 8),
                   Text('Course Planner', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
+                  if (notice != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.hourglass_bottom,
+                              color: Theme.of(context).colorScheme.onErrorContainer),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              notice,
+                              style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onErrorContainer),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: _server,
