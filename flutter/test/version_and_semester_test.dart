@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:course_planner/core/config/app_info.dart';
 import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/domain/calendar.dart';
@@ -93,6 +95,25 @@ void main() {
 
     test('the app version is reported as up to date against its own tag', () {
       expect(compareVersions('v${AppInfo.version}', AppInfo.version), 0);
+    });
+  });
+
+  group('AppInfo matches pubspec.yaml', () {
+    // Both the about page and the update check read AppInfo, and the release
+    // tag is built from the pubspec version. When they drift the running build
+    // misreports itself — v0.2.9 shipped with AppInfo still on 0.2.8, so an
+    // installed 0.2.9 was told that 0.2.9 was available.
+    test('version and build come from the pubspec version', () {
+      final declared = RegExp(r'^version:\s*(\S+)\s*$', multiLine: true)
+          .firstMatch(File('pubspec.yaml').readAsStringSync())
+          ?.group(1);
+      expect(declared, isNotNull, reason: 'pubspec.yaml must declare version:');
+
+      final parts = declared!.split('+');
+      expect(AppInfo.version, parts.first,
+          reason: 'AppInfo.version must match version: in pubspec.yaml');
+      expect(AppInfo.build.toString(), parts.length > 1 ? parts[1] : '',
+          reason: 'AppInfo.build must match the +build in pubspec.yaml');
     });
   });
 }
