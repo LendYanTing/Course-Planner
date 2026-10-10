@@ -1,6 +1,7 @@
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/time/user_time.dart';
+import '../core/util/clock_utils.dart';
 import '../domain/calendar.dart';
 import '../domain/course.dart';
 import '../domain/entities.dart';
@@ -435,7 +436,7 @@ class EventExpander {
       );
 
   bool _intersects(Occurrence occ, DateTime startUtc, DateTime endUtc) =>
-      occ.endUtc.isAfter(startUtc) && occ.startUtc.isBefore(endUtc);
+      intervalsOverlap(occ.startUtc, occ.endUtc, startUtc, endUtc);
 
   /// Local wall-clock instant for [dateStr] at [minuteOfDay].
   tz.TZDateTime _localFromMinutes(String dateStr, int minuteOfDay) {

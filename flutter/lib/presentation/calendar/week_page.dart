@@ -340,27 +340,30 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                   height: totalHeight,
                   child: ClipRect(
                     child: Stack(children: [
-                      for (final e in events)
-                        if (e.type != EventType.deadline)
-                          _PositionedEvent(
-                            key: ValueKey('${e.id}:${e.sourceId}'),
-                            event: e,
-                            userTime: userTime,
-                            dayWidth: dayWidth,
-                            textLines: ref.watch(tileTextLinesProvider),
-                            onDragChanged: (v) => setState(() => _dragActive = v),
-                            onCommit: (start, end) => _commitEventMove(e, start, end),
-                          ),
+                      for (final (event, dayIndex) in _placedByDay(
+                            days, events, userTime,
+                            (e) => e.type != EventType.deadline))
+                        _PositionedEvent(
+                          key: ValueKey('${event.id}:${event.sourceId}'),
+                          event: event,
+                          userTime: userTime,
+                          dayIndex: dayIndex,
+                          dayWidth: dayWidth,
+                          textLines: ref.watch(tileTextLinesProvider),
+                          onDragChanged: (v) => setState(() => _dragActive = v),
+                          onCommit: (start, end) => _commitEventMove(event, start, end),
+                        ),
                       // deadline markers
-                      for (final e in events)
-                        if (e.type == EventType.deadline && _localDayOf(e.startUtc, userTime) != null)
-                          _DeadlineMarker(
-                            event: e,
-                            userTime: userTime,
-                            dayIndex: _dayIndexOf(days, e, userTime),
-                            dayWidth: dayWidth,
-                            totalHeight: totalHeight,
-                          ),
+                      for (final (event, dayIndex) in _placedByDay(
+                          days, events, userTime,
+                          (e) => e.type == EventType.deadline))
+                        _DeadlineMarker(
+                          event: event,
+                          userTime: userTime,
+                          dayIndex: dayIndex,
+                          dayWidth: dayWidth,
+                          totalHeight: totalHeight,
+                        ),
                     ]),
                   ),
                 ),
@@ -379,11 +382,36 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     });
   }
 
-  int _dayIndexOf(List<tz.TZDateTime> days, UiEvent e, UserTime userTime) {
+  /// Events to draw on the timeline, paired with the column each belongs to.
+  /// [include] picks the kind of event this layer draws (span tiles vs deadline
+  /// markers).
+  ///
+  /// The projection already window-filters every kind, so this only drops events
+  /// whose local **start** date is not one of the shown days — the same rule the
+  /// 课表 grid applies. Before this, the column came from `localStart.weekday`,
+  /// so a stray event landed in its weekday column of whatever week was on
+  /// screen instead of being dropped.
+  List<(UiEvent, int)> _placedByDay(
+    List<tz.TZDateTime> days,
+    List<UiEvent> events,
+    UserTime userTime,
+    bool Function(UiEvent) include,
+  ) {
+    final out = <(UiEvent, int)>[];
+    for (final e in events) {
+      if (!include(e)) continue;
+      final dayIndex = _dayIndexOf(days, e, userTime);
+      if (dayIndex != null) out.add((e, dayIndex));
+    }
+    return out;
+  }
+
+  /// Column of [e] in the shown week, or null when its local start date is not
+  /// one of [days] — such an event must not be drawn at all.
+  int? _dayIndexOf(List<tz.TZDateTime> days, UiEvent e, UserTime userTime) {
     final local = _localDayOf(e.startUtc, userTime);
-    if (local == null) return 0;
     final idx = days.indexWhere((d) => _isSameLocalDay(d, local));
-    return idx >= 0 ? idx : 0;
+    return idx >= 0 ? idx : null;
   }
 
   bool _isSameLocalDay(DateTime a, DateTime? b) {
@@ -681,6 +709,7 @@ class _PositionedEvent extends StatefulWidget {
     super.key,
     required this.event,
     required this.userTime,
+    required this.dayIndex,
     required this.dayWidth,
     required this.onDragChanged,
     required this.onCommit,
@@ -689,6 +718,10 @@ class _PositionedEvent extends StatefulWidget {
 
   final UiEvent event;
   final UserTime userTime;
+
+  /// Column of the shown week this event belongs to. Owned by the parent so an
+  /// event from another week can never be placed here.
+  final int dayIndex;
   final double dayWidth;
   final ValueChanged<bool> onDragChanged;
   final void Function(DateTime startUtc, DateTime endUtc) onCommit;
@@ -717,7 +750,6 @@ class _PositionedEventState extends State<_PositionedEvent> {
     final userTime = widget.userTime;
     final localStart = userTime.localFromUtc(_dragging ? _dragStartUtc : widget.event.startUtc);
     final localEnd = userTime.localFromUtc(_dragging ? _dragEndUtc : widget.event.endUtc);
-    final dayIndex = localStart.weekday - 1;
 
     final startMinute = localStart.hour * 60 + localStart.minute;
     final durationMinutes = localEnd.difference(localStart).inMinutes;
@@ -731,7 +763,7 @@ class _PositionedEventState extends State<_PositionedEvent> {
         };
 
     return Positioned(
-      left: dayIndex * widget.dayWidth + 2,
+      left: widget.dayIndex * widget.dayWidth + 2,
       top: startMinute / 1440 * (_hourPx * 24),
       width: widget.dayWidth - 4,
       height: math.max(14.0, durationMinutes / 1440 * (_hourPx * 24)),

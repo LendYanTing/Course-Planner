@@ -3,16 +3,10 @@ import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/domain/entities.dart';
-import 'package:course_planner/presentation/calendar/week_page.dart';
-import 'package:course_planner/state/app_services.dart';
-import 'package:course_planner/state/prefs.dart';
-import 'package:course_planner/state/session.dart';
-import 'package:course_planner/state/sync_controller.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'helpers/memory_prefs.dart';
+import 'helpers/week_page_harness.dart';
 
 /// Regression: repeatedly toggling the week view between 时间轴 and 课表 must
 /// keep rendering the events (previously the grid could come back empty).
@@ -86,22 +80,9 @@ void main() {
       conflicts: const [],
     );
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          prefStoreProvider.overrideWithValue(MemoryPrefs()),
-          snapshotProvider.overrideWith((ref) => Stream.value(snapshot)),
-          sessionControllerProvider.overrideWith(_FakeSession.new),
-          // "now" must fall inside the displayed week so the current-time line
-          // actually renders (that is where the orange takeover came from).
-          serverNowProvider
-              .overrideWith((ref) => Stream.value(DateTime.now().toUtc())),
-        ],
-        child: const MaterialApp(home: WeekPage()),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
+    // "now" must fall inside the displayed week so the current-time line
+    // actually renders (that is where the orange takeover came from).
+    await pumpWeekPage(tester, snapshot);
 
     expect(tester.takeException(), isNull);
     expect(find.text('高等数学'), findsWidgets, reason: 'timeline shows the course');
@@ -140,17 +121,4 @@ void main() {
           reason: 'timeline must still render the course after switch $i');
     }
   });
-}
-
-/// Signed-in session with a fixed timezone (no providers touched).
-class _FakeSession extends SessionController {
-  @override
-  SessionState build() => const SessionState(
-        phase: AuthPhase.signedIn,
-        profile: SessionProfile(
-          userId: 'u1',
-          username: 'webdev',
-          timezone: 'Asia/Shanghai',
-        ),
-      );
 }

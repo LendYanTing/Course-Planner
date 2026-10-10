@@ -1,6 +1,7 @@
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../../core/time/user_time.dart';
+import '../../../core/util/clock_utils.dart';
 import '../../../data/local/entities_snapshot.dart';
 import '../../../data/local/view_models.dart';
 import '../../../domain/calendar.dart';
@@ -150,6 +151,9 @@ class EventProjection {
     final todosById = {for (final t in todos) t.id: t};
     final categoriesById = {for (final c in liveCategories(snapshot)) c.value.id: c.value};
     for (final b in blocks) {
+      // Same half-open overlap the expander applies to courses and schedules: a
+      // block from another week must not reach the caller's range.
+      if (!intervalsOverlap(b.startAt, b.endAt, startUtc, endUtc)) continue;
       final todo = todosById[b.todoId];
       if (todo == null) continue;
       var conflict = ConflictState.none;

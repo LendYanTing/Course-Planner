@@ -1,3 +1,4 @@
+import '../core/util/clock_utils.dart';
 import '../core/util/json_utils.dart';
 
 /// Event categories of the unified calendar projection
@@ -87,8 +88,6 @@ class CalendarEvent {
 
   bool get hasEnd => endAt != null;
 
-  bool overlapsUtc(DateTime s, DateTime e) {
-    final end = endAt ?? startAt;
-    return startAt.isBefore(e) && end.isAfter(s);
-  }
+  bool overlapsUtc(DateTime s, DateTime e) =>
+      intervalsOverlap(startAt, endAt ?? startAt, s, e);
 }
