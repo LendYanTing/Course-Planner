@@ -38,6 +38,28 @@ class UserTime {
     return tz.TZDateTime(location, year, month, day, hour, minute);
   }
 
+  /// The plain UTC [DateTime] for the local wall-clock [year]-[month]-[day]
+  /// [hour]:[minute] in the user timezone.
+  ///
+  /// Use this instead of `fromLocalParts(...).toUtc()`: the `timezone`
+  /// package's `TZDateTime.toUtc()` returns another `TZDateTime`, and since the
+  /// package's local location is `Etc/UTC` (see [ensureTimeZonesInitialized]),
+  /// `toLocal()` on that value is a no-op, so UI formatting renders UTC
+  /// wall-clock. Keeping UI state as a plain [DateTime] avoids the trap.
+  DateTime utcFromLocalParts(
+    int year,
+    int month,
+    int day,
+    int hour,
+    int minute,
+  ) {
+    final local = fromLocalParts(year, month, day, hour, minute);
+    return DateTime.fromMillisecondsSinceEpoch(
+      local.millisecondsSinceEpoch,
+      isUtc: true,
+    );
+  }
+
   /// Parses `YYYY-MM-DD` (a local calendar date in the user tz) into the
   /// local midnight instant. Returns null on malformed input.
   tz.TZDateTime? parseLocalDate(String ymd) {
