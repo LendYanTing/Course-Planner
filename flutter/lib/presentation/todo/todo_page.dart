@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
+import '../../core/time/user_time.dart';
 import '../../data/local/view_models.dart';
 import '../../domain/entities.dart';
 import '../../domain/todo.dart';
@@ -39,6 +40,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   Widget build(BuildContext context) {
     final snap = ref.watch(snapshotProvider).value;
     final syncState = ref.watch(syncCoordinatorProvider);
+    final userTime = ref.watch(userTimeProvider);
     final todos = snap == null ? <Live<Todo>>[] : liveTodos(snap);
     final tags = snap == null ? <Live<Tag>>[] : liveTags(snap);
     final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
@@ -154,6 +156,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                                     tagById: tagById,
                                     categoryById: categoryById,
                                     blocks: blocksByTodo[live.value.id] ?? const [],
+                                    userTime: userTime,
                                     onChanged: (status) => _setStatus(live.value, status),
                                     onDelete: () => _delete(live.value),
                                     onEdit: () => _openEditor(context, existing: live.value),
@@ -173,6 +176,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                                 tagById: tagById,
                                 categoryById: categoryById,
                                 blocks: blocksByTodo[live.value.id] ?? const [],
+                                userTime: userTime,
                                 onChanged: (status) => _setStatus(live.value, status),
                                 onDelete: () => _delete(live.value),
                                 onEdit: () => _openEditor(context, existing: live.value),
@@ -332,6 +336,7 @@ class _TodoTile extends StatelessWidget {
     required this.tagById,
     required this.categoryById,
     required this.blocks,
+    required this.userTime,
     required this.onChanged,
     required this.onDelete,
     required this.onEdit,
@@ -343,6 +348,7 @@ class _TodoTile extends StatelessWidget {
   final Map<String, Tag> tagById;
   final Map<String, Category> categoryById;
   final List<TodoBlock> blocks;
+  final UserTime? userTime;
   final ValueChanged<TodoStatus> onChanged;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
@@ -415,8 +421,9 @@ class _TodoTile extends StatelessWidget {
   }
 
   String _formatDeadline(DateTime utc) {
-    // Deadlines display in the fixed user timezone; caller guarantees tz.
-    final local = utc.toLocal();
+    // Deadlines display in the fixed user timezone (docs/datetime.md §3/§5);
+    // the fallback stays UTC rather than leaking the device timezone.
+    final local = userTime?.localFromUtc(utc) ?? utc.toUtc();
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
         '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
@@ -664,29 +671,35 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   }
 
   String _formatLocal(DateTime utc) {
-    final local = utc.toLocal();
+    // Deadlines are stored UTC and displayed in the fixed user timezone
+    // (docs/datetime.md §3/§5), never the device timezone.
+    final userTime = ref.watch(userTimeProvider);
+    final local = userTime?.localFromUtc(utc) ?? utc.toUtc();
     return '${local.month}月${local.day}日 ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _pickDeadline() async {
+    final userTime = ref.read(userTimeProvider);
+    if (userTime == null) return;
     final now = DateTime.now();
+    final base = _deadline == null ? null : userTime.localFromUtc(_deadline!);
     final date = await showDatePicker(
       context: context,
-      initialDate: _deadline?.toLocal() ?? now,
+      initialDate: base ?? now,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 5),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay(hour: _deadline?.toLocal().hour ?? 18, minute: 0),
+      initialTime: TimeOfDay(hour: base?.hour ?? 18, minute: 0),
     );
     if (time == null || !mounted) return;
-    final userTime = ref.read(userTimeProvider);
-    if (userTime == null) return;
-    // Interpret the picked wall-clock in the fixed user timezone.
-    final local = userTime.fromLocalParts(date.year, date.month, date.day, time.hour, time.minute);
-    setState(() => _deadline = local.toUtc());
+    // Interpret the picked wall-clock in the fixed user timezone, and keep a
+    // plain UTC DateTime in UI state: a TZDateTime would render UTC wall-clock
+    // (see UserTime.utcFromLocalParts).
+    setState(() => _deadline = userTime.utcFromLocalParts(
+        date.year, date.month, date.day, time.hour, time.minute));
   }
 
   Future<void> _createCategory() async {
