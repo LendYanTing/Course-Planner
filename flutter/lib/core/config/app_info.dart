@@ -7,8 +7,8 @@ class AppInfo {
   AppInfo._();
 
   /// `version:` in pubspec.yaml, without the `+build` part.
-  static const version = '0.2.10';
-  static const build = 12;
+  static const version = '0.2.11';
+  static const build = 13;
 
   static const versionLabel = '$version+$build';
 
