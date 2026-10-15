@@ -46,6 +46,13 @@ void main() {
       expect(ut.isoWeekday(dates.first), 1); // Monday
       expect(ut.localDateString(dates.last), '2026-09-09');
     });
+
+    test('deadline formatters render the user-tz wall clock', () {
+      // 2026-10-15T23:05Z == 2026-10-16 07:05 Asia/Shanghai.
+      final instant = DateTime.utc(2026, 10, 15, 23, 5);
+      expect(ut.formatDateYmdHm(instant), '2026-10-16 07:05');
+      expect(ut.formatDateMonthDayHm(instant), '10月16日 07:05');
+    });
   });
 
   group('UserTime with DST (Europe/Berlin)', () {

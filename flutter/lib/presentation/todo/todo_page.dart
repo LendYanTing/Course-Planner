@@ -29,7 +29,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
 
   /// Sorter selection (ticket #3). In-memory like [_showCompleted] and
   /// [_filterTagIds]: leaving and re-entering the page resets it to default.
-  TodoSort _sort = TodoSort.initial;
+  TodoSort _sort = TodoSort.initialDeadlineWholePage;
 
   bool _matchesFilters(Todo t) {
     if (_filterTagIds.isNotEmpty && !_filterTagIds.any(t.tagIds.contains)) return false;
@@ -41,6 +41,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final snap = ref.watch(snapshotProvider).value;
     final syncState = ref.watch(syncCoordinatorProvider);
     final userTime = ref.watch(userTimeProvider);
+    // A deadline reads as its user-tz wall clock (§5). Without a known user
+    // timezone there is no honest clock to print (§3 forbids the device zone),
+    // so the deadline text is simply omitted rather than faked.
+    String? deadlineTextFor(Todo t) => userTime == null || t.deadlineAt == null
+        ? null
+        : userTime.formatDateYmdHm(t.deadlineAt!);
     final todos = snap == null ? <Live<Todo>>[] : liveTodos(snap);
     final tags = snap == null ? <Live<Tag>>[] : liveTags(snap);
     final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
@@ -57,9 +63,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     }
 
     // Group by category so the list reads as collapsible sections instead of
-    // one flat run. Uncategorised todos get their own trailing group. The
-    // sorter then orders the rows inside each group and, for the whole-page
-    // scope, the groups themselves (todo_sorting.dart).
+    // one flat run. Uncategorised (or dangling-category) todos form one group
+    // whose id is null. The sorter then orders the rows inside each group and,
+    // for the whole-page scope, the groups themselves — so no group has a fixed
+    // position (todo_sorting.dart).
     final groups = sortTodoGroups(<TodoGroup>[
       for (final c in categories)
         if (open.any((t) => t.value.categoryId == c.value.id))
@@ -156,7 +163,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                                     tagById: tagById,
                                     categoryById: categoryById,
                                     blocks: blocksByTodo[live.value.id] ?? const [],
-                                    userTime: userTime,
+                                    deadlineText: deadlineTextFor(live.value),
                                     onChanged: (status) => _setStatus(live.value, status),
                                     onDelete: () => _delete(live.value),
                                     onEdit: () => _openEditor(context, existing: live.value),
@@ -176,7 +183,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                                 tagById: tagById,
                                 categoryById: categoryById,
                                 blocks: blocksByTodo[live.value.id] ?? const [],
-                                userTime: userTime,
+                                deadlineText: deadlineTextFor(live.value),
                                 onChanged: (status) => _setStatus(live.value, status),
                                 onDelete: () => _delete(live.value),
                                 onEdit: () => _openEditor(context, existing: live.value),
@@ -336,7 +343,7 @@ class _TodoTile extends StatelessWidget {
     required this.tagById,
     required this.categoryById,
     required this.blocks,
-    required this.userTime,
+    required this.deadlineText,
     required this.onChanged,
     required this.onDelete,
     required this.onEdit,
@@ -348,7 +355,11 @@ class _TodoTile extends StatelessWidget {
   final Map<String, Tag> tagById;
   final Map<String, Category> categoryById;
   final List<TodoBlock> blocks;
-  final UserTime? userTime;
+
+  /// The deadline's already-formatted user-tz wall clock, or null when the
+  /// user timezone is unknown (nothing honest to print then). The tile holds
+  /// no timezone logic of its own.
+  final String? deadlineText;
   final ValueChanged<TodoStatus> onChanged;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
@@ -401,8 +412,8 @@ class _TodoTile extends StatelessWidget {
                 _Pill(text: '${blocks.where((b) => b.status == BlockStatus.completed).length}/${blocks.length} 块'),
             ],
           ),
-          if (todo.deadlineAt != null)
-            Text('截止 ${_formatDeadline(todo.deadlineAt!)}',
+          if (deadlineText != null)
+            Text('截止 $deadlineText',
                 style: TextStyle(fontSize: 12, color: _overdue(todo.deadlineAt!) ? AppTheme.deadlineColor : null)),
         ],
       ),
@@ -418,14 +429,6 @@ class _TodoTile extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _formatDeadline(DateTime utc) {
-    // Deadlines display in the fixed user timezone (docs/datetime.md §3/§5);
-    // the fallback stays UTC rather than leaking the device timezone.
-    final local = userTime?.localFromUtc(utc) ?? utc.toUtc();
-    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
-        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
   bool _overdue(DateTime utc) {
@@ -509,6 +512,9 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
+    // Watched here so the build and the button agree; the picker handler
+    // (_pickDeadline) stays a ref.read, as it runs outside build.
+    final userTime = ref.watch(userTimeProvider);
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -608,11 +614,9 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
                     icon: Icon(_type == TodoType.oneOff
                         ? Icons.notifications_none
                         : Icons.schedule),
-                    label: Text(_deadline == null
-                        ? (_type == TodoType.oneOff ? '设置提醒时间' : '设置截止时间')
-                        : '${_type == TodoType.oneOff ? '提醒' : '截止'} '
-                            '${_formatLocal(_deadline!)}'),
-                    onPressed: _pickDeadline,
+                    label: Text(_deadlineLabel(userTime)),
+                    onPressed:
+                        userTime == null ? null : () => _pickDeadline(userTime),
                   ),
                 ),
                 if (_deadline != null)
@@ -622,6 +626,14 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
                   ),
               ],
             ),
+            if (userTime == null)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  '用户时区未就绪，暂时无法设置或显示时间。',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ),
             if (_type == TodoType.oneOff)
               const Padding(
                 padding: EdgeInsets.only(top: 4),
@@ -670,17 +682,17 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
     );
   }
 
-  String _formatLocal(DateTime utc) {
-    // Deadlines are stored UTC and displayed in the fixed user timezone
-    // (docs/datetime.md §3/§5), never the device timezone.
-    final userTime = ref.watch(userTimeProvider);
-    final local = userTime?.localFromUtc(utc) ?? utc.toUtc();
-    return '${local.month}月${local.day}日 ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  /// The reminder/deadline button's label. Without a user timezone there is no
+  /// honest wall clock, so it falls back to the action wording (the button is
+  /// also disabled then).
+  String _deadlineLabel(UserTime? userTime) {
+    final oneOff = _type == TodoType.oneOff;
+    final action = oneOff ? '设置提醒时间' : '设置截止时间';
+    if (_deadline == null || userTime == null) return action;
+    return '${oneOff ? '提醒' : '截止'} ${userTime.formatDateMonthDayHm(_deadline!)}';
   }
 
-  Future<void> _pickDeadline() async {
-    final userTime = ref.read(userTimeProvider);
-    if (userTime == null) return;
+  Future<void> _pickDeadline(UserTime userTime) async {
     final now = DateTime.now();
     final base = _deadline == null ? null : userTime.localFromUtc(_deadline!);
     final date = await showDatePicker(

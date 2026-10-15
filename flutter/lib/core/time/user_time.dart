@@ -27,6 +27,24 @@ class UserTime {
     return tz.TZDateTime.from(utc.toUtc(), location);
   }
 
+  /// `yyyy-MM-dd HH:mm` wall clock of a stored UTC instant in the user
+  /// timezone (docs/datetime.md §5), for the todo list's deadline line.
+  ///
+  /// The conversion lives here so callers never re-derive it — and never fall
+  /// back to the device timezone, which §3 forbids.
+  String formatDateYmdHm(DateTime utc) {
+    final l = localFromUtc(utc);
+    return '${l.year}-${_two(l.month)}-${_two(l.day)} '
+        '${_two(l.hour)}:${_two(l.minute)}';
+  }
+
+  /// `M月d日 HH:mm` wall clock of a stored UTC instant in the user timezone
+  /// (docs/datetime.md §5), for the editor's reminder/deadline echo.
+  String formatDateMonthDayHm(DateTime utc) {
+    final l = localFromUtc(utc);
+    return '${l.month}月${l.day}日 ${_two(l.hour)}:${_two(l.minute)}';
+  }
+
   /// Builds a local wall-clock instant from its (already user-tz) components.
   tz.TZDateTime fromLocalParts(
     int year,
@@ -122,3 +140,5 @@ class UserTime {
     }
   }
 }
+
+String _two(int n) => n.toString().padLeft(2, '0');

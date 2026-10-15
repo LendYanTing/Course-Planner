@@ -183,7 +183,7 @@ void main() {
       ];
 
       // Default: deadlineAsc over the whole page.
-      final out = sortTodoGroups(groups, TodoSort.initial);
+      final out = sortTodoGroups(groups, TodoSort.initialDeadlineWholePage);
 
       // "life" has the nearest deadline; the deadline-less group sinks.
       expect(groupIds(out), ['life', 'work', null]);
@@ -198,7 +198,7 @@ void main() {
         section('life', [live(todo('l', deadline: DateTime.utc(2026, 9, 15)))]),
       ];
 
-      final out = sortTodoGroups(groups, TodoSort.initial);
+      final out = sortTodoGroups(groups, TodoSort.initialDeadlineWholePage);
 
       expect(groupIds(out), ['work', 'life']);
       expect(ids(out[0].items), ['w-soon', 'w-late']);
@@ -240,10 +240,85 @@ void main() {
       final before = ids(items);
       final groups = [section('c', items)];
 
-      sortTodoGroups(groups, TodoSort.initial);
+      sortTodoGroups(groups, TodoSort.initialDeadlineWholePage);
 
       expect(ids(items), before);
       expect(groups.single.items, same(items));
+    });
+  });
+
+  // Issue #3 §5: every sort key × sort scope cell. The two groups disagree on
+  // every key, so the scope is tellable apart: wholePage swaps the groups,
+  // withinGroup leaves their category order alone.
+  group('key × scope', () {
+    List<TodoGroup> groups() => [
+          section('first', [
+            live(todo('a-bottom',
+                deadline: DateTime.utc(2026, 9, 20),
+                createdAt: DateTime.utc(2026, 9, 1),
+                priority: TodoPriority.low)),
+            live(todo('a-top',
+                deadline: DateTime.utc(2026, 9, 10),
+                createdAt: DateTime.utc(2026, 9, 9),
+                priority: TodoPriority.urgent)),
+          ]),
+          section('second', [
+            live(todo('b',
+                deadline: DateTime.utc(2026, 9, 5),
+                createdAt: DateTime.utc(2026, 9, 20),
+                priority: TodoPriority.high)),
+          ]),
+        ];
+
+    // Inside a group, a-top beats a-bottom on every key.
+    const withinGroup = {
+      TodoSortKey.deadlineAsc: ['a-top', 'a-bottom'],
+      TodoSortKey.deadlineDesc: ['a-bottom', 'a-top'],
+      TodoSortKey.priorityDesc: ['a-top', 'a-bottom'],
+      TodoSortKey.createdDesc: ['a-top', 'a-bottom'],
+    };
+
+    // Across groups (wholePage), the leading group differs by key.
+    const wholePage = {
+      TodoSortKey.deadlineAsc: ['second', 'first'],
+      TodoSortKey.deadlineDesc: ['first', 'second'],
+      TodoSortKey.priorityDesc: ['first', 'second'],
+      TodoSortKey.createdDesc: ['second', 'first'],
+    };
+
+    for (final key in TodoSortKey.values) {
+      test('$key withinGroup sorts rows but keeps the category order', () {
+        final out = sortTodoGroups(
+          groups(),
+          TodoSort(key: key, scope: TodoSortScope.withinGroup),
+        );
+        expect(groupIds(out), ['first', 'second']);
+        expect(ids(out[0].items), withinGroup[key]);
+      });
+
+      test('$key wholePage orders the groups too', () {
+        final out = sortTodoGroups(
+          groups(),
+          TodoSort(key: key, scope: TodoSortScope.wholePage),
+        );
+        expect(groupIds(out), wholePage[key]);
+      });
+    }
+
+    test('createdDesc ranks an unacked local create (no createdAt) newest', () {
+      // Server never sets createdAt on a local create still pending upload;
+      // "no createdAt" therefore means "created just now".
+      final out = sortTodoGroups(
+        [
+          section('g', [
+            live(todo('server', createdAt: DateTime.utc(2026, 9, 8))),
+            live(todo('unacked')),
+          ]),
+        ],
+        const TodoSort(
+            key: TodoSortKey.createdDesc, scope: TodoSortScope.withinGroup),
+      );
+      expect(ids(out.single.items), ['unacked', 'server']);
     });
   });
 }

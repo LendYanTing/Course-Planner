@@ -48,26 +48,34 @@ class TodoSort {
   final TodoSortKey key;
   final TodoSortScope scope;
 
-  /// Deadline (near→far) over the whole page, per ticket #3.
-  static const TodoSort initial = TodoSort();
+  /// The page's initial selection: deadline (near→far) over the whole page,
+  /// per ticket #3.
+  static const TodoSort initialDeadlineWholePage = TodoSort();
 
   TodoSort copyWith({TodoSortKey? key, TodoSortScope? scope}) =>
       TodoSort(key: key ?? this.key, scope: scope ?? this.scope);
 }
 
-/// Sorts one group's items by [key], with a stable tie-break: equal keys fall
-/// back to higher priority first, then to the input order.
-List<Live<Todo>> sortTodos(List<Live<Todo>> items, TodoSortKey key) {
+/// Sorts a copy of [items] by [compare], keeping the input order for ties.
+///
+/// `List.sort` is not a stable sort, so equal elements are disambiguated by
+/// their original position. [items] itself is never mutated.
+List<T> _stableSort<T>(List<T> items, int Function(T a, T b) compare) {
   final indexed = [
     for (var i = 0; i < items.length; i++) (index: i, item: items[i]),
   ];
   indexed.sort((a, b) {
-    final c = _compareItems(a.item.value, b.item.value, key);
+    final c = compare(a.item, b.item);
     if (c != 0) return c;
     return a.index.compareTo(b.index);
   });
   return [for (final e in indexed) e.item];
 }
+
+/// Sorts one group's items by [key], with a stable tie-break: equal keys fall
+/// back to higher priority first, then to the input order.
+List<Live<Todo>> sortTodos(List<Live<Todo>> items, TodoSortKey key) =>
+    _stableSort(items, (a, b) => _compareItems(a.value, b.value, key));
 
 /// Sorts every [groups] item list by [sort].key and, for
 /// [TodoSortScope.wholePage], reorders the groups themselves by their first
@@ -77,16 +85,7 @@ List<TodoGroup> sortTodoGroups(List<TodoGroup> groups, TodoSort sort) {
     for (final g in groups) (id: g.id, items: sortTodos(g.items, sort.key)),
   ];
   if (sort.scope == TodoSortScope.withinGroup) return sorted;
-
-  final indexed = [
-    for (var i = 0; i < sorted.length; i++) (index: i, group: sorted[i]),
-  ];
-  indexed.sort((a, b) {
-    final c = _compareGroupFirst(a.group, b.group, sort.key);
-    if (c != 0) return c;
-    return a.index.compareTo(b.index);
-  });
-  return [for (final e in indexed) e.group];
+  return _stableSort(sorted, (a, b) => _compareGroupFirst(a, b, sort.key));
 }
 
 int _compareGroupFirst(TodoGroup a, TodoGroup b, TodoSortKey key) {
@@ -101,7 +100,7 @@ int _compareGroupFirst(TodoGroup a, TodoGroup b, TodoSortKey key) {
 int _compareItems(Todo a, Todo b, TodoSortKey key) {
   final primary = _comparePrimary(a, b, key);
   if (primary != 0) return primary;
-  return _priorityRank(b.priority) - _priorityRank(a.priority);
+  return _comparePriority(a, b);
 }
 
 int _comparePrimary(Todo a, Todo b, TodoSortKey key) {
@@ -111,11 +110,15 @@ int _comparePrimary(Todo a, Todo b, TodoSortKey key) {
     case TodoSortKey.deadlineDesc:
       return _compareDeadline(a.deadlineAt, b.deadlineAt, ascending: false);
     case TodoSortKey.priorityDesc:
-      return _priorityRank(b.priority) - _priorityRank(a.priority);
+      return _comparePriority(a, b);
     case TodoSortKey.createdDesc:
       return _compareCreatedDesc(a.createdAt, b.createdAt);
   }
 }
+
+/// Higher priority first.
+int _comparePriority(Todo a, Todo b) =>
+    _priorityRank(b.priority) - _priorityRank(a.priority);
 
 /// Deadline order with "no deadline" always sinking, in both directions.
 int _compareDeadline(DateTime? a, DateTime? b, {required bool ascending}) {

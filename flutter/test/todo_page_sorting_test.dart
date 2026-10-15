@@ -28,6 +28,7 @@ void main() {
     String? categoryId,
     String? deadlineAt,
     String priority = 'normal',
+    String status = 'todo',
   }) =>
       EntityRow(
         entityType: EntityTypes.todo,
@@ -37,7 +38,7 @@ void main() {
           'id': id,
           'title': title,
           'type': 'one_off',
-          'status': 'todo',
+          'status': status,
           'categoryId': categoryId,
           'priority': priority,
           'deadlineAt': deadlineAt,
@@ -60,15 +61,20 @@ void main() {
     conflicts: const [],
   );
 
-  Future<void> pumpPage(WidgetTester tester) async {
+  Future<void> pumpPage(
+    WidgetTester tester, {
+    EntitiesSnapshot? snap,
+    bool withUserTime = true,
+  }) async {
     // The page renders deadlines in the fixed user timezone (watched in
-    // build), so pin it instead of booting the session/services graph.
-    final userTime = UserTime.tryCreate('Asia/Shanghai')!;
+    // build), so pin it instead of booting the session/services graph. Set
+    // [withUserTime] false to model "not signed in / profile not rehydrated".
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          userTimeProvider.overrideWithValue(userTime),
-          snapshotProvider.overrideWith((ref) => Stream.value(snapshot)),
+          userTimeProvider.overrideWithValue(
+              withUserTime ? UserTime.tryCreate('Asia/Shanghai')! : null),
+          snapshotProvider.overrideWith((ref) => Stream.value(snap ?? snapshot)),
         ],
         child: const MaterialApp(home: TodoPage()),
       ),
@@ -122,5 +128,49 @@ void main() {
     // Category order is preserved (工作 before 生活) even though 生活 holds the
     // highest-priority row.
     expect(dy(tester, '远端') < dy(tester, '紧急无截止'), isTrue);
+  });
+
+  testWidgets('the 已完成 section stays the fixed trailing block', (tester) async {
+    // The completed todo has the nearest deadline, so a sorter that fed the
+    // 已完成 section through itself would lift it to the top. It must not.
+    final withCompleted = EntitiesSnapshot(
+      rows: [
+        category('c-work', '工作'),
+        todo('w-far', '远端', categoryId: 'c-work', deadlineAt: '2026-09-20T01:00:00Z'),
+        todo('done-near', '已完成最早', deadlineAt: '2026-09-01T01:00:00Z', status: 'completed'),
+      ],
+      pendingOps: const [],
+      conflicts: const [],
+    );
+    await pumpPage(tester, snap: withCompleted);
+
+    // Overflow menu -> 包含已完成.
+    await tester.tap(find.descendant(
+      of: find.byType(AppBar),
+      matching: find.byType(PopupMenuButton<String>),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('包含已完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已完成'), findsOneWidget); // the section header
+    expect(dy(tester, '远端') < dy(tester, '已完成最早'), isTrue);
+  });
+
+  testWidgets('with no user timezone the list prints no deadline wall clock',
+      (tester) async {
+    // 2026-09-20T01:00Z is 09:00 Asia/Shanghai; with no user timezone there is
+    // no honest wall clock, so neither the correct nor the UTC clock appears.
+    final withDeadline = EntitiesSnapshot(
+      rows: [todo('t', '无时区待办', deadlineAt: '2026-09-20T01:00:00Z')],
+      pendingOps: const [],
+      conflicts: const [],
+    );
+    await pumpPage(tester, snap: withDeadline, withUserTime: false);
+
+    expect(find.text('无时区待办'), findsOneWidget);
+    expect(find.textContaining('截止'), findsNothing);
+    expect(find.textContaining('09:00'), findsNothing);
+    expect(find.textContaining('01:00'), findsNothing);
   });
 }

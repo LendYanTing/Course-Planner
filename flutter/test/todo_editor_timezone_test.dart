@@ -1,4 +1,5 @@
 import 'package:course_planner/core/time/user_time.dart';
+import 'package:course_planner/domain/todo.dart';
 import 'package:course_planner/presentation/todo/todo_page.dart';
 import 'package:course_planner/state/providers.dart';
 import 'package:flutter/material.dart';
@@ -73,5 +74,54 @@ void main() {
     // The bug rendered this as 01:00 (UTC wall-clock).
     expect(find.textContaining('09:00'), findsOneWidget);
     expect(find.textContaining('01:00'), findsNothing);
+  });
+
+  testWidgets('no user timezone: the time button is disabled, no clock printed',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [userTimeProvider.overrideWithValue(null)],
+      child: const MaterialApp(
+        home: Scaffold(body: TodoEditorSheet(tags: [], categories: [])),
+      ),
+    ));
+
+    // The button no longer opens a picker silently; it is visibly disabled.
+    final button = tester.widget<OutlinedButton>(find.ancestor(
+      of: find.text('设置提醒时间'),
+      matching: find.byWidgetPredicate((w) => w is OutlinedButton),
+    ));
+    expect(button.enabled, isFalse);
+    expect(find.text('用户时区未就绪，暂时无法设置或显示时间。'), findsOneWidget);
+  });
+
+  testWidgets('no user timezone: an existing deadline is not echoed',
+      (tester) async {
+    final existing = Todo(
+      id: 't1',
+      title: 'x',
+      type: TodoType.oneOff,
+      priority: TodoPriority.normal,
+      status: TodoStatus.todo,
+      revision: 1,
+      // 2026-09-20T01:00Z == 09:00 Asia/Shanghai; 01:00 is the UTC trap.
+      deadlineAt: DateTime.utc(2026, 9, 20, 1, 0),
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [userTimeProvider.overrideWithValue(null)],
+      child: MaterialApp(
+        home: Scaffold(
+          body: TodoEditorSheet(tags: [], categories: [], existing: existing),
+        ),
+      ),
+    ));
+
+    // No wall clock at all — neither the user-tz one nor the UTC fallback.
+    expect(find.textContaining('09:00'), findsNothing);
+    expect(find.textContaining('01:00'), findsNothing);
+    final button = tester.widget<OutlinedButton>(find.ancestor(
+      of: find.text('设置提醒时间'),
+      matching: find.byWidgetPredicate((w) => w is OutlinedButton),
+    ));
+    expect(button.enabled, isFalse);
   });
 }
