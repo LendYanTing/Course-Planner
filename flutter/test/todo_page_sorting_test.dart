@@ -1,7 +1,9 @@
+import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/domain/entities.dart';
 import 'package:course_planner/presentation/todo/todo_page.dart';
+import 'package:course_planner/state/providers.dart';
 import 'package:course_planner/state/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,9 +61,13 @@ void main() {
   );
 
   Future<void> pumpPage(WidgetTester tester) async {
+    // The page renders deadlines in the fixed user timezone (watched in
+    // build), so pin it instead of booting the session/services graph.
+    final userTime = UserTime.tryCreate('Asia/Shanghai')!;
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          userTimeProvider.overrideWithValue(userTime),
           snapshotProvider.overrideWith((ref) => Stream.value(snapshot)),
         ],
         child: const MaterialApp(home: TodoPage()),
