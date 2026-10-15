@@ -99,6 +99,7 @@ class Todo {
     this.estimatedMinutes,
     this.color,
     this.deadlineAt,
+    this.createdAt,
     this.deletedAt,
   });
 
@@ -114,6 +115,7 @@ class Todo {
         estimatedMinutes: readIntOrNull(m, 'estimatedMinutes'),
         color: readStringOrNull(m, 'color'),
         deadlineAt: parseUtc(readStringOrNull(m, 'deadlineAt')),
+        createdAt: parseUtc(readStringOrNull(m, 'createdAt')),
         revision: readInt(m, 'revision'),
         deletedAt: parseUtc(readStringOrNull(m, 'deletedAt')),
       );
@@ -129,6 +131,7 @@ class Todo {
   final int? estimatedMinutes;
   final String? color;
   final DateTime? deadlineAt; // UTC
+  final DateTime? createdAt; // UTC; server-set, absent on unacked local creates
   final int revision;
   final DateTime? deletedAt;
 

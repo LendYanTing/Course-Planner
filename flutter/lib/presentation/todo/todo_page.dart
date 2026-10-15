@@ -10,6 +10,7 @@ import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../settings/courses_page.dart' show kPalette;
 import 'todo_blocks_sheet.dart';
+import 'todo_sorting.dart';
 
 /// Todo list (docs/domain-model.md §7-9): one_off / project, priority, status,
 /// deadline, estimated duration, tags/categories, linked blocks.
@@ -24,6 +25,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   bool _showCompleted = false;
   final Set<String> _filterTagIds = {};
   final Set<String> _collapsed = {};
+
+  /// Sorter selection (ticket #3). In-memory like [_showCompleted] and
+  /// [_filterTagIds]: leaving and re-entering the page resets it to default.
+  TodoSort _sort = TodoSort.initial;
 
   bool _matchesFilters(Todo t) {
     if (_filterTagIds.isNotEmpty && !_filterTagIds.any(t.tagIds.contains)) return false;
@@ -50,8 +55,10 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     }
 
     // Group by category so the list reads as collapsible sections instead of
-    // one flat run. Uncategorised todos get their own trailing group.
-    final groups = <({String? id, List<Live<Todo>> items})>[
+    // one flat run. Uncategorised todos get their own trailing group. The
+    // sorter then orders the rows inside each group and, for the whole-page
+    // scope, the groups themselves (todo_sorting.dart).
+    final groups = sortTodoGroups(<TodoGroup>[
       for (final c in categories)
         if (open.any((t) => t.value.categoryId == c.value.id))
           (id: c.value.id, items: open.where((t) => t.value.categoryId == c.value.id).toList()),
@@ -64,7 +71,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   !categoryById.containsKey(t.value.categoryId))
               .toList(),
         ),
-    ];
+    ], _sort);
 
     return Scaffold(
       appBar: AppBar(
@@ -78,6 +85,29 @@ class _TodoPageState extends ConsumerState<TodoPage> {
             icon: syncState.syncing
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.sync),
+          ),
+          PopupMenuButton<Object>(
+            tooltip: '排序',
+            icon: const Icon(Icons.sort),
+            onSelected: (v) => setState(() {
+              if (v is TodoSortKey) _sort = _sort.copyWith(key: v);
+              if (v is TodoSortScope) _sort = _sort.copyWith(scope: v);
+            }),
+            itemBuilder: (_) => [
+              for (final k in TodoSortKey.values)
+                CheckedPopupMenuItem<Object>(
+                  value: k,
+                  checked: _sort.key == k,
+                  child: Text(_sortKeyLabel(k)),
+                ),
+              const PopupMenuDivider(),
+              for (final s in TodoSortScope.values)
+                CheckedPopupMenuItem<Object>(
+                  value: s,
+                  checked: _sort.scope == s,
+                  child: Text(_sortScopeLabel(s)),
+                ),
+            ],
           ),
           PopupMenuButton<String>(
             onSelected: (v) => setState(() => _showCompleted = v == 'done'),
@@ -231,6 +261,19 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
   }
 }
+
+/// Menu labels for the sorter (kept beside the page, not in the sort logic).
+String _sortKeyLabel(TodoSortKey key) => switch (key) {
+      TodoSortKey.deadlineAsc => '截止时间（近→远）',
+      TodoSortKey.deadlineDesc => '截止时间（远→近）',
+      TodoSortKey.priorityDesc => '优先级（高→低）',
+      TodoSortKey.createdDesc => '创建时间（新→旧）',
+    };
+
+String _sortScopeLabel(TodoSortScope scope) => switch (scope) {
+      TodoSortScope.wholePage => '整页',
+      TodoSortScope.withinGroup => '仅组内',
+    };
 
 /// A collapsible category section of the todo list. Tapping the header
 /// expands/collapses it; the count stays visible when collapsed.
