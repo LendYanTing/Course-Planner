@@ -17,6 +17,7 @@ class SessionState {
     this.profile,
     this.error,
     this.busy = false,
+    this.authExpired = false,
   });
 
   final AuthPhase phase;
@@ -24,17 +25,27 @@ class SessionState {
   final String? error;
   final bool busy;
 
+  /// The server definitively rejected our credentials (refresh token dead).
+  ///
+  /// The session deliberately stays [AuthPhase.signedIn]: the local mirror,
+  /// the pending queue and every screen keep working offline-first, and the UI
+  /// only warns that a fresh sign-in is needed. Pending edits stay queued and
+  /// upload after the next successful sign-in.
+  final bool authExpired;
+
   SessionState copyWith({
     AuthPhase? phase,
     SessionProfile? profile,
     String? error,
     bool? busy,
+    bool? authExpired,
   }) =>
       SessionState(
         phase: phase ?? this.phase,
         profile: profile ?? this.profile,
         error: error,
         busy: busy ?? this.busy,
+        authExpired: authExpired ?? this.authExpired,
       );
 }
 
@@ -53,6 +64,10 @@ class PendingServerSwitch {
 class SessionController extends Notifier<SessionState> {
   PendingServerSwitch? _pendingSwitch;
 
+  /// Pref key remembering «credentials rejected» across restarts, so the app
+  /// opens on the cached mirror and warns again instead of silently failing.
+  static const _expiredPrefKey = 'auth_expired';
+
   /// The parked switch intent, if the user started one that needs sign-in.
   PendingServerSwitch? get pendingSwitch => _pendingSwitch;
 
@@ -66,14 +81,27 @@ class SessionController extends Notifier<SessionState> {
   }
 
   /// The server rejected the stored refresh token (see
-  /// [AppServices.refreshAccessToken]): send the user to sign in again.
-  /// Local data is deliberately kept — the mirror and the pending queue
-  /// survive and re-attach on the next sign-in with the same account.
+  /// [AppServices.refreshAccessToken]).
+  ///
+  /// Deliberately does NOT sign the user out: the mirror, the pending queue and
+  /// every read-only screen keep working, so content stays visible while the
+  /// user re-authenticates. Only the expired flag is raised — the app root
+  /// shows a toast with a 重新登录 action, and the settings page keeps an entry.
   void _onSessionInvalidated(String reason) {
-    if (state.phase == AuthPhase.signedIn) {
-      debugPrint('[session] session invalidated: $reason');
-      state = SessionState(phase: AuthPhase.signedOut, error: reason);
-      bumpSessionRevision(ref);
+    if (state.phase != AuthPhase.signedIn) return;
+    if (state.authExpired) return; // already reported; do not spam the UI
+    debugPrint('[session] credentials rejected: $reason — staying signed in, local-only');
+    state = state.copyWith(authExpired: true, error: reason);
+    unawaited(ref.read(servicesProvider).prefStore.write(_expiredPrefKey, 'true'));
+    bumpSessionRevision(ref);
+  }
+
+  /// Clears the persisted «expired» marker after fresh credentials land.
+  Future<void> _clearExpired() async {
+    try {
+      await ref.read(servicesProvider).prefStore.write(_expiredPrefKey, 'false');
+    } on Object {
+      // Best effort: the in-memory state is authoritative for this run.
     }
   }
 
@@ -92,6 +120,14 @@ class SessionController extends Notifier<SessionState> {
           .timeout(const Duration(seconds: 15))
           .catchError((_) => null);
       debugPrint('[session] refresh token present=${refresh != null && refresh.isNotEmpty}');
+      // A rejected-credentials marker from an earlier run: keep opening the
+      // cached mirror, but do not pretend a background refresh can fix it.
+      final expired = await services.prefStore
+              .read(_expiredPrefKey)
+              .timeout(const Duration(seconds: 5))
+              .catchError((_) => null) ==
+          'true';
+      debugPrint('[session] credentials marked expired=$expired');
 
       // The cached mirror only belongs to the active server when they match;
       // otherwise resuming would show (and later push) another server's data.
@@ -112,8 +148,15 @@ class SessionController extends Notifier<SessionState> {
             timezone: cached.timezone!,
             email: cached.email,
           ),
+          authExpired: expired,
+          error: expired ? '登录已过期，请重新登录' : null,
         );
         bumpSessionRevision(ref);
+        if (expired) {
+          // Nothing to retry with, and no reason to hammer the server: the
+          // mirror is complete locally. Re-login restarts sync.
+          return;
+        }
         // Fire-and-forget token refresh; do not hold the homepage hostage.
         if (refresh != null && refresh.isNotEmpty) {
           unawaited(_ensureAccessToken());
@@ -296,6 +339,7 @@ class SessionController extends Notifier<SessionState> {
     await services.persistUser(profile);
     await services.serverStore.setDataServer(services.http.baseUrl);
 
+    await _clearExpired();
     state = SessionState(phase: AuthPhase.signedIn, profile: profile);
     bumpSessionRevision(ref);
 
@@ -331,6 +375,7 @@ class SessionController extends Notifier<SessionState> {
     await services.serverStore.setDataServer(target);
     services.tokenBox.serverKey = AppConfig.tokenServerKey(target);
 
+    await _clearExpired();
     state = SessionState(phase: AuthPhase.signedIn, profile: profile);
     bumpSessionRevision(ref);
     unawaited(ref.read(syncCoordinatorProvider.notifier).syncClockAndPull());
@@ -347,6 +392,7 @@ class SessionController extends Notifier<SessionState> {
     await services.tokenBox.clearAll();
     services.http.setAccessToken(null);
     await services.syncEngine.resetLocalData();
+    await _clearExpired();
     state = const SessionState(phase: AuthPhase.signedOut);
     bumpSessionRevision(ref);
   }

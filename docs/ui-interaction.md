@@ -176,3 +176,12 @@ Recurring Schedule 不放进 Todo 类型选择，单独入口。
 
 不在任何学期内时仍然标注距离：`不在本学期 · 2 周后`。
 
+## 16. Auth Expiry
+
+Refresh Token 被服务端明确拒绝（UNAUTHORIZED）时，不要强制退出登录：
+
+- 弹出 toast 提示登录已过期，并说明仍可查看本地内容、重新登录后补传修改
+- 保持登录态与本地 mirror / pending operations，页面继续可用
+- 提供一个显式的重新登录入口（toast 按钮、设置页条目）
+- 重新登录成功后自动恢复同步
+

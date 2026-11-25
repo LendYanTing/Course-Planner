@@ -20,6 +20,11 @@ import '../state/session.dart';
 import '../state/sync_controller.dart';
 import 'theme.dart';
 
+/// Root [ScaffoldMessenger] key: the session-expired toast is raised from the
+/// app root (there is no page context at the moment the server rejects the
+/// token).
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 /// Builds the GoRouter instance. Redirects are re-evaluated whenever
 /// [sessionRevisionProvider] ticks (auth transitions).
 final routerProvider = Provider<GoRouter>((ref) {
@@ -27,10 +32,14 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     refreshListenable: revision,
     initialLocation: '/',
-    redirect: (context, state) => resolveAuthRedirect(
-      phase: ref.read(sessionControllerProvider).phase,
-      location: state.matchedLocation,
-    ),
+    redirect: (context, state) {
+      final session = ref.read(sessionControllerProvider);
+      return resolveAuthRedirect(
+        phase: session.phase,
+        authExpired: session.authExpired,
+        location: state.matchedLocation,
+      );
+    },
     routes: [
       GoRoute(
         path: '/',
@@ -120,10 +129,16 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 /// Pure auth-aware redirect decision (kept out of the provider so it is
 /// unit-testable). Returns the location to navigate to, or `null` to stay.
+///
+/// [authExpired] means the stored credentials were rejected but the session is
+/// intentionally kept alive for local viewing: the login page then stays
+/// reachable (so the user can re-authenticate from the toast / settings) while
+/// every other location remains available.
 @visibleForTesting
 String? resolveAuthRedirect({
   required AuthPhase phase,
   required String location,
+  bool authExpired = false,
 }) {
   final onAuthPage = location == '/login' || location == '/register';
   if (phase == AuthPhase.unknown) {
@@ -136,7 +151,8 @@ String? resolveAuthRedirect({
   // profile restart boots at '/' while already signed in — without this the
   // splash spinner would never leave (/home/week on auth pages was already
   // handled, but '/' was not).
-  if (onAuthPage || location == '/') return '/home/week';
+  if (onAuthPage) return authExpired ? null : '/home/week';
+  if (location == '/') return '/home/week';
   return null;
 }
 
@@ -207,10 +223,29 @@ class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp>
       if (snapshot == null || snapshot.pendingOps.isEmpty) return;
       ref.read(syncCoordinatorProvider.notifier).schedulePush();
     });
+    // Expired credentials must not kick the user out: warn once, keep the
+    // content on screen, and offer the way back in.
+    ref.listen<SessionState>(sessionControllerProvider, (previous, next) {
+      if (!next.authExpired) return;
+      if (previous?.authExpired ?? false) return;
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: const Text(
+            '登录已过期：本地内容仍可查看，重新登录后未同步的修改会自动上传。',
+          ),
+          duration: const Duration(seconds: 10),
+          action: SnackBarAction(
+            label: '重新登录',
+            onPressed: () => ref.read(routerProvider).go('/login'),
+          ),
+        ),
+      );
+    });
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
       title: 'Course Planner',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       routerConfig: router,

@@ -31,5 +31,44 @@ void main() {
       expect(resolveAuthRedirect(phase: AuthPhase.signedIn, location: '/settings/import'), isNull);
       expect(resolveAuthRedirect(phase: AuthPhase.signedIn, location: '/settings/conflicts'), isNull);
     });
+
+    test('an expired session keeps browsing and can reach the login page', () {
+      // Requirement: a rejected token must not force a sign-out — the user
+      // keeps the cached content and only re-authenticates when ready.
+      for (final location in [
+        '/home/week',
+        '/home/month',
+        '/home/todo',
+        '/settings/conflicts',
+      ]) {
+        expect(
+          resolveAuthRedirect(
+            phase: AuthPhase.signedIn,
+            authExpired: true,
+            location: location,
+          ),
+          isNull,
+          reason: 'expired session must stay on $location',
+        );
+      }
+      expect(
+        resolveAuthRedirect(
+          phase: AuthPhase.signedIn,
+          authExpired: true,
+          location: '/login',
+        ),
+        isNull,
+        reason: 'the re-login page must be reachable while expired',
+      );
+      // The splash still hands over to the app (cached profile, offline).
+      expect(
+        resolveAuthRedirect(
+          phase: AuthPhase.signedIn,
+          authExpired: true,
+          location: '/',
+        ),
+        '/home/week',
+      );
+    });
   });
 }

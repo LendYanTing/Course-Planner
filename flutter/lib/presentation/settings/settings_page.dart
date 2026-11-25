@@ -453,6 +453,19 @@ class SettingsPage extends ConsumerWidget {
             onTap: () => context.push('/settings/about'),
           ),
           const Divider(),
+          // The session stays usable while the credentials are dead (see
+          // SessionController._onSessionInvalidated); this is the standing way
+          // back in when the toast was missed or dismissed.
+          if (ref.watch(sessionControllerProvider).authExpired)
+            ListTile(
+              leading: Icon(Icons.lock_clock_outlined,
+                  color: Theme.of(context).colorScheme.error),
+              title: Text('登录已过期',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              subtitle: const Text('本地内容仍可查看；重新登录后未同步的修改会自动上传'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.go('/login'),
+            ),
           ListTile(
             leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
             title: Text('退出登录', style: TextStyle(color: Theme.of(context).colorScheme.error)),
