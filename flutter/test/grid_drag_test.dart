@@ -9,6 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:course_planner/state/prefs.dart';
+import 'package:course_planner/state/sync_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/memory_prefs.dart';
@@ -93,7 +94,12 @@ void main() {
   Future<void> pumpGrid(WidgetTester tester, void Function() onCommit) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [prefStoreProvider.overrideWithValue(MemoryPrefs())],
+        overrides: [
+          prefStoreProvider.overrideWithValue(MemoryPrefs()),
+          // The now line reads the clock provider itself.
+          serverNowProvider
+              .overrideWith((ref) => Stream.value(DateTime.utc(2026, 9, 7, 0, 30))),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(

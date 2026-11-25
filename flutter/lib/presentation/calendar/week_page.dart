@@ -48,6 +48,46 @@ enum WeekViewMode { timeline, grid }
   return null;
 }
 
+/// Local Monday of the week that contains [local].
+tz.TZDateTime mondayOf(UserTime userTime, DateTime local) {
+  final wd = userTime.isoWeekday(local);
+  return tz.TZDateTime(userTime.location, local.year, local.month, local.day - (wd - 1));
+}
+
+/// Distance between the shown week and the week containing [nowLocal]:
+/// negative = past, 0 = this week, positive = future. Null when "now" is
+/// unknown (first frame before the server clock answered).
+///
+/// The day difference is taken on date-only UTC instants so a DST change inside
+/// the span cannot turn an exact week into 6 days (which would floor to 0).
+int? weeksFromThisWeek(
+  UserTime userTime,
+  tz.TZDateTime shownMonday,
+  DateTime? nowLocal,
+) {
+  if (nowLocal == null) return null;
+  final current = mondayOf(userTime, nowLocal);
+  final shown = DateTime.utc(shownMonday.year, shownMonday.month, shownMonday.day);
+  final today = DateTime.utc(current.year, current.month, current.day);
+  return shown.difference(today).inDays ~/ 7;
+}
+
+/// Header subtitle under the date range: `第3周 · 1 周前`, `第3周 · 本周`,
+/// `不在本学期 · 2 周后`, …
+String weekSubtitle({required int? semesterWeek, required int? weeksFromThisWeek}) {
+  final relative = weeksFromThisWeek == null
+      ? null
+      : weeksFromThisWeek == 0
+          ? '本周'
+          : weeksFromThisWeek > 0
+              ? '$weeksFromThisWeek 周后'
+              : '${-weeksFromThisWeek} 周前';
+  return [
+    semesterWeek == null ? '不在本学期' : '第$semesterWeek周',
+    ?relative,
+  ].join(' · ');
+}
+
 /// 7-column × 24-hour week grid (docs/ui-interaction.md §1).
 class WeekPage extends ConsumerStatefulWidget {
   const WeekPage({super.key});
@@ -85,11 +125,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     }
   }
 
-  tz.TZDateTime _weekStart(DateTime local) {
-    final userTime = ref.read(userTimeProvider)!;
-    final wd = userTime.isoWeekday(local);
-    return tz.TZDateTime(userTime.location, local.year, local.month, local.day - (wd - 1));
-  }
+  tz.TZDateTime _weekStart(DateTime local) => mondayOf(ref.read(userTimeProvider)!, local);
 
   /// Which way the last period change went, so the slide runs the right way.
   int _slideDir = 1;
@@ -138,11 +174,15 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         ? const <AcademicCalendar>[]
         : liveCalendars(snap).map((e) => e.value).toList();
     final semesterWeek = semesterWeekFor(calendars, userTime, days.first);
+    final nowLocal = userTime.localFromUtc(now ?? DateTime.now().toUtc());
     final rangeText = days.length == 7
         ? '${days.first.month}月${days.first.day}日 – ${days.last.month}月${days.last.day}日'
         : '';
-    final semesterText =
-        semesterWeek == null ? '不在本学期' : '第${semesterWeek.week}周';
+    // 第N周 plus how far the shown week is from this one («1 周前» / «本周»).
+    final subtitle = weekSubtitle(
+      semesterWeek: semesterWeek?.week,
+      weeksFromThisWeek: weeksFromThisWeek(userTime, days.first, nowLocal),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -156,7 +196,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
             children: [
               Text(rangeText, style: const TextStyle(fontSize: 16)),
               Text(
-                semesterText,
+                subtitle,
                 style: TextStyle(
                   fontSize: 12,
                   color: semesterWeek == null
@@ -186,45 +226,21 @@ class _WeekPageState extends ConsumerState<WeekPage> {
           ),
         ],
       ),
-      // Swiping left/right steps a week (both view modes); vertical drags stay
-      // with the scrollable inside.
-      body: GestureDetector(
-        onHorizontalDragEnd: (d) {
-          final v = d.primaryVelocity ?? 0;
-          if (v.abs() < 120) return;
-          _moveWeek(v < 0 ? 1 : -1);
-        },
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            // The incoming page comes in from the swipe direction; the outgoing
-            // one leaves the other way, otherwise both travel together.
-            final incoming = child.key == ValueKey(_pageKey(days, viewMode));
-            final dx = (incoming ? _slideDir : -_slideDir).toDouble();
-            return ClipRect(
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: Offset(dx, 0),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: KeyedSubtree(
-            key: ValueKey(_pageKey(days, viewMode)),
-            child: Column(
-        children: viewMode == WeekViewMode.grid
-            ? [
-                _WeekNavRow(
-                  days: days,
-                  onPrev: () => _moveWeek(-1),
-                  onNext: () => _moveWeek(1),
-                  onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
-                  // The course-drag switch lives with the period navigation.
-                  trailing: Row(
+      // The period navigation (‹ 今天 › + the course-drag switch) is pinned
+      // above the animated area: swiping to another week slides only the
+      // timetable below it. Keeping it inside the switcher moved the very
+      // controls under the finger that was swiping.
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WeekNavRow(
+            days: days,
+            onPrev: () => _moveWeek(-1),
+            onNext: () => _moveWeek(1),
+            onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
+            // The course-drag switch belongs to the 课表 view only.
+            trailing: viewMode == WeekViewMode.grid
+                ? Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
@@ -236,35 +252,66 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ],
-                  ),
+                  )
+                : null,
+          ),
+          const Divider(height: 1),
+          Expanded(
+            // Swiping left/right steps a week (both view modes); vertical drags
+            // stay with the scrollable inside.
+            child: GestureDetector(
+              onHorizontalDragEnd: (d) {
+                final v = d.primaryVelocity ?? 0;
+                if (v.abs() < 120) return;
+                _moveWeek(v < 0 ? 1 : -1);
+              },
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  // The incoming page comes in from the swipe direction; the
+                  // outgoing one leaves the other way, otherwise both travel
+                  // together.
+                  final incoming = child.key == ValueKey(_pageKey(days, viewMode));
+                  final dx = (incoming ? _slideDir : -_slideDir).toDouble();
+                  return ClipRect(
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: Offset(dx, 0),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
+                child: KeyedSubtree(
+                  key: ValueKey(_pageKey(days, viewMode)),
+                  child: viewMode == WeekViewMode.grid
+                      ? GridViewContent(
+                          userTime: userTime,
+                          days: days,
+                          events: events,
+                          snapshot: snap,
+                          nowUtc: now,
+                          courseEditable: ref.watch(courseEditableInCourseViewProvider),
+                          noonBoundaryMinutes: noonBoundary,
+                          onCommitMove: _commitEventMove,
+                        )
+                      : Column(
+                          children: [
+                            _WeekHeader(
+                              days: days,
+                              todayLocal: now == null ? null : userTime.localFromUtc(now),
+                            ),
+                            Expanded(child: _buildGrid(userTime, days, events, now)),
+                          ],
+                        ),
                 ),
-                const Divider(height: 1),
-                Expanded(
-                  child: GridViewContent(
-                    userTime: userTime,
-                    days: days,
-                    events: events,
-                    snapshot: snap,
-                    nowUtc: now,
-                    courseEditable: ref.watch(courseEditableInCourseViewProvider),
-                    noonBoundaryMinutes: noonBoundary,
-                    onCommitMove: _commitEventMove,
-                  ),
-                ),
-              ]
-            : [
-                _WeekHeader(
-                  days: days,
-                  todayLocal: now == null ? null : userTime.localFromUtc(now),
-                  onPrev: () => _moveWeek(-1),
-                  onNext: () => _moveWeek(1),
-                  onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
-                ),
-                Expanded(child: _buildGrid(userTime, days, events, now)),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -557,20 +604,16 @@ class _WeekNavRow extends StatelessWidget {
   }
 }
 
+/// The seven weekday headers of the 时间轴 view. The period navigation lives
+/// above this row, outside the animated area (see [WeekPage.build]).
 class _WeekHeader extends StatelessWidget {
   const _WeekHeader({
     required this.days,
     required this.todayLocal,
-    required this.onPrev,
-    required this.onNext,
-    required this.onToday,
   });
 
   final List<tz.TZDateTime> days;
   final DateTime? todayLocal;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
-  final VoidCallback onToday;
 
   static const _weekDays = ['一', '二', '三', '四', '五', '六', '日'];
 
@@ -579,13 +622,6 @@ class _WeekHeader extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Row(
-          children: [
-            IconButton(onPressed: onPrev, icon: const Icon(Icons.chevron_left)),
-            TextButton(onPressed: onToday, child: const Text('今天')),
-            IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_right)),
-          ],
-        ),
         Row(
           children: [
             // The gutter over the time axis carries the month.

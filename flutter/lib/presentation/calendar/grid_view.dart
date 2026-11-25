@@ -48,6 +48,10 @@ class GridViewContent extends ConsumerStatefulWidget {
   final List<tz.TZDateTime> days;
   final List<UiEvent> events;
   final EntitiesSnapshot? snapshot;
+
+  /// Estimated server "now", used only for the day-header 「today」 circle.
+  /// The current-time line does not use this snapshot: it watches the clock
+  /// provider itself so a sync always redraws it (see `_GridNowLine`).
   final DateTime? nowUtc;
 
   /// Whether course/recurring tiles can be moved. Owned by the surrounding
@@ -198,10 +202,6 @@ class _GridViewContentState extends ConsumerState<GridViewContent> {
     }
     final nowLocal =
         widget.nowUtc == null ? null : widget.userTime.localFromUtc(widget.nowUtc!);
-    final todayVisible = nowLocal != null &&
-        widget.days.any((d) => d.year == nowLocal.year &&
-            d.month == nowLocal.month &&
-            d.day == nowLocal.day);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -229,7 +229,6 @@ class _GridViewContentState extends ConsumerState<GridViewContent> {
                   layout: layout,
                   dayWidth: dayWidth,
                   courseEditable: widget.courseEditable,
-                  nowLocal: todayVisible ? nowLocal : null,
                   noonBoundaryMinutes: widget.noonBoundaryMinutes,
                   onCommitMove: widget.onCommitMove,
                   onMessage: (m) {
@@ -350,7 +349,6 @@ class _GridCanvas extends StatefulWidget {
     required this.layout,
     required this.dayWidth,
     required this.courseEditable,
-    required this.nowLocal,
     required this.noonBoundaryMinutes,
     required this.onCommitMove,
     required this.onMessage,
@@ -365,7 +363,6 @@ class _GridCanvas extends StatefulWidget {
   final _GridLayout layout;
   final double dayWidth;
   final bool courseEditable;
-  final DateTime? nowLocal;
 
   /// Minute-of-day where the afternoon band starts (local preference).
   final int noonBoundaryMinutes;
@@ -492,7 +489,14 @@ class _GridCanvasState extends State<_GridCanvas> {
           if (_preview != null) _previewGhost(_preview!),
           for (final e in widget.events)
             if (e.type == EventType.deadline) _deadline(e),
-          if (widget.nowLocal != null) _nowLine(widget.nowLocal!, layout),
+          // Current-time line: watches the server clock itself (see
+          // [_GridNowLine]) so a sync or a minute tick redraws only this rule.
+          _GridNowLine(
+            userTime: widget.userTime,
+            days: widget.days,
+            layout: layout,
+            dayWidth: widget.dayWidth,
+          ),
         ],
       ),
     );
@@ -558,31 +562,6 @@ class _GridCanvasState extends State<_GridCanvas> {
       return c != 0 ? c : a.run.top.compareTo(b.run.top);
     });
     return placed;
-  }
-
-  Widget _nowLine(DateTime local, _GridLayout layout) {
-    final y = layout.yForMinute(local.hour * 60 + local.minute);
-    return Positioned(
-      top: y - 1,
-      left: 0,
-      width: GridViewContent.leftWidth + 7 * widget.dayWidth,
-      height: 2,
-      child: Row(children: [
-        SizedBox(
-          width: GridViewContent.leftWidth,
-          child: Text(
-            '现在 ${_hhmm(local.hour * 60 + local.minute)}',
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.nowLineColor,
-            ),
-          ),
-        ),
-        Container(width: 7 * widget.dayWidth, height: 2, color: AppTheme.nowLineColor),
-      ]),
-    );
   }
 
   /// Ghost at the drag target (docs/grid-view-web.md §4: a live dashed preview
@@ -758,6 +737,81 @@ class _GridCanvasState extends State<_GridCanvas> {
   }
 
   static String _hhmm(int minute) => '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
+}
+
+/// Current-time orange line for the 课表 grid (docs/ui-interaction.md §14).
+///
+/// It watches [serverNowProvider] instead of taking a `now` snapshot from the
+/// page, so it is redrawn on the per-minute tick *and* right after every sync —
+/// a sync re-reads the server clock offset and bumps [clockRevisionProvider],
+/// which restarts the stream. Because the watch lives here, only this two-pixel
+/// overlay rebuilds; the grid, its tiles and the day headers stay untouched.
+class _GridNowLine extends ConsumerWidget {
+  const _GridNowLine({
+    required this.userTime,
+    required this.days,
+    required this.layout,
+    required this.dayWidth,
+  });
+
+  final UserTime userTime;
+  final List<tz.TZDateTime> days;
+  final _GridLayout layout;
+  final double dayWidth;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = ref.watch(serverNowProvider).value;
+    if (now == null) return const SizedBox.shrink();
+    final local = userTime.localFromUtc(now);
+    // The line belongs to the week on screen only: another week draws nothing.
+    final onScreen = days.any((d) =>
+        d.year == local.year && d.month == local.month && d.day == local.day);
+    if (!onScreen) return const SizedBox.shrink();
+    final minute = local.hour * 60 + local.minute;
+    final y = layout.yForMinute(minute);
+    final hhmm = '${(minute ~/ 60).toString().padLeft(2, '0')}:'
+        '${(minute % 60).toString().padLeft(2, '0')}';
+    // Tall enough for the gutter label: the rule itself is 2 dp and sits in the
+    // middle, so the 「现在 HH:mm」 text is no longer clipped to a sliver.
+    return Positioned(
+      top: y - 7,
+      left: 0,
+      width: GridViewContent.leftWidth + 7 * dayWidth,
+      height: 14,
+      child: IgnorePointer(
+        child: Row(
+          children: [
+            SizedBox(
+              width: GridViewContent.leftWidth,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Text(
+                  '现在 $hhmm',
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  style: const TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.nowLineColor,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              // A SizedBox gives the 2 dp rule the full remaining width while
+              // the Row centers it vertically inside the 14 dp label box.
+              child: SizedBox(
+                height: 2,
+                child: ColoredBox(color: AppTheme.nowLineColor),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 

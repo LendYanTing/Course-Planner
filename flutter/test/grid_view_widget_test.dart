@@ -8,6 +8,7 @@ import 'package:course_planner/presentation/calendar/grid_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:course_planner/state/prefs.dart';
+import 'package:course_planner/state/sync_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/memory_prefs.dart';
@@ -134,7 +135,12 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [prefStoreProvider.overrideWithValue(MemoryPrefs())],
+        overrides: [
+          prefStoreProvider.overrideWithValue(MemoryPrefs()),
+          // The current-time line watches the clock provider directly.
+          serverNowProvider
+              .overrideWith((ref) => Stream.value(DateTime.utc(2026, 9, 8, 0, 30))),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
@@ -226,6 +232,10 @@ void main() {
     Future<({int am, int pm})> tintsFor(int boundary) async {
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            serverNowProvider
+                .overrideWith((ref) => Stream.value(DateTime.utc(2026, 9, 8, 0, 30))),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: SizedBox(
@@ -308,7 +318,11 @@ void main() {
     // A container we can drive directly: re-pumping a ProviderScope would reuse
     // the same notifier, so a second set of overrides would never be read.
     final container = ProviderContainer(
-      overrides: [prefStoreProvider.overrideWithValue(MemoryPrefs())],
+      overrides: [
+        prefStoreProvider.overrideWithValue(MemoryPrefs()),
+        serverNowProvider
+            .overrideWith((ref) => Stream.value(DateTime.utc(2026, 9, 8, 0, 30))),
+      ],
     );
     addTearDown(container.dispose);
 
