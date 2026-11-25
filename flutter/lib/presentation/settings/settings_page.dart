@@ -20,265 +20,39 @@ import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../state/sync_controller.dart';
 import '../adaptive/adaptive.dart';
+import '../auth/auth_pages.dart';
 
-/// Drops the current connections and re-syncs. The same thing happens
-/// automatically after a sync timeout, but a manual trigger makes a wedged app
-/// recoverable without killing it.
-Future<void> _resetNetwork(BuildContext context, WidgetRef ref) async {
-  final ok = await showAppDialog<bool>(
+/// Timezone picker for a local, server-less session. A cloud account takes its
+/// timezone from the server, so this is only reachable in local mode.
+Future<void> _pickLocalTimezone(BuildContext context, WidgetRef ref) async {
+  final current = ref.read(sessionControllerProvider).profile?.timezone ?? '';
+  final picked = await showAppDialog<String>(
     context: context,
-    title: '重置网络连接？',
-    content: const Text('会中断正在进行的同步，丢弃现有连接后重新读取服务器时间并同步一次。'
-        '不会删除本地数据。'),
-    actions: [
-      TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(false), child: const Text('取消')),
-      FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(true), child: const Text('重置')),
-    ],
-  );
-  if (ok != true || !context.mounted) return;
-  final messenger = ScaffoldMessenger.of(context);
-  await ref.read(syncCoordinatorProvider.notifier).resetNetworkState(reason: '手动');
-  messenger.showSnackBar(const SnackBar(content: Text('已重置网络连接并重新同步')));
-}
-
-/// Line budget for course tiles: long room names ("逸夫楼201-阶梯教室") need more
-/// than one line, long course names more than two.
-Future<void> _pickTileTextLines(BuildContext context, WidgetRef ref) async {
-  var lines = ref.read(tileTextLinesProvider);
-  final picked = await showAppDialog<({int title, int location})>(
-    context: context,
-    title: '课表文字行数',
-    content: StatefulBuilder(
-      builder: (ctx, setLocal) {
-        Widget slider(String label, int value, ValueChanged<int> onChanged) => Column(
-              children: [
-                Text('$label：$value 行', style: const TextStyle(fontSize: 14)),
-                Slider(
-                  value: value.toDouble(),
-                  min: TileTextLinesController.minLines.toDouble(),
-                  max: TileTextLinesController.maxLines.toDouble(),
-                  divisions: TileTextLinesController.maxLines -
-                      TileTextLinesController.minLines,
-                  label: '$value',
-                  onChanged: (v) => setLocal(() => onChanged(v.round())),
-                ),
-              ],
-            );
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            slider('课程名称', lines.title,
-                (v) => lines = (title: v, location: lines.location)),
-            slider('上课地点', lines.location,
-                (v) => lines = (title: lines.title, location: v)),
-            const Text('地点较长的教室（如「逸夫楼201-阶梯教室」）可以调成 2 行。',
-                style: TextStyle(fontSize: 11, color: Colors.grey)),
-          ],
-        );
-      },
-    ),
-    actions: [
-      TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
-      FilledButton(
-        onPressed: () => Navigator.of(context, rootNavigator: true).pop(lines),
-        child: const Text('保存'),
-      ),
-    ],
-  );
-  if (picked == null) return;
-  final notifier = ref.read(tileTextLinesProvider.notifier);
-  await notifier.setTitle(picked.title);
-  await notifier.setLocation(picked.location);
-}
-
-/// Row-height picker for the month grid.
-Future<void> _pickMonthCellHeight(BuildContext context, WidgetRef ref) async {
-  var value = ref.read(monthCellHeightProvider);
-  final picked = await showAppDialog<double>(
-    context: context,
-    title: '月视图格子高度',
-    content: StatefulBuilder(
-      builder: (ctx, setLocal) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('${value.round()} dp', style: const TextStyle(fontSize: 14)),
-          Slider(
-            value: value.clamp(MonthCellHeightController.minDp,
-                MonthCellHeightController.maxDp),
-            min: MonthCellHeightController.minDp,
-            max: MonthCellHeightController.maxDp,
-            divisions: 13,
-            label: '${value.round()}',
-            onChanged: (v) => setLocal(() => value = v),
-          ),
-          const Text('格子越高，日期格里的条目显示得越完整；竖屏下方留白过多时调大即可。',
-              style: TextStyle(fontSize: 11, color: Colors.grey)),
-        ],
-      ),
-    ),
-    actions: [
-      TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
-      FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(value), child: const Text('保存')),
-    ],
-  );
-  if (picked != null) await ref.read(monthCellHeightProvider.notifier).set(picked);
-}
-
-/// Chinese name of a bottom-bar material.
-String _bottomBarStyleLabel(BottomBarStyle style) => switch (style) {
-      BottomBarStyle.liquidGlass => '液态玻璃',
-      BottomBarStyle.frostedBlur => '毛玻璃',
-      BottomBarStyle.solidCapsule => '纯色胶囊',
-    };
-
-/// One-line note under the style name inside the picker.
-String _bottomBarStyleDescription(BottomBarStyle style) => switch (style) {
-      BottomBarStyle.liquidGlass => '实时高斯模糊 + 边缘折射与色散（Impeller 专属，其余平台自动降级）',
-      BottomBarStyle.frostedBlur => '标准高斯模糊 + 高光描边，全平台可用',
-      BottomBarStyle.solidCapsule => '无实时模糊，低功耗',
-    };
-
-/// Short hint for the settings row subtitle.
-String _bottomBarStyleShortHint(BottomBarStyle style) => switch (style) {
-      BottomBarStyle.liquidGlass => '不支持时自动用毛玻璃',
-      BottomBarStyle.frostedBlur => '全平台可用',
-      BottomBarStyle.solidCapsule => '低功耗',
-    };
-
-/// Bottom-bar material picker. Every option is listed on every device: the bar
-/// itself falls back to frosted glass when shader filters are unavailable.
-Future<void> _pickBottomBarStyle(BuildContext context, WidgetRef ref) async {
-  final current = ref.read(bottomBarStyleProvider);
-  final picked = await showAppDialog<BottomBarStyle>(
-    context: context,
-    title: '底栏外观',
-    content: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final style in BottomBarStyle.values)
-            ListTile(
-              title: Text(_bottomBarStyleLabel(style)),
-              subtitle: Text(
-                _bottomBarStyleDescription(style),
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-              trailing: current == style ? const Icon(Icons.check) : null,
-              onTap: () => Navigator.of(context, rootNavigator: true).pop(style),
-            ),
-        ],
-      ),
-    ),
-  );
-  if (picked != null) await ref.read(bottomBarStyleProvider.notifier).set(picked);
-}
-
-/// Which visual engine the whole app renders with. The switch is immediate:
-/// `MaterialApp.router` in `app/router.dart` watches [uiVariantProvider], so no
-/// restart is needed.
-Future<void> _pickUiVariant(BuildContext context, WidgetRef ref) async {
-  final current = ref.read(uiVariantProvider);
-  final picked = await showAppDialog<UiVariant>(
-    context: context,
-    title: '界面风格引擎',
-    content: Builder(
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final variant in UiVariant.values)
-            ListTile(
-              title: Text(variant == UiVariant.hyperOS
-                  ? 'HyperOS 风格'
-                  : 'Material Design 3'),
-              subtitle: Text(
-                variant == UiVariant.hyperOS
-                    ? '超椭圆大圆角、细描边与弹簧动效'
-                    : '标准 Material 外观，跟随系统阴影与配色',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-              trailing: current == variant ? const Icon(Icons.check) : null,
-              onTap: () => Navigator.pop(ctx, variant),
-            ),
-        ],
-      ),
-    ),
-  );
-  if (picked != null) await ref.read(uiVariantProvider.notifier).set(picked);
-}
-
-/// Shows the last sync failure in full. The text is selectable and copyable so
-/// it can be pasted into a bug report.
-Future<void> _showSyncDetail(BuildContext context, SyncUiState sync) async {
-  final detail = sync.lastErrorDetail ?? sync.lastError ?? '(无详情)';
-  await showAppDialog<void>(
-    context: context,
-    title: '同步失败详情',
+    title: '时区',
     content: SizedBox(
       width: double.maxFinite,
-      child: SingleChildScrollView(
-        child: SelectableText(
-          detail,
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-        ),
+      height: 320,
+      child: ListView(
+        children: [
+          for (final tz in kCommonTimezones)
+            ListTile(
+              title: Text(tz),
+              trailing: current == tz ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.of(context, rootNavigator: true).pop(tz),
+            ),
+        ],
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () async {
-          await Clipboard.setData(ClipboardData(text: detail));
-          if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-          if (context.mounted) {
-            ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('已复制报错详情')));
-          }
-        },
-        child: const Text('复制'),
-      ),
-      FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('关闭')),
-    ],
   );
-}
-
-/// Lets the user move the 上午/下午 boundary of the 课表 view. Purely local:
-/// the server's period templates carry times but no notion of noon.
-Future<void> _pickNoonBoundary(BuildContext context, WidgetRef ref) async {
-  final current = ref.read(noonBoundaryProvider);
-  const presets = <int>[11 * 60, 12 * 60, 13 * 60, 14 * 60, 14 * 60 + 30, 15 * 60];
-  final picked = await showDialog<int>(
-    context: context,
-    builder: (ctx) => SimpleDialog(
-      title: const Text('中午分界点'),
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
-          child: Text('课表中开始时刻早于此值的节次算上午，之后的算下午。',
-              style: TextStyle(fontSize: 12, color: Colors.grey)),
-        ),
-        for (final m in presets)
-          ListTile(
-            title: Text(formatMinuteOfDay(m)),
-            trailing: current == m ? const Icon(Icons.check) : null,
-            onTap: () => Navigator.pop(ctx, m),
-          ),
-        ListTile(
-          leading: const Icon(Icons.more_time),
-          title: const Text('自定义…'),
-          onTap: () async {
-            final t = await showTimePicker(
-              context: ctx,
-              initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
-            );
-            if (t != null && ctx.mounted) {
-              Navigator.pop(ctx, t.hour * 60 + t.minute);
-            }
-          },
-        ),
-      ],
-    ),
-  );
-  if (picked != null) {
-    await ref.read(noonBoundaryProvider.notifier).set(picked);
+  if (picked == null || !context.mounted) return;
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await ref.read(sessionControllerProvider.notifier).setLocalTimezone(picked);
+    messenger.showSnackBar(SnackBar(content: Text('时区已设为 $picked')));
+  } on Object catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text('修改时区失败: ${e is ApiException ? e.message : e}')),
+    );
   }
 }
 
@@ -328,18 +102,35 @@ Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
 }
 
 /// Settings hub (agents/flutter-agent.md §页面).
+///
+/// Five grouped cards — 课程与学期 / 外观与个性化 / AI 助手与连接 /
+/// 数据与云同步 / 关于 — with a status card on top. Long forms live on their
+/// own pages so this screen stays scannable.
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionControllerProvider);
-    final snap = ref.watch(snapshotProvider).value;
-    final sync = ref.watch(syncCoordinatorProvider);
-    final conflicts = snap?.conflicts ?? const [];
-    final pending = snap?.pendingOps.length ?? 0;
-
     final profile = session.profile;
+    final sync = ref.watch(syncCoordinatorProvider);
+    final activeId = ref.watch(activeSemesterProvider);
+    final syncEnabled = ref.watch(syncEnabledProvider);
+
+    // Active semester (and its course count) feeds the two row subtitles.
+    AcademicCalendar? semester;
+    var courseCount = 0;
+    final snap = ref.watch(snapshotProvider).value;
+    if (snap != null) {
+      for (final cal in liveCalendars(snap)) {
+        if (cal.value.id == activeId) semester = cal.value;
+      }
+      courseCount = liveCourses(snap, calendarId: semester?.id).length;
+    }
+
+    final username = profile?.username ?? '';
+    final timezone = profile?.timezone ?? '—';
+    final avatar = username.isEmpty ? '?' : username[0].toUpperCase();
 
     return Scaffold(
       appBar: AppTopBar(
@@ -365,256 +156,236 @@ class SettingsPage extends ConsumerWidget {
           bottom: MediaQuery.paddingOf(context).bottom + 16,
         ),
         children: [
-          ListTile(
-            leading: CircleAvatar(child: Text(profile?.username.isNotEmpty == true ? profile!.username[0].toUpperCase() : '?')),
-            title: Text(profile?.username ?? ''),
-            subtitle: Text('时区：${profile?.timezone ?? '—'}（固定，不可修改）'),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.sync_problem),
-            title: const Text('冲突处理'),
-            subtitle: Text(conflicts.isEmpty ? '无待处理冲突' : '${conflicts.length} 个字段冲突需要决定'),
-            trailing: conflicts.isEmpty ? null : const Icon(Icons.chevron_right),
-            onTap: conflicts.isEmpty ? null : () => context.push('/settings/conflicts'),
-          ),
-          // Local-first: without a cloud account everything stays on this
-          // device; once signed in the user opts into automatic sync here.
-          if (session.isLocalMode)
-            ListTile(
-              leading: const Icon(Icons.person_outline),
-              title: const Text('本地模式'),
-              subtitle: const Text('数据保存在本机；登录云端账号后可开启云同步'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/login'),
-            )
-          else
-            SwitchListTile(
-              value: ref.watch(syncEnabledProvider),
-              onChanged: (v) => ref.read(syncEnabledProvider.notifier).set(v),
-              secondary: const Icon(Icons.cloud_sync_outlined),
-              title: const Text('自动云同步'),
-              subtitle: const Text('关闭后所有修改只保存在本机'),
-            ),
-          if (ref.watch(cloudSyncEnabledProvider)) ...[
-          ListTile(
-            leading: Icon(
-              sync.lastError == null ? Icons.cloud_sync_outlined : Icons.sync_problem,
-              color: sync.lastError == null ? null : Theme.of(context).colorScheme.error,
-            ),
-            title: Text(sync.syncing ? '正在同步…' : '同步状态'),
-            subtitle: Text(
-              [
-                if (pending > 0) '$pending 条待上传',
-                sync.lastError == null ? '' : '上次出错: ${sync.lastError}',
-                sync.lastSyncAt == null ? '尚未同步' : '上次同步: ${_time(sync.lastSyncAt!)}',
-                if (sync.lastError != null) '点按查看详细报错',
-              ].where((s) => s.isNotEmpty).join(' · '),
-            ),
-            // Tapping surfaces the full failure report (cursor, queue depth,
-            // error code/status/message/details, stack) so a failure can be
-            // copied out instead of needing a debugger attached.
-            onTap: sync.lastError == null ? null : () => _showSyncDetail(context, sync),
-            trailing: TextButton(
-              onPressed: () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
-              child: const Text('立即同步'),
+          // ---- current mode & account -------------------------------------
+          AppCard(
+            padding: EdgeInsets.zero,
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            onTap: session.isLocalMode ? null : () => context.push('/settings/sync'),
+            child: ListTile(
+              leading: CircleAvatar(child: Text(avatar)),
+              title: Text(username),
+              isThreeLine: true,
+              subtitle: Text(
+                session.isLocalMode
+                    ? '时区：$timezone（点击修改）\n数据保存在本机'
+                    : '时区：$timezone\n云同步：${syncEnabled ? '开' : '关'}',
+              ),
+              trailing: Icon(session.isLocalMode ? Icons.schedule : Icons.chevron_right),
+              onTap: session.isLocalMode ? () => _pickLocalTimezone(context, ref) : null,
             ),
           ),
-          ListTile(
-            leading: const Icon(Icons.wifi_off_outlined),
-            title: const Text('重置网络连接'),
-            subtitle: const Text('同步一直卡住或超时时用：丢弃现有连接并重新同步（超时会自动执行）'),
-            onTap: () => _resetNetwork(context, ref),
+
+          // ---- 1. courses & semesters -------------------------------------
+          _SettingsGroup(
+            title: '课程与学期',
+            tiles: [
+              ListTile(
+                leading: const Icon(Icons.calendar_view_month),
+                title: const Text('学期管理'),
+                subtitle: Text(semester == null
+                    ? '创建学期与节次模板'
+                    : '${semester.name} · ${semester.totalWeeks} 周'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/semesters'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.school_outlined),
+                title: const Text('课程管理'),
+                subtitle: Text(semester == null
+                    ? '维护课程与每周上课安排'
+                    : '本学期 $courseCount 门课程'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/courses'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.event_repeat),
+                title: const Text('周期安排'),
+                subtitle: const Text('自定义重复日程（非课程）'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/schedules'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.upload_file),
+                title: const Text('导入课程'),
+                subtitle: const Text('本地 CSV 导入'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/import'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.travel_explore),
+                title: const Text('从教务系统导入'),
+                subtitle: const Text('AI 解析 / 网页提取'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/edu-import'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.label_outline),
+                title: const Text('标签与分类'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/tags'),
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.refresh),
-            title: const Text('硬刷新本地缓存'),
-            subtitle: const Text('保留未上传修改，从服务器重建本地数据'),
-            onTap: () async {
-              final ok = await showAppDialog<bool>(
-                context: context,
-                title: '硬刷新？',
-                content: const Text('将清空本地缓存并按服务器重建（未上传的修改会保留并重放）。'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(false), child: const Text('取消')),
-                  FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(true), child: const Text('硬刷新')),
-                ],
-              );
-              if (ok == true) {
-                await ref.read(syncCoordinatorProvider.notifier).hardRefresh();
-              }
-            },
+
+          // ---- 2. appearance ----------------------------------------------
+          _SettingsGroup(
+            title: '外观与个性化',
+            tiles: [
+              ListTile(
+                leading: const Icon(Icons.palette_outlined),
+                title: const Text('外观与课表定制'),
+                subtitle: const Text('主题、底栏、课表显示'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/appearance'),
+              ),
+            ],
           ),
-          ],
-          const Divider(),
-          const _SectionHeader('课程与学期'),
-          ListTile(
-            leading: const Icon(Icons.calendar_view_month),
-            title: const Text('学期管理'),
-            subtitle: const Text('创建学期与节次模板'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/semesters'),
+
+          // ---- 3. AI & connections ----------------------------------------
+          _SettingsGroup(
+            title: 'AI 助手与连接',
+            tiles: [
+              ListTile(
+                leading: const Icon(Icons.auto_awesome),
+                title: const Text('内置 AI 助手'),
+                subtitle: const Text('配置大模型，直接对话排期（无需外部 MCP）'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/agent'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.smart_toy_outlined),
+                title: const Text('连接到 MCP'),
+                subtitle: const Text('让 Agent 通过 MCP 读取/修改课表与待办'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/mcp'),
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.school_outlined),
-            title: const Text('课程管理'),
-            subtitle: const Text('维护课程与每周上课安排'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/courses'),
+
+          // ---- 4. data & cloud sync ---------------------------------------
+          _SettingsGroup(
+            title: '数据与云同步',
+            tiles: [
+              ListTile(
+                leading: const Icon(Icons.cloud_sync_outlined),
+                title: const Text('云同步与服务器'),
+                subtitle: Text(session.isLocalMode
+                    ? '数据保存在本机；登录云端账号后可开启云同步'
+                    : (syncEnabled ? '已开启自动云同步' : '自动云同步已关闭')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/sync'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.archive_outlined),
+                title: const Text('导出完整备份'),
+                subtitle: const Text('将所有本地数据与登录凭据导出为 JSON 文件'),
+                onTap: () => _exportBackup(context, ref),
+              ),
+              ListTile(
+                leading: const Icon(Icons.unarchive_outlined),
+                title: const Text('导入/恢复备份'),
+                subtitle: const Text('可选导入服务器、登录凭据、学期课程、待办等'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/restore'),
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.event_repeat),
-            title: const Text('周期安排'),
-            subtitle: const Text('自定义重复日程（非课程）'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/schedules'),
+
+          // ---- 5. about ---------------------------------------------------
+          _SettingsGroup(
+            title: '关于',
+            tiles: [
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('关于 Course Planner'),
+                subtitle: const Text('版本、检查更新、项目主页'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/about'),
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.upload_file),
-            title: const Text('导入课程（CSV）'),
-            subtitle: const Text('需要联网：解析 → 预览 → 确认提交'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/import'),
-          ),
-          const Divider(),
-          const _SectionHeader('外观与界面'),
-          ListTile(
-            leading: const Icon(Icons.wb_twilight),
-            title: const Text('中午分界点'),
-            subtitle: Text(
-              '${formatMinuteOfDay(ref.watch(noonBoundaryProvider))} · '
-              '课表中早于此时刻的节次算上午（仅本地）',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _pickNoonBoundary(context, ref),
-          ),
-          ListTile(
-            leading: const Icon(Icons.calendar_view_month),
-            title: const Text('月视图格子高度'),
-            subtitle: Text(
-              '${ref.watch(monthCellHeightProvider).round()} dp · 竖屏留白过多时调大',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _pickMonthCellHeight(context, ref),
-          ),
-          ListTile(
-            leading: const Icon(Icons.format_line_spacing),
-            title: const Text('课表文字行数'),
-            subtitle: Text(
-              '课程名称 ${ref.watch(tileTextLinesProvider).title} 行 · '
-              '上课地点 ${ref.watch(tileTextLinesProvider).location} 行',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _pickTileTextLines(context, ref),
-          ),
-          ListTile(
-            leading: const Icon(Icons.blur_on_outlined),
-            title: const Text('底栏外观'),
-            subtitle: Text(
-              '${_bottomBarStyleLabel(ref.watch(bottomBarStyleProvider))} · '
-              '${_bottomBarStyleShortHint(ref.watch(bottomBarStyleProvider))}',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _pickBottomBarStyle(context, ref),
-          ),
-          ListTile(
-            leading: const Icon(Icons.auto_awesome_outlined),
-            title: const Text('界面风格引擎'),
-            subtitle: Text(ref.watch(uiVariantProvider) == UiVariant.hyperOS
-                ? 'HyperOS 风格 · 超椭圆大圆角与弹簧动效'
-                : 'Material Design 3 · 标准 Material 外观'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _pickUiVariant(context, ref),
-          ),
-          const Divider(),
-          const _SectionHeader('服务器与数据'),
-          ListTile(
-            leading: const Icon(Icons.smart_toy_outlined),
-            title: const Text('连接到 MCP'),
-            subtitle: const Text('让 Agent 通过 MCP 读取/修改课表与待办'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/mcp'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.dns_outlined),
-            title: const Text('服务器'),
-            subtitle: Text(ref.watch(servicesProvider).http.baseUrl),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/server'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.archive_outlined),
-            title: const Text('导出完整备份'),
-            subtitle: const Text('将所有本地数据与登录凭据导出为 JSON 文件'),
-            onTap: () => _exportBackup(context, ref),
-          ),
-          ListTile(
-            leading: const Icon(Icons.unarchive_outlined),
-            title: const Text('导入备份'),
-            subtitle: const Text('可选导入服务器、登录凭据、学期课程、待办等'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/restore'),
-          ),
-          const Divider(),
-          const _SectionHeader('标签与分类'),
-          ListTile(
-            leading: const Icon(Icons.label_outline),
-            title: const Text('标签 / 分类'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/tags'),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('关于'),
-            subtitle: const Text('版本、检查更新、项目主页'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/about'),
-          ),
-          const Divider(),
+
           // The session stays usable while the credentials are dead (see
           // SessionController._onSessionInvalidated); this is the standing way
           // back in when the toast was missed or dismissed.
-          if (ref.watch(sessionControllerProvider).authExpired)
-            ListTile(
-              leading: Icon(Icons.lock_clock_outlined,
-                  color: Theme.of(context).colorScheme.error),
-              title: Text('登录已过期',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
-              subtitle: const Text('本地内容仍可查看；重新登录后未同步的修改会自动上传'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/login'),
+          if (session.authExpired)
+            AppCard(
+              padding: EdgeInsets.zero,
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: ListTile(
+                leading: Icon(Icons.lock_clock_outlined,
+                    color: Theme.of(context).colorScheme.error),
+                title: Text('登录已过期',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                subtitle: const Text('本地内容仍可查看；重新登录后未同步的修改会自动上传'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.go('/login'),
+              ),
             ),
-          ListTile(
-            leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
-            title: Text('退出登录', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-            onTap: () async {
-              await ref.read(sessionControllerProvider.notifier).logout();
-            },
-          ),
+
+          const SizedBox(height: 12),
+          if (session.isLocalMode)
+            AppCard(
+              padding: EdgeInsets.zero,
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              child: ListTile(
+                leading: const Icon(Icons.login),
+                title: const Text('登录云端账号'),
+                subtitle: const Text('数据仍保留在本机，登录后可开启云同步'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.go('/login'),
+              ),
+            )
+          else
+            AppCard(
+              padding: EdgeInsets.zero,
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              child: ListTile(
+                leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
+                title: Text('退出登录',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                onTap: () async {
+                  await ref.read(sessionControllerProvider.notifier).logout();
+                },
+              ),
+            ),
           const SizedBox(height: 24),
           const Center(child: Text('Course Planner · Flutter', style: TextStyle(color: Colors.grey, fontSize: 12))),
         ],
       ),
     );
   }
-
-  String _time(DateTime utc) {
-    final l = utc.toLocal();
-    return '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}:${l.second.toString().padLeft(2, '0')}';
-  }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.text);
+/// One titled group of settings rows, rendered as a single [AppCard].
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.title, required this.tiles});
 
-  final String text;
+  final String title;
+  final List<Widget> tiles;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Text(text, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.primary)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+        AppCard(
+          padding: EdgeInsets.zero,
+          margin: const EdgeInsets.symmetric(horizontal: 12),
+          child: Column(children: tiles),
+        ),
+      ],
     );
   }
 }

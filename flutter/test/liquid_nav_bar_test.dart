@@ -12,8 +12,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const items = <LiquidNavItem>[
-    LiquidNavItem(icon: Icons.view_week_outlined, selectedIcon: Icons.view_week, label: '周视图'),
-    LiquidNavItem(icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month, label: '月视图'),
+    LiquidNavItem(icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: '日程'),
     LiquidNavItem(icon: Icons.checklist_outlined, selectedIcon: Icons.checklist, label: '待办'),
     LiquidNavItem(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: '设置'),
   ];
@@ -56,6 +55,22 @@ void main() {
     return prefs;
   }
 
+  /// Geometry of the capsule itself (the widget box is the full-width padding,
+  /// while the capsule is capped at [LiquidFloatingNavBar.maxCapsuleWidth] and
+  /// centred inside it).
+  ({double left, double width}) capsuleGeometry(Rect barRect) {
+    final available = barRect.width - LiquidFloatingNavBar.sideInset * 2;
+    final width = available > LiquidFloatingNavBar.maxCapsuleWidth
+        ? LiquidFloatingNavBar.maxCapsuleWidth
+        : available;
+    return (
+      left: barRect.left +
+          LiquidFloatingNavBar.sideInset +
+          (available - width) / 2,
+      width: width,
+    );
+  }
+
   for (final style in BottomBarStyle.values) {
     testWidgets('renders ${style.name} with all labels', (tester) async {
       await pumpBar(tester, style: style);
@@ -67,6 +82,18 @@ void main() {
     });
   }
 
+  testWidgets('the capsule keeps its compact height', (tester) async {
+    await pumpBar(tester);
+
+    final rect = tester.getRect(find.byType(LiquidFloatingNavBar));
+    expect(
+      rect.height,
+      LiquidFloatingNavBar.capsuleHeight + LiquidFloatingNavBar.bottomGap,
+    );
+    expect(capsuleGeometry(rect).width, LiquidFloatingNavBar.maxCapsuleWidth);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('tapping a tab reports its index', (tester) async {
     int? selected;
     await pumpBar(tester, onSelected: (i) => selected = i);
@@ -75,7 +102,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    expect(selected, 2);
+    expect(selected, 1);
     expect(tester.takeException(), isNull);
   });
 
@@ -84,24 +111,18 @@ void main() {
     await pumpBar(tester, onSelected: (i) => selected = i);
 
     final rect = tester.getRect(find.byType(LiquidFloatingNavBar));
-    final itemWidth =
-        (rect.width - LiquidFloatingNavBar.sideInset * 2) / items.length;
+    final capsule = capsuleGeometry(rect);
+    final itemWidth = capsule.width / items.length;
     final y = rect.center.dy;
-    final start = Offset(
-      rect.left + LiquidFloatingNavBar.sideInset + itemWidth * 0.5,
-      y,
-    );
-    // 2.1 items to the right: rounds to tab index 2.
-    final end = Offset(
-      rect.left + LiquidFloatingNavBar.sideInset + itemWidth * 2.1,
-      y,
-    );
+    final start = Offset(capsule.left + itemWidth * 0.5, y);
+    // 2.1 items to the right: rounds to the last tab.
+    final end = Offset(capsule.left + itemWidth * 2.1, y);
 
     await tester.dragFrom(start, end - start);
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    expect(selected, 2);
+    expect(selected, items.length - 1);
     expect(tester.takeException(), isNull);
   });
 

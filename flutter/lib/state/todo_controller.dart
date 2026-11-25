@@ -1,11 +1,20 @@
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/time/user_time.dart';
 import '../data/local/view_models.dart';
+import '../data/repo/entity_repo.dart';
 import '../domain/entities.dart';
 import '../domain/todo.dart';
+import 'providers.dart';
 import 'todo_sorting.dart';
 import 'app_services.dart';
 import 'sync_controller.dart';
+
+/// One execution window the editor wants written together with its todo
+/// (phase-4 task UX). Times are UTC instants; the editor converts its
+/// wall-clock picks through [UserTime.utcFromLocalParts].
+typedef NewTodoBlock = ({DateTime startUtc, DateTime endUtc, String? blockNote});
 
 // The todo page's business layer: the filter/sort selection, every write that
 // used to sit inline in `todo_page.dart`, and the derived board the list
@@ -128,7 +137,11 @@ class TodoController extends Notifier<TodoQuery> {
   }
 
   /// Writes the editor sheet: creates when [existingId] is null, updates
-  /// otherwise, then pushes. Wire keys stay here, not in the widget.
+  /// otherwise, and writes any [newBlocks] in the same local transaction.
+  /// Wire keys stay here, not in the widget.
+  ///
+  /// No explicit `syncNow()`: the snapshot listener schedules the push once
+  /// the queued operations show up (Phase 1).
   Future<void> saveTodo({
     String? existingId,
     required String title,
@@ -139,14 +152,56 @@ class TodoController extends Notifier<TodoQuery> {
     required TodoPriority priority,
     required DateTime? deadlineAt,
     required int? estimatedMinutes,
+    List<NewTodoBlock> newBlocks = const [],
   }) async {
     final services = ref.read(servicesProvider);
+    await writeTodoWithBlocks(
+      repo: services.repo,
+      userTime: ref.read(userTimeProvider),
+      existingId: existingId,
+      title: title,
+      type: type,
+      description: description,
+      categoryId: categoryId,
+      tagIds: tagIds.toList(),
+      priority: priority,
+      deadlineAt: deadlineAt,
+      estimatedMinutes: estimatedMinutes,
+      newBlocks: newBlocks,
+    );
+  }
+
+  /// Writes one todo plus its new blocks in a single local transaction and
+  /// returns the todo id.
+  ///
+  /// Kept static and repo-injected so tests can drive it against an in-memory
+  /// [EntityRepo] without building the whole [AppServices] graph.
+  @visibleForTesting
+  static Future<String> writeTodoWithBlocks({
+    required EntityRepo repo,
+    required UserTime? userTime,
+    required String? existingId,
+    required String title,
+    required TodoType type,
+    required String? description,
+    required String? categoryId,
+    required List<String> tagIds,
+    required TodoPriority priority,
+    required DateTime? deadlineAt,
+    required int? estimatedMinutes,
+    required List<NewTodoBlock> newBlocks,
+  }) async {
+    // A one-off is a single errand: it holds at most one block. More than one
+    // block means a multi-stage task, so the type upgrades to project here —
+    // the user should not have to reason about the type up front.
+    final effectiveType =
+        newBlocks.length > 1 ? TodoType.project : type;
     final changes = <String, dynamic>{
       'title': title,
-      'type': type.wire,
+      'type': effectiveType.wire,
       'description': description,
       'categoryId': categoryId,
-      'tagIds': tagIds.toList(),
+      'tagIds': tagIds,
       'priority': priority.wire,
       // Both types store it in deadlineAt; only the wording differs.
       'deadlineAt': deadlineAt,
@@ -154,18 +209,71 @@ class TodoController extends Notifier<TodoQuery> {
     if (estimatedMinutes != null) {
       changes['estimatedMinutes'] = estimatedMinutes;
     }
-    if (existingId == null) {
-      await services.repo.localCreate(
-        entityType: EntityTypes.todo,
-        snapshot: {...changes, 'status': TodoStatus.todo.wire},
-      );
-    } else {
-      await services.repo.localUpdate(
-        entityType: EntityTypes.todo,
-        entityId: existingId,
-        changes: changes,
-      );
+
+    // `EntityRepo.localCreate` opens its own transaction; drift nests those as
+    // savepoints, so this outer one still makes the todo + blocks atomic.
+    late String todoId;
+    await repo.db.transaction(() async {
+      if (existingId == null) {
+        todoId = await repo.localCreate(
+          entityType: EntityTypes.todo,
+          snapshot: {...changes, 'status': TodoStatus.todo.wire},
+        );
+      } else {
+        todoId = existingId;
+        await repo.localUpdate(
+          entityType: EntityTypes.todo,
+          entityId: existingId,
+          changes: changes,
+        );
+      }
+      for (final snapshot in buildBlockSnapshots(
+        todoId: todoId,
+        blocks: newBlocks,
+        userTime: userTime,
+      )) {
+        await repo.localCreate(
+          entityType: EntityTypes.todoBlock,
+          snapshot: snapshot,
+        );
+      }
+    });
+    return todoId;
+  }
+
+  /// Create-op snapshots for the editor's `newBlocks`.
+  ///
+  /// An invalid block is skipped (with a debug log) instead of failing the
+  /// whole save: the todo itself is still worth keeping when one draft window
+  /// crosses midnight or ends before it starts. The server would reject such a
+  /// block with `CROSS_MIDNIGHT_NOT_ALLOWED`, so it never reaches the queue.
+  @visibleForTesting
+  static List<Map<String, dynamic>> buildBlockSnapshots({
+    required String todoId,
+    required List<NewTodoBlock> blocks,
+    required UserTime? userTime,
+  }) {
+    final snapshots = <Map<String, dynamic>>[];
+    for (final b in blocks) {
+      if (!b.endUtc.isAfter(b.startUtc)) {
+        debugPrint('[todo] skipped block with end <= start: '
+            '${b.startUtc.toIso8601String()}..${b.endUtc.toIso8601String()}');
+        continue;
+      }
+      if (userTime == null || !userTime.sameLocalDay(b.startUtc, b.endUtc)) {
+        debugPrint('[todo] skipped block outside one local day: '
+            '${b.startUtc.toIso8601String()}..${b.endUtc.toIso8601String()}');
+        continue;
+      }
+      snapshots.add({
+        'todoId': todoId,
+        'startAt': b.startUtc,
+        'endAt': b.endUtc,
+        'blockNote': b.blockNote,
+        'status': BlockStatus.scheduled.wire,
+      });
     }
+    return snapshots;
   }
 }
 

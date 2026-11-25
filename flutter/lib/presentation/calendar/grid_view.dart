@@ -40,6 +40,10 @@ class GridViewContent extends ConsumerStatefulWidget {
     required this.onCommitMove,
     this.courseEditable = false,
     this.noonBoundaryMinutes = NoonBoundaryController.defaultMinutes,
+    this.onEmptySlotTap,
+    this.rowHeight = defaultRowHeight,
+    this.cardStyle,
+    this.hasBackground = false,
   });
 
   final UserTime userTime;
@@ -67,7 +71,25 @@ class GridViewContent extends ConsumerStatefulWidget {
   /// recurring occurrence via server series apply).
   final void Function(UiEvent event, DateTime startUtc, DateTime endUtc) onCommitMove;
 
-  static const double rowHeight = 54;
+  /// Optional quick-create hook: called when an empty period cell is tapped,
+  /// with the day, the row's local start/end minutes and its period number.
+  /// Null keeps the grid tap-inert outside its tiles.
+  final void Function(tz.TZDateTime day, int startMinute, int endMinute, int periodNo)? onEmptySlotTap;
+
+  /// Height of one period row (dp). Defaults to [defaultRowHeight]; the week
+  /// page passes the user's `CourseCardStyle.rowHeight`.
+  final double rowHeight;
+
+  /// Tile visuals (opacity, corner radius, gap, text scale). Null falls back to
+  /// the stock [CourseCardStyle], so embedders that do not care keep a sensible
+  /// look.
+  final CourseCardStyle? cardStyle;
+
+  /// Whether a wallpaper is painted behind the grid. The 上午/下午 row tints and
+  /// the weekend veil then turn translucent so the wallpaper reads through.
+  final bool hasBackground;
+
+  static const double defaultRowHeight = 54;
   static const double leftWidth = 64;
   static const int splitGapMinutes = 45;
 
@@ -93,19 +115,24 @@ class _EventRun {
 }
 
 class _GridLayout {
-  _GridLayout(this.rows) {
-    _tops = [for (var i = 0; i < rows.length; i++) i * GridViewContent.rowHeight];
+  _GridLayout(this.rows, this.rowHeight) {
+    _tops = [for (var i = 0; i < rows.length; i++) i * rowHeight];
     starts = rows.map((r) => r.start).toSet().toList()..sort();
     ends = rows.map((r) => r.end).toSet().toList()..sort();
   }
 
   final List<_PeriodRow> rows;
+
+  /// Height of one period row (dp); user-adjustable, see
+  /// [GridViewContent.defaultRowHeight] for the stock value.
+  final double rowHeight;
+
   late final List<double> _tops;
   late final List<int> starts;
   late final List<int> ends;
 
   int get count => rows.length;
-  double get height => rows.length * GridViewContent.rowHeight;
+  double get height => rows.length * rowHeight;
 
   double yForMinute(int minute) {
     if (rows.isEmpty) return 0;
@@ -115,7 +142,7 @@ class _GridLayout {
       final r = rows[i];
       if (minute < r.start) return _tops[i];
       if (minute < r.end) {
-        return _tops[i] + (minute - r.start) / r.duration * GridViewContent.rowHeight;
+        return _tops[i] + (minute - r.start) / r.duration * rowHeight;
       }
     }
     return height;
@@ -124,9 +151,9 @@ class _GridLayout {
   int minuteAtY(double y) {
     if (rows.isEmpty) return 0;
     final clamped = y.clamp(0.0, height);
-    final idx = (clamped / GridViewContent.rowHeight).floor().clamp(0, rows.length - 1);
+    final idx = (clamped / rowHeight).floor().clamp(0, rows.length - 1);
     final r = rows[idx];
-    final frac = (clamped - _tops[idx]) / GridViewContent.rowHeight;
+    final frac = (clamped - _tops[idx]) / rowHeight;
     return (r.start + frac * r.duration).round();
   }
 
@@ -146,19 +173,19 @@ class _GridLayout {
       final r1 = rows[last];
       final top = run.length == 1
           ? (_tops[first] +
-              (start - r0.start) / r0.duration * GridViewContent.rowHeight)
-              .clamp(_tops[first], _tops[first] + GridViewContent.rowHeight)
+              (start - r0.start) / r0.duration * rowHeight)
+              .clamp(_tops[first], _tops[first] + rowHeight)
           : (start <= r0.start
               ? _tops[first]
               : _tops[first] +
-                  (start - r0.start) / r0.duration * GridViewContent.rowHeight);
+                  (start - r0.start) / r0.duration * rowHeight);
       final bottom = run.length == 1
           ? (_tops[first] +
-              (end - r0.start) / r0.duration * GridViewContent.rowHeight)
-              .clamp(_tops[first], _tops[first] + GridViewContent.rowHeight)
+              (end - r0.start) / r0.duration * rowHeight)
+              .clamp(_tops[first], _tops[first] + rowHeight)
           : (end >= r1.end
-              ? _tops[last] + GridViewContent.rowHeight
-              : _tops[last] + (end - r1.start) / r1.duration * GridViewContent.rowHeight);
+              ? _tops[last] + rowHeight
+              : _tops[last] + (end - r1.start) / r1.duration * rowHeight);
       runs.add(_EventRun(top: top.toDouble(), bottom: bottom.toDouble(), day: day));
     }
 
@@ -210,7 +237,7 @@ class _GridViewContentState extends ConsumerState<GridViewContent> {
         Expanded(
           child: LayoutBuilder(builder: (context, constraints) {
             final dayWidth = (constraints.maxWidth - GridViewContent.leftWidth) / 7;
-            final layout = _GridLayout(rows);
+            final layout = _GridLayout(rows, widget.rowHeight);
             // The scrollable keeps the DEFAULT drag devices: disabling them (an
             // earlier workaround for tiles losing drags to the scroll view)
             // kills touch scrolling outright. Tiles use a vertical-drag
@@ -233,7 +260,10 @@ class _GridViewContentState extends ConsumerState<GridViewContent> {
                   dayWidth: dayWidth,
                   courseEditable: widget.courseEditable,
                   noonBoundaryMinutes: widget.noonBoundaryMinutes,
+                  cardStyle: widget.cardStyle,
+                  hasBackground: widget.hasBackground,
                   onCommitMove: widget.onCommitMove,
+                  onEmptySlotTap: widget.onEmptySlotTap,
                   onMessage: (m) {
                     if (mounted) {
                       ScaffoldMessenger.of(context)
@@ -355,6 +385,9 @@ class _GridCanvas extends StatefulWidget {
     required this.noonBoundaryMinutes,
     required this.onCommitMove,
     required this.onMessage,
+    this.cardStyle,
+    this.hasBackground = false,
+    this.onEmptySlotTap,
   });
 
   final UserTime userTime;
@@ -367,10 +400,20 @@ class _GridCanvas extends StatefulWidget {
   final double dayWidth;
   final bool courseEditable;
 
+  /// Tile visuals; null falls back to the stock [CourseCardStyle].
+  final CourseCardStyle? cardStyle;
+
+  /// Whether a wallpaper sits behind the canvas (see
+  /// [GridViewContent.hasBackground]).
+  final bool hasBackground;
+
   /// Minute-of-day where the afternoon band starts (local preference).
   final int noonBoundaryMinutes;
   final void Function(UiEvent, DateTime, DateTime) onCommitMove;
   final ValueChanged<String> onMessage;
+
+  /// Empty-cell tap hook (see [GridViewContent.onEmptySlotTap]).
+  final void Function(tz.TZDateTime day, int startMinute, int endMinute, int periodNo)? onEmptySlotTap;
 
   @override
   State<_GridCanvas> createState() => _GridCanvasState();
@@ -385,7 +428,15 @@ class _GridCanvasState extends State<_GridCanvas> {
   @override
   Widget build(BuildContext context) {
     final layout = widget.layout;
+    final rowHeight = layout.rowHeight;
     final colors = Theme.of(context).colorScheme;
+    // Over a wallpaper the flat row tints would hide it completely, so they
+    // turn translucent (18% see-through) and the weekend veil thins out by the
+    // same factor. Without a wallpaper the exact stock colours are kept (tests
+    // pin them).
+    Color rowTint(Color c) => widget.hasBackground ? c.withValues(alpha: 0.82) : c;
+    final weekendVeil =
+        Colors.black.withValues(alpha: widget.hasBackground ? 0.03 * 0.82 : 0.03);
     var pmStart = -1;
     for (var i = 0; i < layout.rows.length; i++) {
       if (layout.rows[i].start >= widget.noonBoundaryMinutes) {
@@ -402,14 +453,14 @@ class _GridCanvasState extends State<_GridCanvas> {
         children: [
           for (var i = 0; i < layout.rows.length; i++)
             Positioned(
-              top: i * GridViewContent.rowHeight,
+              top: i * rowHeight,
               left: 0,
               right: 0,
-              height: GridViewContent.rowHeight,
+              height: rowHeight,
               child: Container(
-                color: pmStart < 0 || i < pmStart
+                color: rowTint(pmStart < 0 || i < pmStart
                     ? const Color(0xFFEDF4FF)
-                    : const Color(0xFFFFF2E4),
+                    : const Color(0xFFFFF2E4)),
               ),
             ),
           for (var d = 5; d < 7; d++)
@@ -418,15 +469,15 @@ class _GridCanvasState extends State<_GridCanvas> {
               left: GridViewContent.leftWidth + d * widget.dayWidth,
               width: widget.dayWidth,
               height: layout.height,
-              child: Container(color: Colors.black.withValues(alpha: 0.03)),
+              child: Container(color: weekendVeil),
             ),
           // row lines + left period gutter
           for (var i = 0; i < layout.rows.length; i++)
             Positioned(
-              top: i * GridViewContent.rowHeight,
+              top: i * rowHeight,
               left: 0,
               right: 0,
-              height: GridViewContent.rowHeight,
+              height: rowHeight,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -473,6 +524,19 @@ class _GridCanvasState extends State<_GridCanvas> {
               ),
             ),
           if (pmStart > 0) _pmDivider(pmStart),
+          // Empty-cell tap layer. It must sit ABOVE the tinted rows, the
+          // weekend veil, the row grid lines and the period gutter (all of
+          // those are opaque hit-test targets that would otherwise swallow the
+          // tap), and BELOW every tile and marker (later Stack children win the
+          // hit test first), so a tap on a block still belongs to that block.
+          if (widget.onEmptySlotTap != null)
+            Positioned.fill(
+              child: GestureDetector(
+                key: const ValueKey('grid-empty-slot-layer'),
+                behavior: HitTestBehavior.opaque,
+                onTapUp: _onEmptyTap,
+              ),
+            ),
           // tiles
           for (final p in placed)
             _GridTile(
@@ -485,6 +549,7 @@ class _GridCanvasState extends State<_GridCanvas> {
               layout: layout,
               canvasKey: _canvasKey,
               dayWidth: widget.dayWidth,
+              style: widget.cardStyle ?? const CourseCardStyle(),
               onCommit: (ev, s, e) => widget.onCommitMove(ev, s, e),
               onPreview: _setPreview,
               onMessage: widget.onMessage,
@@ -503,6 +568,30 @@ class _GridCanvasState extends State<_GridCanvas> {
         ],
       ),
     );
+  }
+
+  /// Maps a tap on the empty-slot layer to (day, row). The layer fills the
+  /// canvas, so [details.localPosition] is already in canvas coordinates.
+  /// Taps on the left period gutter are ignored (they are labels, not slots).
+  void _onEmptyTap(TapUpDetails details) {
+    final callback = widget.onEmptySlotTap;
+    if (callback == null) return;
+    if (widget.dayWidth <= 0 ||
+        widget.layout.rows.isEmpty ||
+        widget.days.isEmpty) {
+      return;
+    }
+    final local = details.localPosition;
+    final dx = local.dx - GridViewContent.leftWidth;
+    if (dx < 0) return;
+    final day = (dx / widget.dayWidth)
+        .floor()
+        .clamp(0, widget.days.length - 1);
+    final rowIndex = (local.dy / widget.layout.rowHeight)
+        .floor()
+        .clamp(0, widget.layout.rows.length - 1);
+    final row = widget.layout.rows[rowIndex];
+    callback(widget.days[day], row.start, row.end, row.periodNo);
   }
 
   bool _editable(UiEvent e) {
@@ -574,10 +663,12 @@ class _GridCanvasState extends State<_GridCanvas> {
   Widget _previewGhost(_GridDragPreview p) {
     final top = widget.layout.yForMinute(p.startMinute);
     final bottom = widget.layout.yForMinute(p.endMinute);
+    // The ghost honours the same gap as the tiles it previews.
+    final margin = (widget.cardStyle ?? const CourseCardStyle()).margin;
     return Positioned(
-      left: GridViewContent.leftWidth + p.day * widget.dayWidth + 1,
+      left: GridViewContent.leftWidth + p.day * widget.dayWidth + margin,
       top: top,
-      width: widget.dayWidth - 2,
+      width: math.max(widget.dayWidth - 2 * margin, 1.0),
       height: math.max(bottom - top, 14.0),
       child: IgnorePointer(
         key: const ValueKey('grid-drag-ghost'),
@@ -729,7 +820,7 @@ class _GridCanvasState extends State<_GridCanvas> {
   /// already carry the distinction.
   Widget _pmDivider(int pmStart) {
     return Positioned(
-      top: pmStart * GridViewContent.rowHeight,
+      top: pmStart * widget.layout.rowHeight,
       left: GridViewContent.leftWidth,
       width: 7 * widget.dayWidth,
       height: 2,
@@ -834,6 +925,7 @@ class _GridTile extends ConsumerStatefulWidget {
     required this.layout,
     required this.canvasKey,
     required this.dayWidth,
+    required this.style,
     required this.onCommit,
     required this.onPreview,
     required this.onMessage,
@@ -847,6 +939,9 @@ class _GridTile extends ConsumerStatefulWidget {
   final _GridLayout layout;
   final GlobalKey canvasKey;
   final double dayWidth;
+
+  /// Opacity / corner radius / gaps / text scale of this tile.
+  final CourseCardStyle style;
   final void Function(UiEvent, DateTime, DateTime) onCommit;
   final ValueChanged<_GridDragPreview?> onPreview;
   final ValueChanged<String> onMessage;
@@ -869,7 +964,9 @@ class _GridTileState extends ConsumerState<_GridTile> {
   @override
   Widget build(BuildContext context) {
     final p = widget.placed;
-    final laneW = (widget.dayWidth - 3) / p.laneCount;
+    final style = widget.style;
+    final margin = style.margin;
+    final laneW = math.max(widget.dayWidth / p.laneCount, 1.0);
     final color = _colorFor(widget.event);
     final conflict = widget.event.conflict;
     // Line budget for the title / location, adjustable in Settings.
@@ -879,16 +976,21 @@ class _GridTileState extends ConsumerState<_GridTile> {
     // target slot is shown by the parent's ghost preview. Repositioning the
     // source here made the preview disagree with the row-clipped committed
     // render, which flickered between the two positions.
+    //
+    // The tile keeps one card gap inside its slot: half a gap per side (the
+    // configured margin), so neighbouring tiles and rows read as separate
+    // cards. A margin near the clamp's maximum must never produce a
+    // non-positive box, hence the 1 dp floor.
     final left = GridViewContent.leftWidth +
         p.day * widget.dayWidth +
-        1 +
-        p.lane * laneW;
+        p.lane * laneW +
+        margin;
 
     return Positioned(
       left: left,
-      top: p.run.top,
-      width: laneW - 1,
-      height: p.run.height,
+      top: p.run.top + margin,
+      width: math.max(laneW - 2 * margin, 1.0),
+      height: math.max(p.run.height - 2 * margin, 1.0),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _openInfo(),
@@ -905,8 +1007,8 @@ class _GridTileState extends ConsumerState<_GridTile> {
           decoration: BoxDecoration(
             color: _dragging
                 ? color.withValues(alpha: 0.35)
-                : color.withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(4),
+                : color.withValues(alpha: style.opacity),
+            borderRadius: BorderRadius.circular(style.borderRadius),
             border: Border.all(
               color: _dragging
                   ? color.withValues(alpha: 0.9)
@@ -927,9 +1029,9 @@ class _GridTileState extends ConsumerState<_GridTile> {
                   child: Text(widget.event.title,
                       maxLines: lines.title,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: Colors.white,
-                          fontSize: 10.5,
+                          fontSize: 10.5 * style.fontScale,
                           fontWeight: FontWeight.w600)),
                 ),
                 if (widget.event.location != null && widget.event.location!.isNotEmpty)
@@ -937,7 +1039,9 @@ class _GridTileState extends ConsumerState<_GridTile> {
                     child: Text(widget.event.location!,
                         maxLines: lines.location,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                        style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 9 * style.fontScale)),
                   ),
               ],
             ),

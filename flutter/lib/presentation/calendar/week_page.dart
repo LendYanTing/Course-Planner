@@ -9,21 +9,32 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../app/theme.dart';
 import '../../core/error/api_exception.dart';
 import '../../core/time/user_time.dart';
+import '../../data/local/view_models.dart';
 import '../../domain/calendar_event.dart';
+import '../../domain/todo.dart';
 import '../../state/calendar_controller.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../state/event_projection.dart';
 import '../adaptive/adaptive.dart';
+import '../widgets/calendar_background.dart';
 import 'grid_view.dart';
-import 'month_page.dart' show weekGutterLabel;
+import 'month_view_content.dart' show MonthViewContent, weekGutterLabel;
 
 const double _hourPx = 48.0;
 const double _timeGutter = 46.0;
 
-/// Week tab view modes: continuous 7×24 timeline vs period Grid (纯课表).
-enum WeekViewMode { timeline, grid }
+/// 日程 page view modes: period Grid (纯课表), continuous 7×24 timeline, and the
+/// month grid. The names match the persisted [WeekViewModeController] strings.
+enum WeekViewMode { timeline, grid, month }
+
+/// Persisted string → page mode. An unknown value (e.g. a future mode) falls
+/// back to the timeline.
+WeekViewMode _viewModeFromPref(String value) => WeekViewMode.values.firstWhere(
+      (m) => m.name == value,
+      orElse: () => WeekViewMode.timeline,
+    );
 
 /// Local Monday of the week that contains [local].
 tz.TZDateTime mondayOf(UserTime userTime, DateTime local) {
@@ -84,12 +95,12 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToTodayIfNeeded());
   }
 
-  void _toggleViewMode() {
+  /// Switch view mode without touching [_anchor]: the same period (week or
+  /// month) stays on screen across 课表 / 周 / 月.
+  void _setViewMode(WeekViewMode mode) {
+    if (_viewModeFromPref(ref.read(weekViewModeProvider)) == mode) return;
     _slideDir = 1;
-    final next = ref.read(weekViewModeProvider) == WeekViewModeController.grid
-        ? WeekViewModeController.timeline
-        : WeekViewModeController.grid;
-    ref.read(weekViewModeProvider.notifier).set(next);
+    ref.read(weekViewModeProvider.notifier).set(mode.name);
   }
 
   void _jumpToTodayIfNeeded() {
@@ -115,6 +126,35 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     setState(() => _anchor = userTime.addLocalDays(local, deltaWeeks * 7));
   }
 
+  /// Month-mode navigation: ±1 month in the user's timezone, anchored on the
+  /// 1st so the whole month (not a day within it) is the unit.
+  void _moveMonth(int deltaMonths) {
+    final userTime = ref.read(userTimeProvider);
+    if (userTime == null) return;
+    if (deltaMonths != 0) _slideDir = deltaMonths > 0 ? 1 : -1;
+    final local = userTime.localFromUtc(_anchor);
+    setState(() {
+      _anchor = tz.TZDateTime(userTime.location, local.year, local.month + deltaMonths, 1);
+    });
+  }
+
+  /// Back to today's week/month without leaving the current mode.
+  void _goToday() {
+    setState(() => _anchor = ref.read(serverNowProvider).value ?? DateTime.now().toUtc());
+  }
+
+  /// A day tapped in the month grid: anchor on it and show that week's 课表.
+  void _selectDayInMonth(DateTime localDay) {
+    final userTime = ref.read(userTimeProvider);
+    if (userTime == null) return;
+    setState(() {
+      _anchor = userTime
+          .fromLocalParts(localDay.year, localDay.month, localDay.day, 12, 0)
+          .toUtc();
+    });
+    ref.read(weekViewModeProvider.notifier).set(WeekViewMode.grid.name);
+  }
+
   @override
   Widget build(BuildContext context) {
     final userTime = ref.watch(userTimeProvider);
@@ -124,16 +164,19 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-    final viewMode =
-        ref.watch(weekViewModeProvider) == WeekViewModeController.grid
-            ? WeekViewMode.grid
-            : WeekViewMode.timeline;
+    final viewMode = _viewModeFromPref(ref.watch(weekViewModeProvider));
+    final isMonth = viewMode == WeekViewMode.month;
     final noonBoundary = ref.watch(noonBoundaryProvider);
+    // One read, handed down to every tile: a per-tile watch would rebuild each
+    // tile on its own when a style slider moves.
+    final cardStyle = ref.watch(courseCardStyleProvider);
+    final hasBackground = ref.watch(backgroundConfigProvider).hasBackground;
     final now = ref.read(serverNowProvider).value;
     final snap = ref.watch(snapshotProvider).value;
     final syncState = ref.watch(syncCoordinatorProvider);
 
-    final weekStart = _weekStart(userTime.localFromUtc(_anchor));
+    final anchorLocal = userTime.localFromUtc(_anchor);
+    final weekStart = _weekStart(anchorLocal);
     final days = <tz.TZDateTime>[
       for (var i = 0; i < 7; i++)
         tz.TZDateTime(userTime.location, weekStart.year, weekStart.month, weekStart.day + i),
@@ -156,39 +199,78 @@ class _WeekPageState extends ConsumerState<WeekPage> {
       weeksFromThisWeek: weeksFromThisWeek(userTime, days.first, nowLocal),
     );
 
+    final pageKey = _pageKey(days, viewMode);
+    final periodContent = viewMode == WeekViewMode.month
+        ? MonthViewContent(
+            // The pinned bar above already carries ‹ 今天 ›.
+            showNavRow: false,
+            // The page body below already paints the wallpaper; a second
+            // CalendarBackground would stack two scrims on the same pixels.
+            paintBackground: false,
+            anchorUtc: _anchor,
+            onShiftMonth: _moveMonth,
+            onSelectDate: _selectDayInMonth,
+          )
+        : viewMode == WeekViewMode.grid
+            ? GridViewContent(
+                userTime: userTime,
+                days: days,
+                events: events,
+                snapshot: snap,
+                nowUtc: now,
+                courseEditable: ref.watch(courseEditableInCourseViewProvider),
+                noonBoundaryMinutes: noonBoundary,
+                rowHeight: cardStyle.rowHeight,
+                cardStyle: cardStyle,
+                hasBackground: hasBackground,
+                onCommitMove: _commitEventMove,
+                onEmptySlotTap: _onGridEmptyTap,
+              )
+            : Column(
+                children: [
+                  _WeekHeader(
+                    days: days,
+                    todayLocal: now == null ? null : userTime.localFromUtc(now),
+                  ),
+                  Expanded(
+                    child: _buildGrid(userTime, days, events, now, cardStyle),
+                  ),
+                ],
+              );
+
     return Scaffold(
+      // A configured wallpaper shows through the page: everything that is not
+      // explicitly tinted must stay transparent.
+      backgroundColor: hasBackground ? Colors.transparent : null,
       appBar: AppTopBar(
         // Tapping the title jumps to any date (also reachable by swiping the
-        // body left/right to step a week).
+        // body left/right to step a week/month).
         titleWidget: InkWell(
           onTap: () => _pickDate(userTime),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(rangeText, style: const TextStyle(fontSize: 16)),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: semesterWeek == null
-                      ? Theme.of(context).colorScheme.error
-                      : Theme.of(context).colorScheme.primary,
+          child: isMonth
+              ? Text(
+                  '${anchorLocal.year}年${anchorLocal.month}月',
+                  style: const TextStyle(fontSize: 16),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(rangeText, style: const TextStyle(fontSize: 16)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: semesterWeek == null
+                            ? Theme.of(context).colorScheme.error
+                            : Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
         actions: [
-          IconButton(
-            tooltip: viewMode == WeekViewMode.timeline ? '切到课表视图' : '切到时间轴周视图',
-            onPressed: _toggleViewMode,
-            icon: Icon(
-              viewMode == WeekViewMode.timeline
-                  ? Icons.view_agenda_outlined
-                  : Icons.view_day_outlined,
-            ),
-          ),
+          _ViewModeSwitch(mode: viewMode, onChanged: _setViewMode),
           // The sync action only exists for a cloud account with sync on; a
           // local session has no server to talk to.
           if (ref.watch(cloudSyncEnabledProvider))
@@ -202,98 +284,94 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         ],
       ),
       // The period navigation (‹ 今天 › + the course-drag switch) is pinned
-      // above the animated area: swiping to another week slides only the
+      // above the animated area: swiping to another week/month slides only the
       // timetable below it. Keeping it inside the switcher moved the very
       // controls under the finger that was swiping.
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _WeekNavRow(
-            days: days,
-            onPrev: () => _moveWeek(-1),
-            onNext: () => _moveWeek(1),
-            onToday: () => setState(() => _anchor = now ?? DateTime.now().toUtc()),
-            // The course-drag switch belongs to the 课表 view only.
-            trailing: viewMode == WeekViewMode.grid
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
-                      AppSwitch(
-                        value: ref.watch(courseEditableInCourseViewProvider),
-                        onChanged: (v) => ref
-                            .read(courseEditableInCourseViewProvider.notifier)
-                            .set(v),
-                      ),
-                    ],
-                  )
-                : null,
-          ),
-          const Divider(height: 1),
-          Expanded(
-            // Swiping left/right steps a week (both view modes); vertical drags
-            // stay with the scrollable inside.
-            child: GestureDetector(
-              onHorizontalDragEnd: (d) {
-                final v = d.primaryVelocity ?? 0;
-                if (v.abs() < 120) return;
-                _moveWeek(v < 0 ? 1 : -1);
-              },
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  // The incoming page comes in from the swipe direction; the
-                  // outgoing one leaves the other way, otherwise both travel
-                  // together.
-                  final incoming = child.key == ValueKey(_pageKey(days, viewMode));
-                  final dx = (incoming ? _slideDir : -_slideDir).toDouble();
-                  return ClipRect(
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: Offset(dx, 0),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  );
-                },
-                child: KeyedSubtree(
-                  key: ValueKey(_pageKey(days, viewMode)),
-                  child: viewMode == WeekViewMode.grid
-                      ? GridViewContent(
-                          userTime: userTime,
-                          days: days,
-                          events: events,
-                          snapshot: snap,
-                          nowUtc: now,
-                          courseEditable: ref.watch(courseEditableInCourseViewProvider),
-                          noonBoundaryMinutes: noonBoundary,
-                          onCommitMove: _commitEventMove,
-                        )
-                      : Column(
-                          children: [
-                            _WeekHeader(
-                              days: days,
-                              todayLocal: now == null ? null : userTime.localFromUtc(now),
-                            ),
-                            Expanded(child: _buildGrid(userTime, days, events, now)),
-                          ],
+      body: CalendarBackground(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _WeekNavRow(
+              // In 月 mode the same bar steps months instead of weeks.
+              onPrev: () => isMonth ? _moveMonth(-1) : _moveWeek(-1),
+              onNext: () => isMonth ? _moveMonth(1) : _moveWeek(1),
+              onToday: _goToday,
+              // The course-drag switch belongs to the 课表 view only.
+              trailing: viewMode == WeekViewMode.grid
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
+                        AppSwitch(
+                          value: ref.watch(courseEditableInCourseViewProvider),
+                          onChanged: (v) => ref
+                              .read(courseEditableInCourseViewProvider.notifier)
+                              .set(v),
                         ),
+                      ],
+                    )
+                  : null,
+            ),
+            const Divider(height: 1),
+            Expanded(
+              // Swiping left/right steps a week (or a month in 月 mode);
+              // vertical drags stay with the scrollable inside.
+              child: GestureDetector(
+                onHorizontalDragEnd: (d) {
+                  final v = d.primaryVelocity ?? 0;
+                  if (v.abs() < 120) return;
+                  if (isMonth) {
+                    _moveMonth(v < 0 ? 1 : -1);
+                  } else {
+                    _moveWeek(v < 0 ? 1 : -1);
+                  }
+                },
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    // The incoming page comes in from the swipe direction; the
+                    // outgoing one leaves the other way, otherwise both travel
+                    // together.
+                    final incoming = child.key == ValueKey(pageKey);
+                    final dx = (incoming ? _slideDir : -_slideDir).toDouble();
+                    return ClipRect(
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: Offset(dx, 0),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey(pageKey),
+                    child: periodContent,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  /// Identity of the shown period (week + mode) so the switcher animates on a
-  /// period change and stays still on unrelated rebuilds.
-  String _pageKey(List<tz.TZDateTime> days, WeekViewMode mode) =>
-      '${days.first.year}-${days.first.month}-${days.first.day}-${mode.name}';
+  /// Identity of the shown period (week/month + mode) so the switcher animates
+  /// on a period change and stays still on unrelated rebuilds.
+  String _pageKey(List<tz.TZDateTime> days, WeekViewMode mode) {
+    if (mode == WeekViewMode.month) {
+      // The month grid depends on the anchor's local month only.
+      final userTime = ref.read(userTimeProvider);
+      if (userTime != null) {
+        final local = userTime.localFromUtc(_anchor);
+        return '${local.year}-${local.month}-${mode.name}';
+      }
+    }
+    return '${days.first.year}-${days.first.month}-${days.first.day}-${mode.name}';
+  }
 
   /// Jump straight to a date (the header is the entry point).
   Future<void> _pickDate(UserTime userTime) async {
@@ -309,7 +387,13 @@ class _WeekPageState extends ConsumerState<WeekPage> {
         userTime.fromLocalParts(picked.year, picked.month, picked.day, 12, 0).toUtc());
   }
 
-  Widget _buildGrid(UserTime userTime, List<tz.TZDateTime> days, List<UiEvent> events, DateTime? now) {
+  Widget _buildGrid(
+    UserTime userTime,
+    List<tz.TZDateTime> days,
+    List<UiEvent> events,
+    DateTime? now,
+    CourseCardStyle style,
+  ) {
     return LayoutBuilder(builder: (context, constraints) {
       final dayWidth = math.max(56.0, (constraints.maxWidth - _timeGutter) / 7);
       final totalHeight = _hourPx * 24;
@@ -374,6 +458,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                           dayIndex: dayIndex,
                           dayWidth: dayWidth,
                           textLines: ref.watch(tileTextLinesProvider),
+                          style: style,
                           onDragChanged: (v) => setState(() => _dragActive = v),
                           onCommit: (start, end) => _commitEventMove(event, start, end),
                         ),
@@ -452,20 +537,59 @@ class _WeekPageState extends ConsumerState<WeekPage> {
 
   Future<void> _onEmptySlotTap(DateTime day, int minute) async {
     final snapped = _snap(minute);
+    // Timeline slots have no period: the sheet defaults to one hour and offers
+    // no 「连堂 2 节」 chip.
     final result = await showAppBottomSheet<Map<String, dynamic>>(
       context: context,
+      isScrollControlled: true,
       builder: (_) => _QuickCreateSheet(day: day, startMinute: snapped),
     );
     if (result == null || !mounted) return;
+    await _createFromSheet(result, day, snapped);
+  }
+
+  /// Empty 课表 cell: the sheet opens on that period's exact start/end, so the
+  /// default duration is the period length (45 min) and 「连堂 2 节」 is one tap
+  /// away.
+  Future<void> _onGridEmptyTap(
+    tz.TZDateTime day,
+    int startMinute,
+    int endMinute,
+    int periodNo,
+  ) async {
+    final periodMinutes = endMinute - startMinute;
+    final result = await showAppBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _QuickCreateSheet(
+        day: day,
+        startMinute: startMinute,
+        initialDurationMinutes: periodMinutes > 0 ? periodMinutes : 45,
+        periodNo: periodNo,
+        showPeriodHint: true,
+      ),
+    );
+    if (result == null || !mounted) return;
+    await _createFromSheet(result, day, startMinute);
+  }
+
+  /// Shared write path for both empty-slot entry points.
+  Future<void> _createFromSheet(
+    Map<String, dynamic> result,
+    DateTime day,
+    int startMinute,
+  ) async {
     final title = result['title'] as String? ?? '';
     final duration = (result['durationMinutes'] as num?)?.toInt() ?? 60;
     final todoId = result['todoId'] as String?;
+    final alsoDeadline = result['alsoDeadline'] as bool? ?? false;
     final error = await ref.read(calendarControllerProvider.notifier).createQuickBlock(
           day: day,
-          startMinute: snapped,
+          startMinute: startMinute,
           durationMinutes: duration,
           title: title,
           todoId: todoId,
+          alsoDeadline: alsoDeadline,
         );
     if (error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('创建失败: ${error.message}')));
@@ -491,14 +615,12 @@ class _WeekPageState extends ConsumerState<WeekPage> {
 
 class _WeekNavRow extends StatelessWidget {
   const _WeekNavRow({
-    required this.days,
     required this.onPrev,
     required this.onNext,
     required this.onToday,
     this.trailing,
   });
 
-  final List<tz.TZDateTime> days;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onToday;
@@ -514,6 +636,78 @@ class _WeekNavRow extends StatelessWidget {
         const Spacer(),
         ?trailing,
       ],
+    );
+  }
+}
+
+/// Compact `课表 | 周 | 月` segmented control for the app bar.
+///
+/// A plain pill rather than [SegmentedButton] so it stays narrow enough for the
+/// title to keep its week range on a phone, and so each segment can carry its
+/// own tooltip (the switch tests find segments by tooltip).
+class _ViewModeSwitch extends StatelessWidget {
+  const _ViewModeSwitch({required this.mode, required this.onChanged});
+
+  final WeekViewMode mode;
+  final ValueChanged<WeekViewMode> onChanged;
+
+  static const _segments = <WeekViewMode, ({String label, String tooltip})>{
+    WeekViewMode.grid: (label: '课表', tooltip: '切到课表视图'),
+    WeekViewMode.timeline: (label: '周', tooltip: '切到周视图'),
+    WeekViewMode.month: (label: '月', tooltip: '切到月视图'),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    // AppBar actions stretch to the full toolbar height; Center keeps the pill
+    // at its compact size.
+    return Center(
+      child: Material(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final entry in _segments.entries)
+                _segment(colors, entry.key, entry.value),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _segment(
+    ColorScheme colors,
+    WeekViewMode value,
+    ({String label, String tooltip}) segment,
+  ) {
+    final selected = value == mode;
+    return Tooltip(
+      message: segment.tooltip,
+      child: InkWell(
+        onTap: () => onChanged(value),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: selected ? colors.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            segment.label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? colors.onPrimary : colors.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -664,6 +858,7 @@ class _PositionedEvent extends StatefulWidget {
     required this.onDragChanged,
     required this.onCommit,
     required this.textLines,
+    required this.style,
   });
 
   final UiEvent event;
@@ -678,6 +873,9 @@ class _PositionedEvent extends StatefulWidget {
 
   /// Line budget for the title / location (Settings → 外观与界面).
   final ({int title, int location}) textLines;
+
+  /// Opacity / corner radius / gap / text scale of the block.
+  final CourseCardStyle style;
 
   @override
   State<_PositionedEvent> createState() => _PositionedEventState();
@@ -713,9 +911,9 @@ class _PositionedEventState extends State<_PositionedEvent> {
         };
 
     return Positioned(
-      left: widget.dayIndex * widget.dayWidth + 2,
+      left: widget.dayIndex * widget.dayWidth + widget.style.margin,
       top: startMinute / 1440 * (_hourPx * 24),
-      width: widget.dayWidth - 4,
+      width: math.max(widget.dayWidth - 2 * widget.style.margin, 1.0),
       height: math.max(14.0, durationMinutes / 1440 * (_hourPx * 24)),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -757,6 +955,9 @@ class _PositionedEventState extends State<_PositionedEvent> {
           event: widget.event,
           color: color,
           textLines: widget.textLines,
+          style: widget.style,
+          // While dragging, the block dims to mark the ghost as the target.
+          dragging: _dragging,
           dragOverlay: _dragging && _crossMidnight,
           // Edge handles only when there is room to grab them.
           showHandles: math.max(14.0, durationMinutes / 1440 * (_hourPx * 24)) >= 26,
@@ -841,6 +1042,8 @@ class _EventVisual extends StatelessWidget {
     required this.event,
     required this.color,
     required this.textLines,
+    required this.style,
+    this.dragging = false,
     this.dragOverlay = false,
     this.showHandles = false,
   });
@@ -848,12 +1051,16 @@ class _EventVisual extends StatelessWidget {
   final UiEvent event;
   final Color color;
   final ({int title, int location}) textLines;
+  final CourseCardStyle style;
+
+  /// Whether the source block is being dragged (it dims to 0.35).
+  final bool dragging;
   final bool dragOverlay;
   final bool showHandles;
 
   @override
   Widget build(BuildContext context) {
-    final bg = color.withValues(alpha: 0.85);
+    final bg = color.withValues(alpha: dragging ? 0.35 : style.opacity);
     final conflict = event.conflict;
     final borderColor = conflict == ConflictState.hard
         ? Colors.red
@@ -863,7 +1070,7 @@ class _EventVisual extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(style.borderRadius),
         border: Border.all(color: borderColor, width: conflict == ConflictState.none ? 0 : 1.5),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
@@ -876,13 +1083,18 @@ class _EventVisual extends StatelessWidget {
             event.title,
             maxLines: textLines.title,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 10.5 * style.fontScale,
+                fontWeight: FontWeight.w600),
           ),
           if (event.location != null && event.location!.isNotEmpty)
             Text(event.location!,
                 maxLines: textLines.location,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 9 * style.fontScale)),
         ],
         ),
         if (showHandles) ...[
@@ -970,20 +1182,65 @@ class _DeadlineMarker extends StatelessWidget {
   }
 }
 
-/// Bottom sheet: create a new todo block in an empty slot.
-class _QuickCreateSheet extends StatefulWidget {
-  const _QuickCreateSheet({required this.day, required this.startMinute});
+/// How the quick-create sheet sources its todo.
+enum _QuickCreateMode { newTodo, linkTodo }
+
+/// Bottom sheet: create a todo block in an empty slot (时间轴 or 课表 cell).
+///
+/// Two modes: a brand-new todo (title typed here) or an existing open todo
+/// picked from the mirror. Durations are quick chips rather than a dropdown,
+/// so aligning to the tapped period is one tap; when opened from the 课表 grid
+/// the default duration is that period's length and 「连堂 2 节」 sits beside it.
+class _QuickCreateSheet extends ConsumerStatefulWidget {
+  const _QuickCreateSheet({
+    required this.day,
+    required this.startMinute,
+    this.initialDurationMinutes = 60,
+    this.periodNo,
+    this.showPeriodHint = false,
+  });
 
   final DateTime day;
   final int startMinute;
+  final int initialDurationMinutes;
+
+  /// Period whose cell was tapped in the 课表 grid; null from the timeline.
+  final int? periodNo;
+
+  /// Adds the period caption and the 「连堂 2 节」 chip (课表 grid only).
+  final bool showPeriodHint;
 
   @override
-  State<_QuickCreateSheet> createState() => _QuickCreateSheetState();
+  ConsumerState<_QuickCreateSheet> createState() => _QuickCreateSheetState();
 }
 
-class _QuickCreateSheetState extends State<_QuickCreateSheet> {
+class _QuickCreateSheetState extends ConsumerState<_QuickCreateSheet> {
+  static const _chips = <({String key, String label, int minutes})>[
+    (key: 'p1', label: '1节课(45m)', minutes: 45),
+    (key: 'p2', label: '2节课(90m)', minutes: 90),
+    (key: 'h1', label: '1小时', minutes: 60),
+    (key: 'h2', label: '2小时', minutes: 120),
+  ];
+
   final _title = TextEditingController();
-  int _duration = 60;
+  late int _duration;
+  String? _chipKey;
+  _QuickCreateMode _mode = _QuickCreateMode.newTodo;
+  String? _todoId;
+  bool _alsoDeadline = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _duration =
+        widget.initialDurationMinutes > 0 ? widget.initialDurationMinutes : 60;
+    for (final c in _chips) {
+      if (c.minutes == _duration) {
+        _chipKey = c.key;
+        break;
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -993,44 +1250,149 @@ class _QuickCreateSheetState extends State<_QuickCreateSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final snapshot = ref.watch(snapshotProvider).value;
+    final todos = <Todo>[
+      if (snapshot != null)
+        for (final live in liveTodos(snapshot))
+          if (!live.value.isCompleted && live.value.status != TodoStatus.cancelled)
+            live.value,
+    ];
+    // A stale id (the todo got completed elsewhere) must not reach the
+    // dropdown's item/value assert.
+    final selectedTodoId = todos.any((t) => t.id == _todoId) ? _todoId : null;
+    final endMinute = widget.startMinute + _duration;
+    final crossesMidnight = endMinute > 24 * 60;
+    // Crossing midnight hides the range instead of showing a next-day time;
+    // the write path keeps its previous behaviour for that case.
+    final timeRange =
+        crossesMidnight ? null : '${_hhmm(widget.startMinute)} – ${_hhmm(endMinute)}';
+    final canCreate =
+        _mode == _QuickCreateMode.newTodo || selectedTodoId != null;
+
     return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('新建日程块 · ${DateFormat('HH:mm').format(DateTime(2000, 1, 1, widget.startMinute ~/ 60, widget.startMinute % 60))}',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _title,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: '做什么？（留空则只安排时间块）'),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<int>(
-            initialValue: _duration,
-            decoration: const InputDecoration(labelText: '时长'),
-            items: [30, 45, 60, 90, 120, 150, 180]
-                .map((m) => DropdownMenuItem(value: m, child: Text('$m 分钟')))
-                .toList(),
-            onChanged: (v) => setState(() => _duration = v ?? 60),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(context).pop({
-                'title': _title.text.trim(),
-                'durationMinutes': _duration,
-                'todoId': null,
-              });
-            },
-            child: const Text('创建'),
-          ),
-        ],
+      // Keep the create button above the keyboard while the title is focused.
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.periodNo == null
+                  ? '${widget.day.month}月${widget.day.day}日 · 新建时间块'
+                  : '${widget.day.month}月${widget.day.day}日 · 第 ${widget.periodNo} 节',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            if (timeRange != null)
+              Text(timeRange,
+                  style: const TextStyle(fontSize: 13, color: Colors.black54)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                ChoiceChip(
+                  label: const Text('新建待办时间块'),
+                  selected: _mode == _QuickCreateMode.newTodo,
+                  onSelected: (_) =>
+                      setState(() => _mode = _QuickCreateMode.newTodo),
+                ),
+                ChoiceChip(
+                  label: const Text('关联已有待办'),
+                  selected: _mode == _QuickCreateMode.linkTodo,
+                  onSelected: (_) =>
+                      setState(() => _mode = _QuickCreateMode.linkTodo),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_mode == _QuickCreateMode.newTodo)
+              TextField(
+                controller: _title,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '做什么？（留空则只安排时间块）'),
+              )
+            else if (todos.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('先去待办页新建', style: TextStyle(color: Colors.grey)),
+              )
+            else
+              DropdownButtonFormField<String>(
+                initialValue: selectedTodoId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '选择待办'),
+                items: [
+                  for (final t in todos)
+                    DropdownMenuItem(
+                      value: t.id,
+                      child: Text(t.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: (v) => setState(() => _todoId = v),
+              ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final c in _chips) _durationChip(c),
+                // Same 90 minutes as 「2节课(90m)」, worded for a double period.
+                if (widget.showPeriodHint)
+                  ChoiceChip(
+                    label: const Text('连堂 2 节'),
+                    selected: _chipKey == 'conn',
+                    onSelected: (_) => setState(() {
+                      _chipKey = 'conn';
+                      _duration = 90;
+                    }),
+                  ),
+              ],
+            ),
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('同时将该时间设为截止时间'),
+              value: _alsoDeadline,
+              onChanged: (v) => setState(() => _alsoDeadline = v ?? false),
+            ),
+            const SizedBox(height: 6),
+            FilledButton(
+              onPressed: canCreate ? () => _submit(selectedTodoId) : null,
+              child: const Text('创建'),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _durationChip(({String key, String label, int minutes}) chip) {
+    return ChoiceChip(
+      label: Text(chip.label),
+      selected: _chipKey == chip.key,
+      onSelected: (_) => setState(() {
+        _chipKey = chip.key;
+        _duration = chip.minutes;
+      }),
+    );
+  }
+
+  void _submit(String? selectedTodoId) {
+    Navigator.of(context).pop(<String, dynamic>{
+      'title': _mode == _QuickCreateMode.newTodo ? _title.text.trim() : '',
+      'durationMinutes': _duration,
+      'todoId': _mode == _QuickCreateMode.linkTodo ? selectedTodoId : null,
+      'alsoDeadline': _alsoDeadline,
+    });
+  }
+
+  static String _hhmm(int minute) =>
+      DateFormat('HH:mm').format(DateTime(2000, 1, 1, (minute ~/ 60) % 24, minute % 60));
 }
 
 /// Bottom sheet: event detail + actions (edit time / scope / delete).

@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/auth/pref_store.dart';
@@ -11,24 +14,27 @@ final prefStoreProvider = Provider<PrefStore>(
   (ref) => ref.watch(servicesProvider).prefStore,
 );
 
-/// Which 周视图 mode is active: `timeline` (时间轴) or `grid` (课表).
-/// Persisted so the toggle survives a restart.
+/// Which 日程 view mode is active: `timeline` (时间轴), `grid` (课表) or
+/// `month` (月视图). Persisted so the toggle survives a restart.
 class WeekViewModeController extends Notifier<String> {
   static const timeline = 'timeline';
   static const grid = 'grid';
+  static const month = 'month';
 
   static const _key = 'week_view_mode';
 
   @override
   String build() {
     _restore();
+    // Existing installs and tests expect the timeline first; the 日程 page's
+    // segmented switcher covers the other two modes.
     return timeline;
   }
 
   Future<void> _restore() async {
     try {
       final v = await ref.read(prefStoreProvider).read(_key);
-      if (v == timeline || v == grid) state = v!;
+      if (v == timeline || v == grid || v == month) state = v!;
     } on Object {
       // Best effort: keep the default mode.
     }
@@ -425,3 +431,526 @@ class LocalTimezoneController extends Notifier<String> {
 
 final localTimezoneProvider =
     NotifierProvider<LocalTimezoneController, String>(LocalTimezoneController.new);
+
+/// Normalises a user-typed colour (`#RRGGBB` or `RRGGBB`) to upper-case
+/// `#RRGGBB`. Returns null when the input is not a six-digit hex colour, so
+/// callers can keep the previous value instead of persisting garbage.
+String? normalizeHexColor(String? raw) {
+  if (raw == null) return null;
+  final h = raw.trim().replaceFirst('#', '');
+  if (h.length != 6) return null;
+  if (int.tryParse(h, radix: 16) == null) return null;
+  return '#${h.toUpperCase()}';
+}
+
+/// Theme mode, seed colour and the Monet (wallpaper-derived scheme) toggle.
+///
+/// One JSON blob under [ThemeConfigController._key] instead of three scattered
+/// keys; the appearance page edits the whole record through `copyWith`.
+class ThemeConfig {
+  const ThemeConfig({
+    this.mode = ThemeMode.system,
+    this.useWallpaperMonet = true,
+    this.seedColorHex = defaultSeedHex,
+  });
+
+  /// Indigo 500, matching `AppTheme.seed` so an untouched install keeps its
+  /// current look.
+  static const defaultSeedHex = '#3F51B5';
+
+  final ThemeMode mode;
+
+  /// When on and a background image is set, the scheme is extracted from the
+  /// wallpaper; otherwise [seedColorHex] drives the scheme.
+  final bool useWallpaperMonet;
+
+  /// `#RRGGBB` seed for `ColorScheme.fromSeed`.
+  final String seedColorHex;
+
+  ThemeConfig copyWith({
+    ThemeMode? mode,
+    bool? useWallpaperMonet,
+    String? seedColorHex,
+  }) {
+    return ThemeConfig(
+      mode: mode ?? this.mode,
+      useWallpaperMonet: useWallpaperMonet ?? this.useWallpaperMonet,
+      seedColorHex: seedColorHex ?? this.seedColorHex,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'mode': mode.name,
+        'useWallpaperMonet': useWallpaperMonet,
+        'seedColorHex': seedColorHex,
+      };
+
+  static ThemeConfig fromJson(Map<String, dynamic> m) {
+    const fallback = ThemeConfig();
+    final mode = m['mode'];
+    final monet = m['useWallpaperMonet'];
+    return ThemeConfig(
+      mode: mode is String
+          ? ThemeMode.values.firstWhere(
+              (e) => e.name == mode,
+              orElse: () => fallback.mode,
+            )
+          : fallback.mode,
+      useWallpaperMonet:
+          monet is bool ? monet : fallback.useWallpaperMonet,
+      seedColorHex: normalizeHexColor(
+            m['seedColorHex'] is String ? m['seedColorHex'] as String : null,
+          ) ??
+          fallback.seedColorHex,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ThemeConfig &&
+          other.mode == mode &&
+          other.useWallpaperMonet == useWallpaperMonet &&
+          other.seedColorHex == seedColorHex;
+
+  @override
+  int get hashCode => Object.hash(mode, useWallpaperMonet, seedColorHex);
+}
+
+/// Persists [ThemeConfig]. Local-only, like the other preference controllers.
+class ThemeConfigController extends Notifier<ThemeConfig> {
+  static const _key = 'theme_config';
+
+  @override
+  ThemeConfig build() {
+    _restore();
+    return const ThemeConfig();
+  }
+
+  Future<void> _restore() async {
+    try {
+      final raw = await ref.read(prefStoreProvider).read(_key);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        state = ThemeConfig.fromJson(Map<String, dynamic>.from(decoded));
+      }
+    } on Object {
+      // Best effort: keep the defaults.
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      await ref
+          .read(prefStoreProvider)
+          .write(_key, jsonEncode(state.toJson()));
+    } on Object {
+      // Best effort.
+    }
+  }
+
+  Future<void> setMode(ThemeMode mode) async {
+    state = state.copyWith(mode: mode);
+    await _persist();
+  }
+
+  Future<void> setUseWallpaperMonet(bool enabled) async {
+    state = state.copyWith(useWallpaperMonet: enabled);
+    await _persist();
+  }
+
+  /// Ignores malformed input (keeping the current seed) instead of persisting
+  /// a colour the theme cannot parse.
+  Future<void> setSeedHex(String hex) async {
+    final normalized = normalizeHexColor(hex);
+    if (normalized == null) return;
+    state = state.copyWith(seedColorHex: normalized);
+    await _persist();
+  }
+}
+
+final themeConfigProvider =
+    NotifierProvider<ThemeConfigController, ThemeConfig>(
+  ThemeConfigController.new,
+);
+
+/// Custom calendar background: either a local image file or one of the built-in
+/// gradient presets, plus blur and scrim strength.
+class BackgroundConfig {
+  const BackgroundConfig({
+    this.imagePath,
+    this.presetId,
+    this.blurSigma = 0.0,
+    this.scrimOpacity = 0.25,
+  });
+
+  static const minBlurSigma = 0.0;
+  static const maxBlurSigma = 25.0;
+  static const minScrimOpacity = 0.0;
+  static const maxScrimOpacity = 0.85;
+
+  /// Absolute path of a local image file; null when no custom image is set.
+  /// Mutually exclusive with [presetId].
+  final String? imagePath;
+
+  /// Id of a built-in gradient wallpaper; null when none is selected.
+  /// Mutually exclusive with [imagePath].
+  final String? presetId;
+
+  /// Gaussian blur sigma, 0 (sharp) .. 25 (heavily blurred).
+  final double blurSigma;
+
+  /// Opacity of the readability scrim above the wallpaper, 0 .. 0.85.
+  final double scrimOpacity;
+
+  /// Whether any background is configured. Does not touch the file system:
+  /// the render layer decides whether [imagePath] actually exists.
+  bool get hasBackground =>
+      (imagePath?.isNotEmpty ?? false) || (presetId?.isNotEmpty ?? false);
+
+  BackgroundConfig copyWith({
+    String? imagePath,
+    String? presetId,
+    double? blurSigma,
+    double? scrimOpacity,
+  }) {
+    return BackgroundConfig(
+      imagePath: imagePath ?? this.imagePath,
+      presetId: presetId ?? this.presetId,
+      blurSigma: blurSigma ?? this.blurSigma,
+      scrimOpacity: scrimOpacity ?? this.scrimOpacity,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'imagePath': imagePath,
+        'presetId': presetId,
+        'blurSigma': blurSigma,
+        'scrimOpacity': scrimOpacity,
+      };
+
+  static BackgroundConfig fromJson(Map<String, dynamic> m) {
+    const fallback = BackgroundConfig();
+    final image = m['imagePath'];
+    final preset = m['presetId'];
+    final blur = m['blurSigma'];
+    final scrim = m['scrimOpacity'];
+    return BackgroundConfig(
+      imagePath: image is String && image.isNotEmpty ? image : null,
+      presetId: preset is String && preset.isNotEmpty ? preset : null,
+      blurSigma: blur is num
+          ? blur.toDouble().clamp(minBlurSigma, maxBlurSigma).toDouble()
+          : fallback.blurSigma,
+      scrimOpacity: scrim is num
+          ? scrim
+              .toDouble()
+              .clamp(minScrimOpacity, maxScrimOpacity)
+              .toDouble()
+          : fallback.scrimOpacity,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BackgroundConfig &&
+          other.imagePath == imagePath &&
+          other.presetId == presetId &&
+          other.blurSigma == blurSigma &&
+          other.scrimOpacity == scrimOpacity;
+
+  @override
+  int get hashCode =>
+      Object.hash(imagePath, presetId, blurSigma, scrimOpacity);
+}
+
+/// Persists [BackgroundConfig]. Local-only: an absolute path means nothing on
+/// another device, and the server has no notion of wallpapers.
+class BackgroundConfigController extends Notifier<BackgroundConfig> {
+  static const _key = 'background_config';
+
+  @override
+  BackgroundConfig build() {
+    _restore();
+    return const BackgroundConfig();
+  }
+
+  Future<void> _restore() async {
+    try {
+      final raw = await ref.read(prefStoreProvider).read(_key);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        state = BackgroundConfig.fromJson(Map<String, dynamic>.from(decoded));
+      }
+    } on Object {
+      // Best effort: keep "no background".
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      await ref
+          .read(prefStoreProvider)
+          .write(_key, jsonEncode(state.toJson()));
+    } on Object {
+      // Best effort.
+    }
+  }
+
+  /// Picks a local image; clears [BackgroundConfig.presetId] because the two
+  /// sources are mutually exclusive. An empty path clears the image.
+  Future<void> setImagePath(String? path) async {
+    final trimmed = path?.trim();
+    state = BackgroundConfig(
+      imagePath: (trimmed == null || trimmed.isEmpty) ? null : trimmed,
+      presetId: null,
+      blurSigma: state.blurSigma,
+      scrimOpacity: state.scrimOpacity,
+    );
+    await _persist();
+  }
+
+  /// Picks a built-in gradient; clears [BackgroundConfig.imagePath] for the
+  /// same reason. An empty id clears the preset.
+  Future<void> setPresetId(String? id) async {
+    final trimmed = id?.trim();
+    state = BackgroundConfig(
+      imagePath: null,
+      presetId: (trimmed == null || trimmed.isEmpty) ? null : trimmed,
+      blurSigma: state.blurSigma,
+      scrimOpacity: state.scrimOpacity,
+    );
+    await _persist();
+  }
+
+  /// Drops both the image and the preset, keeping blur/scrim for the next pick.
+  Future<void> clear() async {
+    state = BackgroundConfig(
+      blurSigma: state.blurSigma,
+      scrimOpacity: state.scrimOpacity,
+    );
+    await _persist();
+  }
+
+  Future<void> setBlurSigma(double sigma) async {
+    state = state.copyWith(
+      blurSigma: sigma
+          .clamp(BackgroundConfig.minBlurSigma, BackgroundConfig.maxBlurSigma)
+          .toDouble(),
+    );
+    await _persist();
+  }
+
+  Future<void> setScrimOpacity(double opacity) async {
+    state = state.copyWith(
+      scrimOpacity: opacity
+          .clamp(
+            BackgroundConfig.minScrimOpacity,
+            BackgroundConfig.maxScrimOpacity,
+          )
+          .toDouble(),
+    );
+    await _persist();
+  }
+}
+
+final backgroundConfigProvider =
+    NotifierProvider<BackgroundConfigController, BackgroundConfig>(
+  BackgroundConfigController.new,
+);
+
+/// Visual knobs of a course tile in the 课表/周视图, all live-adjustable from the
+/// appearance page. The defaults reproduce the hard-coded values they replace.
+class CourseCardStyle {
+  const CourseCardStyle({
+    this.opacity = 0.92,
+    this.borderRadius = 8.0,
+    this.margin = 1.5,
+    this.fontScale = 1.0,
+    this.rowHeight = 54.0,
+  });
+
+  static const minOpacity = 0.30;
+  static const maxOpacity = 1.0;
+  static const minBorderRadius = 4.0;
+  static const maxBorderRadius = 16.0;
+  static const minMargin = 0.5;
+  static const maxMargin = 4.0;
+  static const minFontScale = 0.85;
+  static const maxFontScale = 1.30;
+  static const minRowHeight = 44.0;
+  static const maxRowHeight = 90.0;
+
+  /// Tile background alpha, 0.30 .. 1.00.
+  final double opacity;
+
+  /// Tile corner radius (dp), 4 .. 16.
+  final double borderRadius;
+
+  /// Gap around a tile (dp), 0.5 .. 4.
+  final double margin;
+
+  /// Title/location text multiplier, 0.85 .. 1.30.
+  final double fontScale;
+
+  /// Height of one period row (dp), 44 .. 90.
+  final double rowHeight;
+
+  CourseCardStyle copyWith({
+    double? opacity,
+    double? borderRadius,
+    double? margin,
+    double? fontScale,
+    double? rowHeight,
+  }) {
+    return CourseCardStyle(
+      opacity: opacity ?? this.opacity,
+      borderRadius: borderRadius ?? this.borderRadius,
+      margin: margin ?? this.margin,
+      fontScale: fontScale ?? this.fontScale,
+      rowHeight: rowHeight ?? this.rowHeight,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'opacity': opacity,
+        'borderRadius': borderRadius,
+        'margin': margin,
+        'fontScale': fontScale,
+        'rowHeight': rowHeight,
+      };
+
+  static CourseCardStyle fromJson(Map<String, dynamic> m) {
+    const fallback = CourseCardStyle();
+    double read(String key, double fallbackValue, double min, double max) {
+      final v = m[key];
+      if (v is! num) return fallbackValue;
+      return v.toDouble().clamp(min, max).toDouble();
+    }
+
+    return CourseCardStyle(
+      opacity: read('opacity', fallback.opacity, minOpacity, maxOpacity),
+      borderRadius: read(
+        'borderRadius',
+        fallback.borderRadius,
+        minBorderRadius,
+        maxBorderRadius,
+      ),
+      margin: read('margin', fallback.margin, minMargin, maxMargin),
+      fontScale:
+          read('fontScale', fallback.fontScale, minFontScale, maxFontScale),
+      rowHeight:
+          read('rowHeight', fallback.rowHeight, minRowHeight, maxRowHeight),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CourseCardStyle &&
+          other.opacity == opacity &&
+          other.borderRadius == borderRadius &&
+          other.margin == margin &&
+          other.fontScale == fontScale &&
+          other.rowHeight == rowHeight;
+
+  @override
+  int get hashCode =>
+      Object.hash(opacity, borderRadius, margin, fontScale, rowHeight);
+}
+
+/// Persists [CourseCardStyle]. Every setter clamps to its documented range so
+/// a slider overshoot can never produce an unreadable tile.
+class CourseCardStyleController extends Notifier<CourseCardStyle> {
+  static const _key = 'course_card_style';
+
+  @override
+  CourseCardStyle build() {
+    _restore();
+    return const CourseCardStyle();
+  }
+
+  Future<void> _restore() async {
+    try {
+      final raw = await ref.read(prefStoreProvider).read(_key);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        state = CourseCardStyle.fromJson(Map<String, dynamic>.from(decoded));
+      }
+    } on Object {
+      // Best effort: keep the defaults.
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      await ref
+          .read(prefStoreProvider)
+          .write(_key, jsonEncode(state.toJson()));
+    } on Object {
+      // Best effort.
+    }
+  }
+
+  Future<void> setOpacity(double value) async {
+    state = state.copyWith(
+      opacity: value
+          .clamp(CourseCardStyle.minOpacity, CourseCardStyle.maxOpacity)
+          .toDouble(),
+    );
+    await _persist();
+  }
+
+  Future<void> setBorderRadius(double value) async {
+    state = state.copyWith(
+      borderRadius: value
+          .clamp(
+            CourseCardStyle.minBorderRadius,
+            CourseCardStyle.maxBorderRadius,
+          )
+          .toDouble(),
+    );
+    await _persist();
+  }
+
+  Future<void> setMargin(double value) async {
+    state = state.copyWith(
+      margin: value
+          .clamp(CourseCardStyle.minMargin, CourseCardStyle.maxMargin)
+          .toDouble(),
+    );
+    await _persist();
+  }
+
+  Future<void> setFontScale(double value) async {
+    state = state.copyWith(
+      fontScale: value
+          .clamp(CourseCardStyle.minFontScale, CourseCardStyle.maxFontScale)
+          .toDouble(),
+    );
+    await _persist();
+  }
+
+  Future<void> setRowHeight(double value) async {
+    state = state.copyWith(
+      rowHeight: value
+          .clamp(CourseCardStyle.minRowHeight, CourseCardStyle.maxRowHeight)
+          .toDouble(),
+    );
+    await _persist();
+  }
+
+  /// Restores every knob to its default (the appearance page's 恢复默认).
+  Future<void> reset() async {
+    state = const CourseCardStyle();
+    await _persist();
+  }
+}
+
+final courseCardStyleProvider =
+    NotifierProvider<CourseCardStyleController, CourseCardStyle>(
+  CourseCardStyleController.new,
+);

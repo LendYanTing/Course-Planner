@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../presentation/auth/auth_pages.dart';
-import '../presentation/calendar/month_page.dart';
 import '../presentation/calendar/week_page.dart';
 import '../presentation/home_shell.dart';
+import '../presentation/settings/agent_settings_page.dart';
+import '../presentation/settings/appearance_settings_page.dart';
 import '../presentation/settings/courses_page.dart';
+import '../presentation/settings/edu_import_page.dart';
 import '../presentation/settings/import_page.dart';
 import '../presentation/settings/about_page.dart';
 import '../presentation/settings/mcp_page.dart';
@@ -14,6 +16,7 @@ import '../presentation/settings/restore_page.dart';
 import '../presentation/settings/schedules_page.dart';
 import '../presentation/settings/server_page.dart';
 import '../presentation/settings/settings_page.dart';
+import '../presentation/settings/sync_settings_page.dart';
 import '../presentation/settings/tags_page.dart';
 import '../presentation/todo/todo_page.dart';
 import '../state/prefs.dart';
@@ -36,12 +39,22 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     redirect: (context, state) {
       final session = ref.read(sessionControllerProvider);
-      return resolveAuthRedirect(
+      final authRedirect = resolveAuthRedirect(
         phase: session.phase,
         authExpired: session.authExpired,
         isLocalMode: session.isLocalMode,
         location: state.matchedLocation,
       );
+      if (authRedirect != null) return authRedirect;
+      // 月视图 no longer has its own tab. Old links (and shelf state restored
+      // from a previous version) still ask for it: switch the 日程 page to its
+      // month mode and land there instead of hitting an unmatched route.
+      if (state.matchedLocation == '/home/month') {
+        // ignore: unawaited_futures
+        ref.read(weekViewModeProvider.notifier).set(WeekViewModeController.month);
+        return '/home/week';
+      }
+      return null;
     },
     routes: [
       GoRoute(
@@ -68,12 +81,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
-              path: '/home/month',
-              pageBuilder: (context, state) => const MaterialPage(child: MonthPage()),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
               path: '/home/todo',
               pageBuilder: (context, state) => const MaterialPage(child: TodoPage()),
             ),
@@ -91,6 +98,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => buildAdaptivePage(
           key: state.pageKey,
           child: const ConflictsPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/appearance',
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const AppearanceSettingsPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/sync',
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const SyncSettingsPage(),
           variant: ref.read(uiVariantProvider),
         ),
       ),
@@ -135,6 +158,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/settings/edu-import',
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const EduImportPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
+      ),
+      GoRoute(
         path: '/settings/server',
         pageBuilder: (context, state) => buildAdaptivePage(
           key: state.pageKey,
@@ -147,6 +178,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => buildAdaptivePage(
           key: state.pageKey,
           child: const AboutPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/agent',
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const AgentSettingsPage(),
           variant: ref.read(uiVariantProvider),
         ),
       ),
@@ -297,12 +336,44 @@ class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp>
     });
     final router = ref.watch(routerProvider);
     final variant = ref.watch(uiVariantProvider);
+    final themeConfig = ref.watch(themeConfigProvider);
+    final background = ref.watch(backgroundConfigProvider);
+    // Monet only reads local image files; a built-in gradient preset has no
+    // decodable file, so it keeps the seed scheme.
+    final monetPath = themeConfig.useWallpaperMonet
+        ? (background.imagePath ?? '')
+        : '';
+    // A null value means "extraction still running or failed": fall back to
+    // the seeded scheme, then swap once the wallpaper colours arrive.
+    final lightWallpaper = monetPath.isEmpty
+        ? null
+        : ref
+            .watch(wallpaperColorSchemeProvider(
+              (path: monetPath, brightness: Brightness.light),
+            ))
+            .value;
+    final darkWallpaper = monetPath.isEmpty
+        ? null
+        : ref
+            .watch(wallpaperColorSchemeProvider(
+              (path: monetPath, brightness: Brightness.dark),
+            ))
+            .value;
+    final lightScheme = lightWallpaper ??
+        ref.watch(seedColorSchemeProvider(
+          (hex: themeConfig.seedColorHex, brightness: Brightness.light),
+        ));
+    final darkScheme = darkWallpaper ??
+        ref.watch(seedColorSchemeProvider(
+          (hex: themeConfig.seedColorHex, brightness: Brightness.dark),
+        ));
     return MaterialApp.router(
       title: 'Course Planner',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: scaffoldMessengerKey,
-      theme: AppTheme.light(variant),
-      darkTheme: AppTheme.dark(variant),
+      theme: AppTheme.light(variant, lightScheme),
+      darkTheme: AppTheme.dark(variant, darkScheme),
+      themeMode: themeConfig.mode,
       themeAnimationDuration: const Duration(milliseconds: 280),
       themeAnimationCurve: Curves.easeInOutCubicEmphasized,
       routerConfig: router,

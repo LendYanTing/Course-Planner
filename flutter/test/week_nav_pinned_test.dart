@@ -48,12 +48,11 @@ void main() {
 
     await pumpWeekPage(tester, snapshot);
 
-    // The switch lives in the pinned bar, so grid mode is where it shows.
-    final toGrid = find.byTooltip('切到课表视图');
-    if (toGrid.evaluate().isNotEmpty) {
-      await tester.tap(toGrid);
-      await tester.pumpAndSettle();
-    }
+    // The switch lives in the pinned bar, so grid mode is where it shows. The
+    // segmented control always carries the 课表 segment, even when grid is
+    // already active (then it is a no-op).
+    await tester.tap(find.byTooltip('切到课表视图'));
+    await tester.pumpAndSettle();
     expect(find.text('课程可长按拖动'), findsOneWidget);
 
     final today = find.text('今天');

@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/prefs.dart';
 import 'adaptive_page.dart';
@@ -279,11 +281,19 @@ class _SpringCurve extends Curve {
 abstract class AppTheme {
   static const seed = Color(0xFF3F51B5);
 
-  static ThemeData light([UiVariant variant = UiVariant.material3]) =>
-      _base(Brightness.light, variant);
+  /// [scheme] replaces the seeded scheme (Monet / user-picked seed); the
+  /// tokens, font stack and component styles are unchanged.
+  static ThemeData light([
+    UiVariant variant = UiVariant.material3,
+    ColorScheme? scheme,
+  ]) =>
+      _base(Brightness.light, variant, scheme);
 
-  static ThemeData dark([UiVariant variant = UiVariant.material3]) =>
-      _base(Brightness.dark, variant);
+  static ThemeData dark([
+    UiVariant variant = UiVariant.material3,
+    ColorScheme? scheme,
+  ]) =>
+      _base(Brightness.dark, variant, scheme);
 
   /// Deterministic family for a platform: Latin + CJK come from ONE family so
   /// no per-glyph fallback mixing happens (docs: consistent UI type).
@@ -301,11 +311,15 @@ abstract class AppTheme {
     }
   }
 
-  static ThemeData _base(Brightness brightness, UiVariant variant) {
+  static ThemeData _base(
+    Brightness brightness,
+    UiVariant variant, [
+    ColorScheme? scheme,
+  ]) {
     final isHyper = variant == UiVariant.hyperOS;
-    final seeded =
+    final seeded = scheme ??
         ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
-    final scheme = isHyper ? _hyperScheme(seeded, brightness) : seeded;
+    final effective = isHyper ? _hyperScheme(seeded, brightness) : seeded;
     final tokens = isHyper
         ? AppStyleTokens.hyperOS.copyWith(
             borderColor: brightness == Brightness.light
@@ -319,12 +333,12 @@ abstract class AppTheme {
     final fontFamily = _fontFamilyForPlatform();
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme: scheme,
+      colorScheme: effective,
       scaffoldBackgroundColor: isHyper
           ? (brightness == Brightness.light
               ? const Color(0xFFF2F3F5)
               : const Color(0xFF000000))
-          : scheme.surface,
+          : effective.surface,
       appBarTheme: isHyper
           ? AppBarTheme(
               centerTitle: tokens.topBarCenterTitle,
@@ -334,12 +348,12 @@ abstract class AppTheme {
               titleTextStyle: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w600,
-                color: scheme.onSurface,
+                color: effective.onSurface,
               ),
             )
           : AppBarTheme(
               centerTitle: false,
-              backgroundColor: scheme.surface,
+              backgroundColor: effective.surface,
               elevation: 0,
             ),
       inputDecorationTheme: const InputDecorationTheme(
@@ -347,13 +361,13 @@ abstract class AppTheme {
         isDense: true,
       ),
       cardTheme: CardThemeData(
-        color: scheme.surfaceContainerLow,
+        color: effective.surfaceContainerLow,
         elevation: tokens.cardElevation,
         surfaceTintColor: isHyper ? Colors.transparent : null,
         shape: _cardShape(tokens),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surfaceContainerHigh,
+        backgroundColor: effective.surfaceContainerHigh,
         elevation: isHyper ? 0 : 6,
         shape: isHyper
             ? RoundedSuperellipseBorder(
@@ -365,7 +379,7 @@ abstract class AppTheme {
       ),
       bottomSheetTheme: isHyper
           ? BottomSheetThemeData(
-              backgroundColor: scheme.surface,
+              backgroundColor: effective.surface,
               elevation: 0,
               showDragHandle: false,
               shape: RoundedSuperellipseBorder(
@@ -467,3 +481,42 @@ abstract class AppTheme {
     return Color(v);
   }
 }
+
+/// Seeded scheme for a user-picked `#RRGGBB` seed, used when Monet is off or
+/// has no wallpaper to work with. Cached per seed+brightness so the root widget
+/// does not re-run the quantizer on every rebuild.
+final seedColorSchemeProvider =
+    Provider.family<ColorScheme, ({String hex, Brightness brightness})>(
+  (ref, arg) => ColorScheme.fromSeed(
+    seedColor: AppTheme.parseHex(arg.hex) ?? AppTheme.seed,
+    brightness: arg.brightness,
+  ),
+);
+
+/// Material You scheme extracted from the wallpaper at `path`.
+///
+/// The extraction is Flutter's own [ColorScheme.fromImageProvider], i.e. the
+/// Material Color Utilities `QuantizerCelebi` + `Score` pipeline (the same one
+/// the `dynamic_color` package wraps), so no extra dependency or native plugin
+/// is involved and Windows/Android behave identically.
+///
+/// Returns null when there is no readable image (missing file, unsupported
+/// format, decode failure); callers then fall back to
+/// [seedColorSchemeProvider]. Results are cached per path+brightness while
+/// something watches this provider (the app root does).
+final wallpaperColorSchemeProvider = FutureProvider.autoDispose
+    .family<ColorScheme?, ({String path, Brightness brightness})>(
+        (ref, arg) async {
+  try {
+    final file = File(arg.path);
+    if (!await file.exists()) return null;
+    return await ColorScheme.fromImageProvider(
+      provider: FileImage(file),
+      brightness: arg.brightness,
+      dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
+    );
+  } on Object {
+    // Missing, unreadable or undecodable file: the seed scheme stays in use.
+    return null;
+  }
+});

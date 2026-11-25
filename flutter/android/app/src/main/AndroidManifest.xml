@@ -3,6 +3,10 @@
          template declares INTERNET only in the debug/profile manifests, so
          without it here a RELEASE build would have no network access at all. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Voice input: system speech recognition and the cloud-ASR recording
+         bridge (course_planner/speech) both need the microphone. Requested at
+         runtime; a denial only disables voice input. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="Course Planner"
         android:name="${applicationName}"
@@ -45,6 +49,14 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+ package visibility: the voice bridge checks that a
+             speech recognizer exists before launching RecognizerIntent. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>
         </intent>
     </queries>
 </manifest>

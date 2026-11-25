@@ -7,6 +7,7 @@
 /// network call is ever made.
 library;
 
+import '../core/theme/course_palette.dart';
 import '../core/util/week_text.dart';
 import '../data/api/import_api.dart';
 import '../data/repo/entity_repo.dart';
@@ -344,6 +345,10 @@ abstract final class LocalCsvImporter {
   ///
   /// When [autoCreatePeriods] is true, missing templates in `1..maxPeriod` are
   /// filled first (45-minute periods from 08:00 with a 10-minute break).
+  ///
+  /// [existingColors] are the colours already used in the target semester; each
+  /// imported course gets the colour farthest (CIE76 ΔE) from those and from
+  /// the colours assigned earlier in the same import.
   /// Returns the number of courses written.
   static Future<int> commit({
     required EntityRepo repo,
@@ -351,6 +356,7 @@ abstract final class LocalCsvImporter {
     required String calendarId,
     required List<PeriodTemplate> periods,
     bool autoCreatePeriods = true,
+    List<String?> existingColors = const [],
   }) async {
     final rows =
         _pending.remove(preview.previewId) ?? _rowsFromPreview(preview);
@@ -382,15 +388,19 @@ abstract final class LocalCsvImporter {
       groups.putIfAbsent(row.groupKey, () => <_CsvRow>[]).add(row);
     }
 
+    final assignedColors = <String?>[...existingColors];
+
     for (final group in groups.values) {
       final first = group.first;
+      final color = CoursePalette.pickDistinctColor(assignedColors);
+      assignedColors.add(color);
       await repo.createCourseWithMeetings(
         courseSnapshot: {
           'calendarId': calendarId,
           'name': first.name,
           'teacher': first.teacher,
           'location': first.location,
-          'color': null,
+          'color': color,
           'notes': null,
         },
         meetingSnapshots: [

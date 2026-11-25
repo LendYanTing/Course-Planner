@@ -9,7 +9,9 @@ import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../state/todo_controller.dart';
 import '../adaptive/adaptive.dart';
+import '../agent/agent_chat_sheet.dart';
 import '../settings/courses_page.dart' show kPalette;
+import '../widgets/voice_input_button.dart';
 import 'todo_blocks_sheet.dart';
 import '../../state/todo_sorting.dart';
 
@@ -63,6 +65,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       appBar: AppTopBar(
         title: '待办',
         actions: [
+          IconButton(
+            tooltip: 'AI 助手',
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: () => AgentChatSheet.show(context),
+          ),
           // Hidden for a local session (no server to sync with).
           if (ref.watch(cloudSyncEnabledProvider))
             IconButton(
@@ -205,6 +212,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final snap = ref.read(snapshotProvider).value;
     final tags = snap == null ? <Live<Tag>>[] : liveTags(snap);
     final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
+    // The editor does not load existing blocks (it stays a quick create sheet);
+    // it only mentions how many the todo already has.
+    final existingBlockCount = snap == null || existing == null
+        ? 0
+        : liveBlocks(snap, todoId: existing.id).length;
     await showAppBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -213,6 +225,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         existing: existing,
         tags: tags.map((e) => e.value).toList(),
         categories: categories.map((e) => e.value).toList(),
+        existingBlockCount: existingBlockCount,
       ),
     );
   }
@@ -362,15 +375,28 @@ class _TodoTile extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: _overdue(todo.deadlineAt!) ? AppTheme.deadlineColor : null)),
         ],
       ),
-      trailing: PopupMenuButton<String>(
-        onSelected: (v) {
-          if (v == 'delete') onDelete();
-          if (v == 'blocks') onManageBlocks?.call();
-        },
-        itemBuilder: (_) => [
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // One tap to schedule an existing todo: the same sheet the menu opens,
+          // without the two-level detour.
           if (onManageBlocks != null)
-            const PopupMenuItem(value: 'blocks', child: Text('时间块')),
-          const PopupMenuItem(value: 'delete', child: Text('删除', style: TextStyle(color: Colors.red))),
+            IconButton(
+              icon: const Icon(Icons.more_time, size: 20),
+              tooltip: '排入日程',
+              onPressed: onManageBlocks,
+            ),
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'delete') onDelete();
+              if (v == 'blocks') onManageBlocks?.call();
+            },
+            itemBuilder: (_) => [
+              if (onManageBlocks != null)
+                const PopupMenuItem(value: 'blocks', child: Text('时间块')),
+              const PopupMenuItem(value: 'delete', child: Text('删除', style: TextStyle(color: Colors.red))),
+            ],
+          ),
         ],
       ),
     );
@@ -409,11 +435,16 @@ class TodoEditorSheet extends ConsumerStatefulWidget {
     required this.tags,
     required this.categories,
     this.existing,
+    this.existingBlockCount = 0,
   });
 
   final Todo? existing;
   final List<Tag> tags;
   final List<Category> categories;
+
+  /// How many blocks the edited todo already has. The sheet never loads them
+  /// (it stays a quick create sheet) — it only mentions the count.
+  final int existingBlockCount;
 
   @override
   ConsumerState<TodoEditorSheet> createState() => _TodoEditorSheetState();
@@ -430,6 +461,12 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   late final Set<String> _tagIds;
   late final List<Tag> _tags;
   late final List<Category> _categories;
+
+  /// "排入日程时间表": draft windows written together with the todo on save.
+  /// Existing blocks are never loaded here; these are always new ones.
+  bool _scheduleEnabled = false;
+  final List<_DraftBlock> _blocks = [];
+  bool _saving = false;
 
   @override
   void initState() {
@@ -448,6 +485,9 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
 
   @override
   void dispose() {
+    for (final b in _blocks) {
+      b.dispose();
+    }
     _title.dispose();
     _desc.dispose();
     _est.dispose();
@@ -460,6 +500,13 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
     // Watched here so the build and the button agree; the picker handler
     // (_pickDeadline) stays a ref.read, as it runs outside build.
     final userTime = ref.watch(userTimeProvider);
+    // Editing a todo that already carries detail opens the folded section, so
+    // nothing silently looks absent.
+    final expandMore = isEdit &&
+        ((widget.existing!.description?.isNotEmpty ?? false) ||
+            widget.existing!.categoryId != null ||
+            widget.existing!.tagIds.isNotEmpty ||
+            widget.existing!.type == TodoType.project);
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -474,82 +521,26 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
           children: [
             Text(isEdit ? '编辑待办' : '新建待办', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
+            // 1. What to do.
             TextField(
               controller: _title,
               autofocus: !isEdit,
-              decoration: const InputDecoration(labelText: '标题'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _desc,
-              maxLines: 2,
-              decoration: const InputDecoration(labelText: '描述（可选）'),
-            ),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(
-                child: SegmentedButton<TodoType>(
-                  segments: const [
-                    ButtonSegment(value: TodoType.oneOff, label: Text('一次性')),
-                    ButtonSegment(value: TodoType.project, label: Text('项目')),
-                  ],
-                  selected: {_type},
-                  onSelectionChanged: (s) => setState(() => _type = s.first),
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(
+                hintText: '要做什么？（例如：完成高数作业第三章）',
+                suffixIcon: VoiceInputButton(
+                  tooltip: '语音输入待办标题',
+                  onText: (text) => setState(() {
+                    _title.value = TextEditingValue(
+                      text: text,
+                      selection: TextSelection.collapsed(offset: text.length),
+                    );
+                  }),
                 ),
               ),
-            ]),
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                // A one-off is a single errand / meeting / shopping list: at
-                // most one block, plus an optional reminder time.
-                _type == TodoType.oneOff
-                    ? '临时活动、会议或购物清单：最多 1 个时间块，可设提醒时间'
-                    : '多阶段任务：可拆成多个时间块，可设截止时间',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
-              ),
             ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<TodoPriority>(
-              initialValue: _priority,
-              decoration: const InputDecoration(labelText: '优先级'),
-              items: const [
-                DropdownMenuItem(value: TodoPriority.low, child: Text('低')),
-                DropdownMenuItem(value: TodoPriority.normal, child: Text('普通')),
-                DropdownMenuItem(value: TodoPriority.high, child: Text('高')),
-                DropdownMenuItem(value: TodoPriority.urgent, child: Text('紧急')),
-              ],
-              onChanged: (v) => setState(() => _priority = v ?? TodoPriority.normal),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String?>(
-                    initialValue: _categoryId,
-                    decoration: const InputDecoration(labelText: '分类'),
-                    items: [
-                      const DropdownMenuItem<String?>(value: null, child: Text('无')),
-                      for (final c in _categories)
-                        DropdownMenuItem(value: c.id, child: Text(c.name)),
-                    ],
-                    onChanged: (v) => setState(() => _categoryId = v),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  tooltip: '新建分类',
-                  onPressed: _createCategory,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _est,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '预计时长（分钟，可选）', suffixText: '分'),
-            ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            // 2. Reminder (one-off) / deadline (project) plus quick picks.
             Row(
               children: [
                 Expanded(
@@ -567,8 +558,39 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
                 if (_deadline != null)
                   IconButton(
                     icon: const Icon(Icons.clear),
+                    tooltip: '清除时间',
                     onPressed: () => setState(() => _deadline = null),
                   ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                ActionChip(
+                  label: const Text('今天 22:00'),
+                  onPressed: userTime == null
+                      ? null
+                      : () => setState(() => _deadline = _atDay(userTime, 0, 22, 0)),
+                ),
+                ActionChip(
+                  label: const Text('明天 18:00'),
+                  onPressed: userTime == null
+                      ? null
+                      : () => setState(() => _deadline = _atDay(userTime, 1, 18, 0)),
+                ),
+                ActionChip(
+                  label: const Text('周日 23:59'),
+                  onPressed: userTime == null
+                      ? null
+                      : () => setState(() => _deadline = _sundayAt(userTime, 23, 59)),
+                ),
+                ActionChip(
+                  avatar: const Icon(Icons.edit_calendar, size: 16),
+                  label: const Text('自定义'),
+                  onPressed: userTime == null ? null : () => _pickDeadline(userTime),
+                ),
               ],
             ),
             if (userTime == null)
@@ -587,44 +609,410 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
                   style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ),
-            const SizedBox(height: 10),
-            if (_tags.isNotEmpty)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text('标签', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              ),
+            const SizedBox(height: 12),
+            // 3. Same-sheet scheduling: todo + blocks in one save.
+            _buildScheduleSection(isEdit, userTime),
+            const SizedBox(height: 12),
+            // 4. Priority in one row.
             Wrap(
               spacing: 6,
               runSpacing: 4,
               children: [
-                for (final t in _tags)
-                  FilterChip(
-                    label: Text(t.name),
-                    selected: _tagIds.contains(t.id),
-                    onSelected: (v) => setState(() {
-                      if (v) {
-                        _tagIds.add(t.id);
-                      } else {
-                        _tagIds.remove(t.id);
-                      }
-                    }),
+                for (final p in TodoPriority.values)
+                  ChoiceChip(
+                    label: Text(_priorityLabel(p)),
+                    selected: _priority == p,
+                    onSelected: (_) => setState(() => _priority = p),
                   ),
-                ActionChip(
-                  avatar: const Icon(Icons.add, size: 16),
-                  label: const Text('新建标签'),
-                  onPressed: _createTag,
-                ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 4),
+            // 5. Everything else stays available, one tap away.
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 8),
+              title: const Text('更多选项：分类、标签、描述、类型', style: TextStyle(fontSize: 14)),
+              initiallyExpanded: expandMore,
+              children: [_buildMoreOptions()],
+            ),
+            const SizedBox(height: 8),
+            // 6. Save (todo + drafted blocks).
             FilledButton(
-              onPressed: _save,
+              onPressed: _saving ? null : _save,
               child: const Text('保存'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// The folded section: type, category, estimate, tags, description — the
+  /// fields that used to occupy the first screen.
+  Widget _buildMoreOptions() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(children: [
+          Expanded(
+            child: SegmentedButton<TodoType>(
+              segments: const [
+                ButtonSegment(value: TodoType.oneOff, label: Text('一次性')),
+                ButtonSegment(value: TodoType.project, label: Text('项目')),
+              ],
+              selected: {_type},
+              onSelectionChanged: (s) => setState(() => _type = s.first),
+            ),
+          ),
+        ]),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            // A one-off is a single errand / meeting / shopping list: at
+            // most one block, plus an optional reminder time.
+            _type == TodoType.oneOff
+                ? '临时活动、会议或购物清单：最多 1 个时间块，可设提醒时间'
+                : '多阶段任务：可拆成多个时间块，可设截止时间',
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String?>(
+                initialValue: _categoryId,
+                decoration: const InputDecoration(labelText: '分类'),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('无')),
+                  for (final c in _categories)
+                    DropdownMenuItem(value: c.id, child: Text(c.name)),
+                ],
+                onChanged: (v) => setState(() => _categoryId = v),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: '新建分类',
+              onPressed: _createCategory,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _est,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: '预计时长（分钟，可选）', suffixText: '分'),
+        ),
+        Wrap(
+          spacing: 6,
+          children: [
+            for (final minutes in const [30, 60, 120])
+              ActionChip(
+                label: Text('$minutes分'),
+                onPressed: () => setState(() => _est.text = '$minutes'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (_tags.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text('标签', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            for (final t in _tags)
+              FilterChip(
+                label: Text(t.name),
+                selected: _tagIds.contains(t.id),
+                onSelected: (v) => setState(() {
+                  if (v) {
+                    _tagIds.add(t.id);
+                  } else {
+                    _tagIds.remove(t.id);
+                  }
+                }),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 16),
+              label: const Text('新建标签'),
+              onPressed: _createTag,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _desc,
+          maxLines: 2,
+          decoration: const InputDecoration(hintText: '描述（可选）'),
+        ),
+      ],
+    );
+  }
+
+  /// The schedule card: one switch, then the draft windows it will write.
+  Widget _buildScheduleSection(bool isEdit, UserTime? userTime) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            title: const Text('排入日程时间表', style: TextStyle(fontSize: 14)),
+            subtitle: const Text('保存时一并创建时间块', style: TextStyle(fontSize: 11)),
+            value: _scheduleEnabled,
+            onChanged: userTime == null
+                ? null
+                : (v) => setState(() {
+                      _scheduleEnabled = v;
+                      if (v && _blocks.isEmpty) {
+                        _blocks.add(_defaultBlock(userTime));
+                      }
+                    }),
+          ),
+          if (isEdit && widget.existingBlockCount > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: Text(
+                '已有 ${widget.existingBlockCount} 个时间块（在待办菜单中管理）',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ),
+          if (_scheduleEnabled && userTime != null) ...[
+            if (isEdit)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Text(
+                  '将新增 ${_blocks.length} 个时间块',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+              ),
+            for (var i = 0; i < _blocks.length; i++) _buildBlockEditor(i, userTime),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('添加执行时间段'),
+                  onPressed: () => _addBlock(userTime),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// One drafted window: date, start/end wall clock, note, quick durations.
+  Widget _buildBlockEditor(int index, UserTime userTime) {
+    final block = _blocks[index];
+    final startLocal = userTime.localFromUtc(block.startUtc);
+    final endLocal = userTime.localFromUtc(block.endUtc);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    ActionChip(
+                      avatar: const Icon(Icons.event, size: 16),
+                      label: Text(_blockDateLabel(userTime, startLocal)),
+                      onPressed: () => _pickBlockDate(index, userTime),
+                    ),
+                    ActionChip(
+                      label: Text('开始 ${_hhmm(startLocal)}'),
+                      onPressed: () =>
+                          _pickBlockTime(index, userTime, isStart: true),
+                    ),
+                    ActionChip(
+                      label: Text('结束 ${_hhmm(endLocal)}'),
+                      onPressed: () =>
+                          _pickBlockTime(index, userTime, isStart: false),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                tooltip: '删除这一段',
+                onPressed: () => _removeBlock(index),
+              ),
+            ],
+          ),
+          TextField(
+            controller: block.note,
+            decoration: const InputDecoration(
+              isDense: true,
+              hintText: '这一时段准备完成什么？',
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final minutes in const [45, 60, 120])
+                ActionChip(
+                  label: Text(minutes == 60 ? '1小时' : (minutes == 120 ? '2小时' : '$minutes分')),
+                  onPressed: () => setState(
+                    () => block.endUtc = _endOnSameDay(
+                        userTime, block.startUtc, Duration(minutes: minutes)),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _priorityLabel(TodoPriority p) => switch (p) {
+        TodoPriority.low => '低',
+        TodoPriority.normal => '普通',
+        TodoPriority.high => '高',
+        TodoPriority.urgent => '紧急',
+      };
+
+  /// The local date [days] from now at [hour]:[minute], as a UTC instant.
+  DateTime _atDay(UserTime userTime, int days, int hour, int minute) {
+    final now = userTime.localFromUtc(DateTime.now().toUtc());
+    final day = userTime.addLocalDays(now, days);
+    return userTime.utcFromLocalParts(day.year, day.month, day.day, hour, minute);
+  }
+
+  /// The coming Sunday at [hour]:[minute] (today when today is Sunday).
+  DateTime _sundayAt(UserTime userTime, int hour, int minute) {
+    final now = userTime.localFromUtc(DateTime.now().toUtc());
+    final daysAhead = (DateTime.sunday - now.weekday + 7) % 7;
+    return _atDay(userTime, daysAhead, hour, minute);
+  }
+
+  /// Default draft window: the next full hour for one hour; at/after 22:00 it
+  /// moves to tomorrow 09:00–10:00 (otherwise it would cross midnight).
+  _DraftBlock _defaultBlock(UserTime userTime) {
+    final now = userTime.localFromUtc(DateTime.now().toUtc());
+    if (now.hour >= 22) {
+      final tomorrow = userTime.addLocalDays(now, 1);
+      final start = userTime.utcFromLocalParts(
+          tomorrow.year, tomorrow.month, tomorrow.day, 9, 0);
+      return _DraftBlock(
+          startUtc: start, endUtc: start.add(const Duration(hours: 1)));
+    }
+    final start = userTime.utcFromLocalParts(
+        now.year, now.month, now.day, now.hour + 1, 0);
+    return _DraftBlock(
+        startUtc: start, endUtc: start.add(const Duration(hours: 1)));
+  }
+
+  void _addBlock(UserTime userTime) {
+    setState(() {
+      _blocks.add(_defaultBlock(userTime));
+      // More than one window means a multi-stage task: upgrade silently, the
+      // user should not have to reason about the type up front.
+      if (_blocks.length > 1) _type = TodoType.project;
+    });
+  }
+
+  void _removeBlock(int index) {
+    setState(() => _blocks.removeAt(index).dispose());
+  }
+
+  String _blockDateLabel(UserTime userTime, DateTime local) {
+    final now = userTime.localFromUtc(DateTime.now().toUtc());
+    final tomorrow = userTime.addLocalDays(now, 1);
+    if (local.year == now.year && local.month == now.month && local.day == now.day) {
+      return '今天';
+    }
+    if (local.year == tomorrow.year &&
+        local.month == tomorrow.month &&
+        local.day == tomorrow.day) {
+      return '明天';
+    }
+    return '${local.month}月${local.day}日';
+  }
+
+  Future<void> _pickBlockDate(int index, UserTime userTime) async {
+    final block = _blocks[index];
+    final startLocal = userTime.localFromUtc(block.startUtc);
+    final date = await showDatePicker(
+      context: context,
+      initialDate: startLocal,
+      firstDate: DateTime(startLocal.year - 1),
+      lastDate: DateTime(startLocal.year + 5),
+    );
+    if (date == null || !mounted) return;
+    final duration = block.endUtc.difference(block.startUtc);
+    setState(() {
+      block.startUtc = userTime.utcFromLocalParts(
+          date.year, date.month, date.day, startLocal.hour, startLocal.minute);
+      block.endUtc = _endOnSameDay(userTime, block.startUtc,
+          duration.isNegative || duration == Duration.zero
+              ? const Duration(hours: 1)
+              : duration);
+    });
+  }
+
+  /// [start] + [duration], clamped to the end of [start]'s local day so a
+  /// drafted block never crosses midnight (the server rejects those).
+  DateTime _endOnSameDay(UserTime userTime, DateTime start, Duration duration) {
+    final end = start.add(duration);
+    if (userTime.sameLocalDay(start, end)) return end;
+    final local = userTime.localFromUtc(start);
+    return userTime.utcFromLocalParts(
+        local.year, local.month, local.day, 23, 59);
+  }
+
+  Future<void> _pickBlockTime(
+    int index,
+    UserTime userTime, {
+    required bool isStart,
+  }) async {
+    final block = _blocks[index];
+    final anchor = userTime.localFromUtc(isStart ? block.startUtc : block.endUtc);
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: anchor.hour, minute: anchor.minute),
+    );
+    if (time == null || !mounted) return;
+    final startLocal = userTime.localFromUtc(block.startUtc);
+    setState(() {
+      if (isStart) {
+        final duration = block.endUtc.difference(block.startUtc);
+        block.startUtc = userTime.utcFromLocalParts(startLocal.year,
+            startLocal.month, startLocal.day, time.hour, time.minute);
+        block.endUtc = _endOnSameDay(userTime, block.startUtc,
+            duration.isNegative || duration == Duration.zero
+                ? const Duration(hours: 1)
+                : duration);
+      } else {
+        block.endUtc = userTime.utcFromLocalParts(startLocal.year,
+            startLocal.month, startLocal.day, time.hour, time.minute);
+        // A block must run forward inside one local day; a same-day end at or
+        // before the start is read as a mis-tap and pushed an hour on.
+        if (!block.endUtc.isAfter(block.startUtc)) {
+          block.endUtc = _endOnSameDay(
+              userTime, block.startUtc, const Duration(hours: 1));
+        }
+      }
+    });
   }
 
   /// The reminder/deadline button's label. Without a user timezone there is no
@@ -745,18 +1133,53 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
 
   Future<void> _save() async {
     final title = _title.text.trim();
-    if (title.isEmpty) return;
-    await ref.read(todoControllerProvider.notifier).saveTodo(
-          existingId: widget.existing?.id,
-          title: title,
-          type: _type,
-          description: _desc.text.trim().isEmpty ? null : _desc.text.trim(),
-          categoryId: _categoryId,
-          tagIds: _tagIds,
-          priority: _priority,
-          deadlineAt: _deadline,
-          estimatedMinutes: int.tryParse(_est.text.trim()),
-        );
-    if (mounted) Navigator.of(context).pop();
+    if (title.isEmpty || _saving) return;
+    setState(() => _saving = true);
+    final newBlocks = _scheduleEnabled
+        ? <NewTodoBlock>[
+            for (final b in _blocks)
+              (
+                startUtc: b.startUtc,
+                endUtc: b.endUtc,
+                blockNote:
+                    b.note.text.trim().isEmpty ? null : b.note.text.trim(),
+              ),
+          ]
+        : const <NewTodoBlock>[];
+    try {
+      // The controller writes the todo and every block in one transaction, and
+      // upgrades the type to project when more than one block is drafted.
+      await ref.read(todoControllerProvider.notifier).saveTodo(
+            existingId: widget.existing?.id,
+            title: title,
+            type: _type,
+            description: _desc.text.trim().isEmpty ? null : _desc.text.trim(),
+            categoryId: _categoryId,
+            tagIds: _tagIds,
+            priority: _priority,
+            deadlineAt: _deadline,
+            estimatedMinutes: int.tryParse(_est.text.trim()),
+            newBlocks: newBlocks,
+          );
+      if (mounted) Navigator.of(context).pop();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
+}
+
+/// `HH:mm` wall clock of an already user-tz local instant.
+String _hhmm(DateTime local) =>
+    '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+
+/// One execution window being drafted in the editor (UTC instants + note).
+class _DraftBlock {
+  _DraftBlock({required this.startUtc, required this.endUtc, String note = ''})
+      : note = TextEditingController(text: note);
+
+  DateTime startUtc;
+  DateTime endUtc;
+  final TextEditingController note;
+
+  void dispose() => note.dispose();
 }

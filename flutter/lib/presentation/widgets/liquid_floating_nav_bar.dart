@@ -49,13 +49,18 @@ class LiquidFloatingNavBar extends ConsumerStatefulWidget {
   final ValueChanged<int> onSelected;
 
   /// Capsule height (logical pixels), without the safe-area / gap padding.
-  static const double capsuleHeight = 64;
+  static const double capsuleHeight = 54;
 
   /// Side margins that make the bar "float".
   static const double sideInset = 20;
 
+  /// Widest the capsule grows: on tablets / landscape it stays a compact pill
+  /// centred in the width left by [sideInset] instead of stretching edge to
+  /// edge. Narrower screens still fill that width.
+  static const double maxCapsuleWidth = 360;
+
   /// Corner radius of the capsule (superellipse corner).
-  static const double cornerRadius = 32;
+  static const double cornerRadius = 27;
 
   /// Gap between the capsule and the system navigation area.
   static const double bottomGap = 8;
@@ -210,171 +215,179 @@ class _LiquidFloatingNavBarState extends ConsumerState<LiquidFloatingNavBar>
         right: LiquidFloatingNavBar.sideInset,
         bottom: safeBottom + LiquidFloatingNavBar.bottomGap,
       ),
-      child: SizedBox(
-        height: LiquidFloatingNavBar.capsuleHeight,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final itemWidth = width / itemCount;
-            // The filter's own coordinate space starts at the (padded) layer's
-            // top-left, so the capsule is described locally rather than in
-            // screen coordinates.
-            final localRect = Rect.fromLTWH(
-              LiquidFloatingNavBar.blurPad,
-              LiquidFloatingNavBar.blurPad,
-              width,
-              LiquidFloatingNavBar.capsuleHeight,
-            );
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: LiquidFloatingNavBar.maxCapsuleWidth,
+          ),
+          child: SizedBox(
+            height: LiquidFloatingNavBar.capsuleHeight,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final itemWidth = width / itemCount;
+                // The filter's own coordinate space starts at the (padded)
+                // layer's top-left, so the capsule is described locally rather
+                // than in screen coordinates.
+                final localRect = Rect.fromLTWH(
+                  LiquidFloatingNavBar.blurPad,
+                  LiquidFloatingNavBar.blurPad,
+                  width,
+                  LiquidFloatingNavBar.capsuleHeight,
+                );
 
-            return Stack(
-              children: [
-                // Soft drop shadow only. Anything else painted here would end
-                // up in the BackdropFilter's *input*, i.e. the glass would
-                // refract our own decorations instead of the page behind it
-                // (a filled backing used to paint the bar as a white slab).
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(LiquidFloatingNavBar.cornerRadius),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: dark ? 0.30 : 0.08),
-                          blurRadius: 24,
-                          spreadRadius: -10,
-                          offset: const Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: ClipRSuperellipse(
-                    borderRadius:
-                        BorderRadius.circular(LiquidFloatingNavBar.cornerRadius),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Positioned(
-                          left: -LiquidFloatingNavBar.blurPad,
-                          top: -LiquidFloatingNavBar.blurPad,
-                          right: -LiquidFloatingNavBar.blurPad,
-                          bottom: -LiquidFloatingNavBar.blurPad,
-                          child: _material(effective, localRect, dpr, tint, scheme),
-                        ),
-                        // Faint top sheen so the surface reads as glass even
-                        // when the content behind it is flat.
-                        IgnorePointer(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.white.withValues(alpha: dark ? 0.10 : 0.18),
-                                  Colors.white.withValues(alpha: 0),
-                                ],
-                              ),
+                return Stack(
+                  children: [
+                    // Soft drop shadow only. Anything else painted here would end
+                    // up in the BackdropFilter's *input*, i.e. the glass would
+                    // refract our own decorations instead of the page behind it
+                    // (a filled backing used to paint the bar as a white slab).
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(
+                              LiquidFloatingNavBar.cornerRadius),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: dark ? 0.30 : 0.08),
+                              blurRadius: 24,
+                              spreadRadius: -10,
+                              offset: const Offset(0, 12),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                // Rim highlight on top of the glass: a gradient stroke that
-                // must not sit behind it (see the shadow note above).
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _RimPainter(
-                        top: Colors.white.withValues(alpha: dark ? 0.38 : 0.95),
-                        bottom: Colors.white.withValues(alpha: dark ? 0.06 : 0.20),
                       ),
                     ),
-                  ),
-                ),
-                // Indicator below the icons, so glyphs stay crisp on top.
-                AnimatedBuilder(
-                  animation: _indicator,
-                  builder: (context, _) {
-                    final velocity = _indicator.velocity;
-                    final stretch = (velocity.abs() * 0.06).clamp(0.0, 0.20);
-                    final squash = (velocity.abs() * 0.03).clamp(0.0, 0.10);
-                    final left = _indicator.value.clamp(0.0, (itemCount - 1).toDouble());
-                    return Positioned(
-                      left: left * itemWidth + 6,
-                      top: 6,
-                      width: itemWidth - 12,
-                      height: LiquidFloatingNavBar.capsuleHeight - 12,
+                    Positioned.fill(
+                      child: ClipRSuperellipse(
+                        borderRadius: BorderRadius.circular(
+                            LiquidFloatingNavBar.cornerRadius),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Positioned(
+                              left: -LiquidFloatingNavBar.blurPad,
+                              top: -LiquidFloatingNavBar.blurPad,
+                              right: -LiquidFloatingNavBar.blurPad,
+                              bottom: -LiquidFloatingNavBar.blurPad,
+                              child: _material(effective, localRect, dpr, tint, scheme),
+                            ),
+                            // Faint top sheen so the surface reads as glass even
+                            // when the content behind it is flat.
+                            IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.white.withValues(alpha: dark ? 0.10 : 0.18),
+                                      Colors.white.withValues(alpha: 0),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Rim highlight on top of the glass: a gradient stroke that
+                    // must not sit behind it (see the shadow note above).
+                    Positioned.fill(
                       child: IgnorePointer(
-                        child: Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.diagonal3Values(
-                            1 + stretch,
-                            1 - squash,
-                            1,
-                          ),
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(
-                                  LiquidFloatingNavBar.cornerRadius - 8),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  scheme.primary.withValues(alpha: dark ? 0.55 : 0.22),
-                                  scheme.primary.withValues(alpha: dark ? 0.32 : 0.10),
-                                ],
-                              ),
-                              border: Border.all(
-                                color: scheme.primary.withValues(alpha: dark ? 0.45 : 0.25),
-                                width: 0.8,
-                              ),
-                            ),
+                        child: CustomPaint(
+                          painter: _RimPainter(
+                            top: Colors.white.withValues(alpha: dark ? 0.38 : 0.95),
+                            bottom: Colors.white.withValues(alpha: dark ? 0.06 : 0.20),
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTapUp: (details) =>
-                        _select(_indexAt(details.localPosition.dx, itemWidth).round()),
-                    onHorizontalDragStart: (d) => _onDragStart(d, itemWidth),
-                    onHorizontalDragUpdate: (d) => _onDragUpdate(d, itemWidth),
-                    onHorizontalDragEnd: (_) => _onDragEnd(itemWidth),
-                    onHorizontalDragCancel: () {
-                      if (!_dragging) return;
-                      setState(() => _dragging = false);
-                      _springTo(widget.currentIndex);
-                    },
-                    child: Row(
-                      children: [
-                        for (var i = 0; i < itemCount; i++)
-                          Expanded(
-                            child: Semantics(
-                              button: true,
-                              selected: i == widget.currentIndex,
-                              label: widget.items[i].label,
-                              child: _BarItem(
-                                item: widget.items[i],
-                                selected: i == widget.currentIndex,
-                                color: i == widget.currentIndex
-                                    ? (dark ? Colors.white : scheme.primary)
-                                    : scheme.onSurfaceVariant,
+                    ),
+                    // Indicator below the icons, so glyphs stay crisp on top.
+                    AnimatedBuilder(
+                      animation: _indicator,
+                      builder: (context, _) {
+                        final velocity = _indicator.velocity;
+                        final stretch = (velocity.abs() * 0.06).clamp(0.0, 0.20);
+                        final squash = (velocity.abs() * 0.03).clamp(0.0, 0.10);
+                        final left = _indicator.value.clamp(0.0, (itemCount - 1).toDouble());
+                        return Positioned(
+                          left: left * itemWidth + 6,
+                          top: 5,
+                          width: itemWidth - 12,
+                          height: LiquidFloatingNavBar.capsuleHeight - 10,
+                          child: IgnorePointer(
+                            child: Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.diagonal3Values(
+                                1 + stretch,
+                                1 - squash,
+                                1,
+                              ),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                      LiquidFloatingNavBar.cornerRadius - 6),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      scheme.primary.withValues(alpha: dark ? 0.55 : 0.22),
+                                      scheme.primary.withValues(alpha: dark ? 0.32 : 0.10),
+                                    ],
+                                  ),
+                                  border: Border.all(
+                                    color: scheme.primary.withValues(alpha: dark ? 0.45 : 0.25),
+                                    width: 0.8,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                      ],
+                        );
+                      },
                     ),
-                  ),
-                ),
-              ],
-            );
-          },
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (details) =>
+                            _select(_indexAt(details.localPosition.dx, itemWidth).round()),
+                        onHorizontalDragStart: (d) => _onDragStart(d, itemWidth),
+                        onHorizontalDragUpdate: (d) => _onDragUpdate(d, itemWidth),
+                        onHorizontalDragEnd: (_) => _onDragEnd(itemWidth),
+                        onHorizontalDragCancel: () {
+                          if (!_dragging) return;
+                          setState(() => _dragging = false);
+                          _springTo(widget.currentIndex);
+                        },
+                        child: Row(
+                          children: [
+                            for (var i = 0; i < itemCount; i++)
+                              Expanded(
+                                child: Semantics(
+                                  button: true,
+                                  selected: i == widget.currentIndex,
+                                  label: widget.items[i].label,
+                                  child: _BarItem(
+                                    item: widget.items[i],
+                                    selected: i == widget.currentIndex,
+                                    color: i == widget.currentIndex
+                                        ? (dark ? Colors.white : scheme.primary)
+                                        : scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -487,7 +500,7 @@ class _BarItem extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(selected ? item.selectedIcon : item.icon, size: 22, color: color),
+        Icon(selected ? item.selectedIcon : item.icon, size: 20, color: color),
         const SizedBox(height: 2),
         Text(
           item.label,

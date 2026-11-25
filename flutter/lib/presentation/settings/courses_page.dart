@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
+import '../../core/theme/course_palette.dart';
 import '../../core/util/week_text.dart';
 import '../../data/local/view_models.dart';
 import '../../domain/calendar.dart';
@@ -34,13 +36,25 @@ class CoursesPage extends ConsumerWidget {
 
     if (calendars.isEmpty) {
       return Scaffold(
-        appBar: AppTopBar(title: '课程管理'),
+        appBar: AppTopBar(
+          title: '课程管理',
+          actions: const [_EduImportAction()],
+        ),
         body: const Center(child: Text('请先在「学期管理」中创建学期')),
       );
     }
     if (calendars.length == 1) {
       return Scaffold(
-        appBar: AppTopBar(title: '课程管理'),
+        appBar: AppTopBar(
+          title: '课程管理',
+          actions: [
+            const _EduImportAction(),
+            _RecolorAction(
+              calendars: calendars.map((e) => e.value).toList(),
+              fixedCalendarId: calendars.first.value.id,
+            ),
+          ],
+        ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => showAppBottomSheet<void>(
             context: context,
@@ -66,6 +80,10 @@ class CoursesPage extends ConsumerWidget {
       child: Scaffold(
         appBar: AppTopBar(
           title: '课程管理',
+          actions: [
+            const _EduImportAction(),
+            _RecolorAction(calendars: calendars.map((e) => e.value).toList()),
+          ],
           bottom: TabBar(isScrollable: true, tabs: [for (final c in calendars) Tab(text: c.value.name)]),
         ),
         body: TabBarView(
@@ -86,6 +104,149 @@ class CoursesPage extends ConsumerWidget {
     final snap = ref.read(snapshotProvider).value;
     if (snap == null) return const [];
     return livePeriods(snap, calendarId: calendarId).map((e) => e.value).toList();
+  }
+}
+
+/// Top-bar shortcut to the education-system import page.
+class _EduImportAction extends StatelessWidget {
+  const _EduImportAction();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: '从教务系统导入',
+      icon: const Icon(Icons.travel_explore),
+      onPressed: () => context.push('/settings/edu-import'),
+    );
+  }
+}
+
+/// Top-bar action: re-colours a semester's courses with one palette family.
+///
+/// With several semesters on screen the action follows the selected tab, so it
+/// always repaints the semester the user is looking at.
+class _RecolorAction extends ConsumerWidget {
+  const _RecolorAction({required this.calendars, this.fixedCalendarId});
+
+  final List<AcademicCalendar> calendars;
+
+  /// Set when the page shows a single semester and no tab controller exists.
+  final String? fixedCalendarId;
+
+  static const _labels = <CoursePaletteStyle, String>{
+    CoursePaletteStyle.morandi: '莫兰迪柔和',
+    CoursePaletteStyle.vibrant: '高对比鲜明',
+    CoursePaletteStyle.monetHarmony: '莫奈同色系',
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fixed = fixedCalendarId;
+    if (fixed != null) {
+      return _button(context, ref, fixed);
+    }
+    final controller = DefaultTabController.maybeOf(context);
+    if (controller == null || calendars.isEmpty) {
+      return _button(context, ref, calendars.isEmpty ? '' : calendars.first.id);
+    }
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final index = controller.index.clamp(0, calendars.length - 1).toInt();
+        return _button(context, ref, calendars[index].id);
+      },
+    );
+  }
+
+  Widget _button(BuildContext context, WidgetRef ref, String calendarId) {
+    return IconButton(
+      tooltip: '重新配色',
+      icon: const Icon(Icons.palette_outlined),
+      onPressed: calendarId.isEmpty
+          ? null
+          : () => _recolor(context, ref, calendarId),
+    );
+  }
+
+  Future<void> _recolor(
+    BuildContext context,
+    WidgetRef ref,
+    String calendarId,
+  ) async {
+    final style = await _pickStyle(context);
+    if (style == null || !context.mounted) return;
+
+    final snap = ref.read(snapshotProvider).value;
+    if (snap == null) return;
+    final courses = liveCourses(snap, calendarId: calendarId)
+        .map((e) => e.value)
+        .toList();
+    if (courses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前学期还没有课程')),
+      );
+      return;
+    }
+
+    final colors = CoursePalette.assignColorsForCourses(courses, style: style);
+    final repo = ref.read(servicesProvider).repo;
+    var count = 0;
+    for (final course in courses) {
+      final hex = colors[course.id];
+      if (hex == null) continue;
+      await repo.localUpdate(
+        entityType: EntityTypes.course,
+        entityId: course.id,
+        changes: {'color': hex},
+      );
+      count++;
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已为 $count 门课程重新配色')),
+    );
+  }
+
+  Future<CoursePaletteStyle?> _pickStyle(BuildContext context) {
+    var selected = CoursePaletteStyle.morandi;
+    return showAppDialog<CoursePaletteStyle>(
+      context: context,
+      title: '重新配色',
+      content: StatefulBuilder(
+        builder: (context, setLocal) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              '为当前学期的全部课程重新分配颜色',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            for (final style in CoursePaletteStyle.values)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  selected == style
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                ),
+                title: Text(_labels[style] ?? style.name),
+                onTap: () => setLocal(() => selected = style),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(selected),
+          child: const Text('确定'),
+        ),
+      ],
+    );
   }
 }
 
@@ -299,12 +460,17 @@ class _CourseEditorState extends ConsumerState<CourseEditor> {
     final name = _name.text.trim();
     if (name.isEmpty) return;
     final repo = ref.read(servicesProvider).repo;
+    // A brand-new course starts with the colour farthest from the semester's
+    // existing ones; an edit keeps whatever the picker holds (`null` means the
+    // timetable's default).
+    final color =
+        widget.existing == null && _color == null ? _suggestColor() : _color;
     final fields = {
       'calendarId': widget.calendarId,
       'name': name,
       'teacher': _teacher.text.trim().isEmpty ? null : _teacher.text.trim(),
       'location': _location.text.trim().isEmpty ? null : _location.text.trim(),
-      'color': _color,
+      'color': color,
       'notes': null,
     };
     if (widget.existing == null) {
@@ -317,6 +483,18 @@ class _CourseEditorState extends ConsumerState<CourseEditor> {
       );
     }
     if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Colour for a new course: the largest CIE76 ΔE from the colours already
+  /// used in this calendar.
+  String _suggestColor() {
+    final snap = ref.read(snapshotProvider).value;
+    final existing = snap == null
+        ? const <String?>[]
+        : liveCourses(snap, calendarId: widget.calendarId)
+            .map((e) => e.value.color)
+            .toList();
+    return CoursePalette.pickDistinctColor(existing);
   }
 }
 

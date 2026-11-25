@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../state/sync_controller.dart';
 import 'widgets/liquid_floating_nav_bar.dart';
 
-/// Home shell with bottom navigation: Week / Month / Todo / Settings
+/// Home shell with bottom navigation: 日程 / 待办 / 设置
 /// (agents/flutter-agent.md §页面). Driven by a go_router
 /// [StatefulShellRoute.indexedStack] so each tab keeps its own state.
 ///
@@ -25,14 +25,9 @@ class HomeShell extends StatelessWidget {
         currentIndex: navigationShell.currentIndex,
         items: const [
           LiquidNavItem(
-            icon: Icons.view_week_outlined,
-            selectedIcon: Icons.view_week,
-            label: '周视图',
-          ),
-          LiquidNavItem(
-            icon: Icons.calendar_month_outlined,
-            selectedIcon: Icons.calendar_month,
-            label: '月视图',
+            icon: Icons.calendar_today_outlined,
+            selectedIcon: Icons.calendar_today,
+            label: '日程',
           ),
           LiquidNavItem(
             icon: Icons.checklist_outlined,

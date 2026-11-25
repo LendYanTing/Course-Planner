@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/api/import_api.dart';
 import '../../data/local/view_models.dart';
@@ -138,6 +139,18 @@ class _ImportPageState extends ConsumerState<ImportPage> {
                 ),
               ],
             ],
+            const SizedBox(height: 20),
+            AppCard(
+              padding: EdgeInsets.zero,
+              margin: EdgeInsets.zero,
+              child: ListTile(
+                leading: const Icon(Icons.travel_explore),
+                title: const Text('从学校教务系统智能导入'),
+                subtitle: const Text('粘贴教务网页 / AI 解析，自动补齐节次与配色'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/edu-import'),
+              ),
+            ),
           ],
         ),
       ),
@@ -186,6 +199,13 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     final periods = snap == null
         ? <PeriodTemplate>[]
         : livePeriods(snap, calendarId: _calendarId).map((e) => e.value).toList();
+    // Colours already in use this semester, so imported courses stand apart
+    // from the existing ones instead of all sharing the default shade.
+    final existingColors = snap == null
+        ? const <String?>[]
+        : liveCourses(snap, calendarId: _calendarId)
+            .map((e) => e.value.color)
+            .toList();
     try {
       final written = await LocalCsvImporter.commit(
         repo: services.repo,
@@ -193,6 +213,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
         calendarId: _calendarId!,
         periods: periods,
         autoCreatePeriods: _autoCreatePeriods,
+        existingColors: existingColors,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -23,6 +23,9 @@ Future<T?> showAppBottomSheet<T>({
   return showModalBottomSheet<T>(
     context: context,
     builder: builder,
+    // A modal sheet belongs above the shell's floating nav bar, so it is
+    // pushed on the root navigator (same as showAppDialog).
+    useRootNavigator: true,
     isScrollControlled: isScrollControlled,
     useSafeArea: useSafeArea,
     isDismissible: isDismissible,

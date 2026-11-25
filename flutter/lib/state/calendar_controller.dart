@@ -140,12 +140,17 @@ class CalendarController extends Notifier<CalendarMutationState> {
 
   /// Creates a todo (when [todoId] is null) plus its time block at [startMinute]
   /// on [day], both local-first.
+  ///
+  /// With [alsoDeadline] the todo's deadline is set to the block's end instant:
+  /// written into the create snapshot for a new todo, or patched onto the
+  /// existing one otherwise.
   Future<ApiException?> createQuickBlock({
     required DateTime day,
     required int startMinute,
     required int durationMinutes,
     required String title,
     String? todoId,
+    bool alsoDeadline = false,
   }) async {
     final userTime = ref.read(userTimeProvider);
     if (userTime == null) return null;
@@ -160,16 +165,25 @@ class CalendarController extends Notifier<CalendarMutationState> {
     final blockEnd = blockStart.add(Duration(minutes: durationMinutes));
     try {
       String? targetTodoId = todoId;
-      targetTodoId ??= await services.repo.localCreate(
-        entityType: EntityTypes.todo,
-        snapshot: {
-          'title': title,
-          'type': TodoType.oneOff.wire,
-          'priority': TodoPriority.normal.wire,
-          'status': TodoStatus.todo.wire,
-          'tagIds': <String>[],
-        },
-      );
+      if (targetTodoId == null) {
+        targetTodoId = await services.repo.localCreate(
+          entityType: EntityTypes.todo,
+          snapshot: {
+            'title': title,
+            'type': TodoType.oneOff.wire,
+            'priority': TodoPriority.normal.wire,
+            'status': TodoStatus.todo.wire,
+            'tagIds': <String>[],
+            if (alsoDeadline) 'deadlineAt': blockEnd.toUtc(),
+          },
+        );
+      } else if (alsoDeadline) {
+        await services.repo.localUpdate(
+          entityType: EntityTypes.todo,
+          entityId: targetTodoId,
+          changes: {'deadlineAt': blockEnd.toUtc()},
+        );
+      }
       await services.repo.localCreate(
         entityType: EntityTypes.todoBlock,
         snapshot: {

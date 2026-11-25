@@ -8,12 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/week_page_harness.dart';
 
-/// Regression: repeatedly toggling the week view between 时间轴 and 课表 must
-/// keep rendering the events (previously the grid could come back empty).
+/// Regression: the 日程 page must survive walking the 课表 → 周 → 月 switcher
+/// repeatedly. Switching used to be two-state and the grid could come back
+/// empty; adding the month mode must not break the projection either.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('week view survives repeated timeline/grid switches',
+  testWidgets('week view survives repeated 课表/周/月 switches',
       (tester) async {
     final ut = UserTime.tryCreate('Asia/Shanghai')!;
     final today = ut.localFromUtc(DateTime.now().toUtc());
@@ -85,40 +86,47 @@ void main() {
     await pumpWeekPage(tester, snapshot);
 
     expect(tester.takeException(), isNull);
-    expect(find.text('高等数学'), findsWidgets, reason: 'timeline shows the course');
+    expect(find.text('高等数学'), findsWidgets, reason: 'the default view shows the course');
 
     // The current-time line must stay a thin rule. When its Positioned was
     // nested inside another Positioned, the outer geometry won and the line
     // was laid out as a full-day-width, full-height ORANGE block painted over
     // the events — the "orange background, content gone" report.
-    final nowLine = find.byWidgetPredicate(
+    Finder nowLine() => find.byWidgetPredicate(
         (w) => w is ColoredBox && w.color == AppTheme.nowLineColor);
-    expect(nowLine, findsOneWidget, reason: 'now line should render');
-    final lineSize = tester.getSize(nowLine);
-    expect(lineSize.height, lessThanOrEqualTo(4),
-        reason: 'now line height was ${lineSize.height} (expected ~2)');
 
-    Future<void> toggle() async {
-      final toGrid = find.byTooltip('切到课表视图');
-      final toTimeline = find.byTooltip('切到时间轴周视图');
-      if (toGrid.evaluate().isNotEmpty) {
-        await tester.tap(toGrid);
-      } else {
-        await tester.tap(toTimeline);
-      }
+    Future<void> switchTo(String tooltip) async {
+      await tester.tap(find.byTooltip(tooltip));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 300));
+      // Let the switcher drop the outgoing view before asserting finds.
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: '$tooltip threw');
     }
 
+    final monthLabel = '${today.year}年${today.month}月';
+
     for (var i = 0; i < 3; i++) {
-      await toggle(); // -> grid
-      expect(tester.takeException(), isNull, reason: 'grid switch $i threw');
+      await switchTo('切到课表视图');
       expect(find.text('高等数学'), findsWidgets,
-          reason: 'grid must still render the course after switch $i');
-      await toggle(); // -> timeline
-      expect(tester.takeException(), isNull, reason: 'timeline switch $i threw');
+          reason: '课表 must still render the course after switch $i');
+
+      await switchTo('切到周视图');
       expect(find.text('高等数学'), findsWidgets,
-          reason: 'timeline must still render the course after switch $i');
+          reason: '周 must still render the course after switch $i');
+      expect(nowLine(), findsOneWidget,
+          reason: 'now line should render in 周 after switch $i');
+      final lineSize = tester.getSize(nowLine());
+      expect(lineSize.height, lessThanOrEqualTo(4),
+          reason: 'now line height was ${lineSize.height} (expected ~2)');
+
+      await switchTo('切到月视图');
+      expect(find.text(monthLabel), findsOneWidget,
+          reason: '月 must show YYYY年M月 after switch $i');
+      // The bare weekday header is unique to the month grid (the other two
+      // views label columns 周一…周日).
+      expect(find.text('一'), findsOneWidget,
+          reason: 'month grid should render after switch $i');
     }
   });
 }

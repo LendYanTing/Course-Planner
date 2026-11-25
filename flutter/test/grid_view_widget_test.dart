@@ -1,3 +1,4 @@
+import 'package:course_planner/app/theme.dart';
 import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/data/local/sync_store.dart';
@@ -192,6 +193,116 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('tapping an empty cell reports its day, period minutes and number',
+      (tester) async {
+    final ut = UserTime.tryCreate('Asia/Shanghai')!;
+    final days = <tz.TZDateTime>[
+      for (var i = 0; i < 7; i++) tz.TZDateTime(ut.location, 2026, 9, 7 + i),
+    ];
+    final snapshot = EntitiesSnapshot(
+      rows: [
+        EntityRow(
+          entityType: EntityTypes.calendar,
+          entityId: 'cal1',
+          revision: 1,
+          payload: {
+            'id': 'cal1', 'name': '2026秋', 'firstDay': '2026-09-07',
+            'totalWeeks': 16, 'revision': 1,
+          },
+        ),
+        for (final p in [(1, '08:00', '08:45'), (2, '08:55', '09:40')])
+          EntityRow(
+            entityType: EntityTypes.period,
+            entityId: 'p${p.$1}',
+            revision: 1,
+            payload: {
+              'id': 'p${p.$1}', 'calendarId': 'cal1', 'periodNo': p.$1,
+              'startLocal': p.$2, 'endLocal': p.$3, 'revision': 1,
+            },
+          ),
+      ],
+      pendingOps: const [],
+      conflicts: const [],
+    );
+    // Monday period 1 is occupied; every other cell is an empty slot.
+    final events = <UiEvent>[
+      UiEvent(
+        id: 'course:m1:2026-09-07',
+        type: EventType.course,
+        title: '高等数学',
+        startUtc: DateTime.utc(2026, 9, 7, 0, 0), // 08:00 local
+        endUtc: DateTime.utc(2026, 9, 7, 0, 45), // 08:45 local
+        sourceType: EntityTypes.courseMeeting,
+        sourceId: 'm1',
+        conflict: ConflictState.none,
+      ),
+    ];
+
+    final taps =
+        <({DateTime day, int startMinute, int endMinute, int periodNo})>[];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          prefStoreProvider.overrideWithValue(MemoryPrefs()),
+          serverNowProvider
+              .overrideWith((ref) => Stream.value(DateTime.utc(2026, 9, 8, 0, 30))),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 900,
+              height: 700,
+              child: GridViewContent(
+                userTime: ut,
+                days: days,
+                events: events,
+                snapshot: snapshot,
+                nowUtc: null,
+                onCommitMove: (e, s, en) {},
+                onEmptySlotTap: (day, startMinute, endMinute, periodNo) => taps
+                    .add((
+                      day: day,
+                      startMinute: startMinute,
+                      endMinute: endMinute,
+                      periodNo: periodNo,
+                    )),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // A tap on the existing course tile belongs to the tile (it opens its
+    // detail dialog), never to the empty-slot layer.
+    await tester.tap(find.text('高等数学').first);
+    await tester.pumpAndSettle();
+    expect(taps, isEmpty);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+
+    // Empty cell: second shown day (Tuesday) centred in period 1's row.
+    const leftWidth = GridViewContent.leftWidth;
+    const rowHeight = GridViewContent.defaultRowHeight;
+    final gridRect = tester.getRect(find.byType(SingleChildScrollView).first);
+    final dayWidth = (gridRect.width - leftWidth) / 7;
+    await tester.tapAt(gridRect.topLeft +
+        Offset(leftWidth + dayWidth + dayWidth / 2, rowHeight / 2));
+    await tester.pumpAndSettle();
+
+    expect(taps, hasLength(1));
+    final tap = taps.single;
+    expect(tap.day.year, 2026);
+    expect(tap.day.month, 9);
+    expect(tap.day.day, 8); // Tuesday 2026-09-08
+    expect(tap.startMinute, 8 * 60); // 08:00
+    expect(tap.endMinute, 8 * 60 + 45); // period 1 ends 08:45
+    expect(tap.periodNo, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('上午/下午 split follows the local noon-boundary preference',
       (tester) async {
     final ut = UserTime.tryCreate('Asia/Shanghai')!;
@@ -364,5 +475,127 @@ void main() {
     await tester.pumpAndSettle();
     expect(titleLines(), 1);
     expect(locationLines(), 2);
+  });
+
+  testWidgets('custom rowHeight and card style drive tile geometry and text',
+      (tester) async {
+    final ut = UserTime.tryCreate('Asia/Shanghai')!;
+    final days = <tz.TZDateTime>[
+      for (var i = 0; i < 7; i++) tz.TZDateTime(ut.location, 2026, 9, 7 + i),
+    ];
+    final snapshot = EntitiesSnapshot(
+      rows: [
+        EntityRow(
+          entityType: EntityTypes.calendar,
+          entityId: 'cal1',
+          revision: 1,
+          payload: {
+            'id': 'cal1', 'name': '2026秋', 'firstDay': '2026-09-07',
+            'totalWeeks': 16, 'revision': 1,
+          },
+        ),
+        for (final p in [(1, '08:00', '08:45'), (2, '08:55', '09:40')])
+          EntityRow(
+            entityType: EntityTypes.period,
+            entityId: 'p${p.$1}',
+            revision: 1,
+            payload: {
+              'id': 'p${p.$1}', 'calendarId': 'cal1', 'periodNo': p.$1,
+              'startLocal': p.$2, 'endLocal': p.$3, 'revision': 1,
+            },
+          ),
+      ],
+      pendingOps: const [],
+      conflicts: const [],
+    );
+    // One course over periods 1-2: a single run exactly two rows tall, so the
+    // row height is directly readable off the tile box.
+    final events = <UiEvent>[
+      UiEvent(
+        id: 'course:m1:2026-09-07',
+        type: EventType.course,
+        title: '高等数学',
+        startUtc: DateTime.utc(2026, 9, 7, 0, 0),
+        endUtc: DateTime.utc(2026, 9, 7, 1, 40),
+        sourceType: EntityTypes.courseMeeting,
+        sourceId: 'm1',
+        conflict: ConflictState.none,
+      ),
+    ];
+
+    Future<void> pump({required double rowHeight, CourseCardStyle? style}) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            prefStoreProvider.overrideWithValue(MemoryPrefs()),
+            serverNowProvider
+                .overrideWith((ref) => Stream.value(DateTime.utc(2026, 9, 8, 0, 30))),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 900,
+                height: 700,
+                child: GridViewContent(
+                  // A fresh key per pump so the grid is rebuilt from scratch
+                  // instead of reusing the previous layout's state.
+                  key: ValueKey('grid-$rowHeight-${style?.margin}'),
+                  userTime: ut,
+                  days: days,
+                  events: events,
+                  snapshot: snapshot,
+                  nowUtc: null,
+                  rowHeight: rowHeight,
+                  cardStyle: style,
+                  onCommitMove: (e, s, en) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // The tile's own Positioned: the only one between its text and the canvas.
+    Positioned tile() => tester.widget<Positioned>(find
+        .ancestor(of: find.text('高等数学').first, matching: find.byType(Positioned))
+        .first);
+    Text title() => tester.widget<Text>(find.text('高等数学').first);
+    BoxDecoration decoration() => tester
+        .widget<Container>(find
+            .ancestor(of: find.text('高等数学').first, matching: find.byType(Container))
+            .first)
+        .decoration! as BoxDecoration;
+
+    // Stock look: the row height the grid has always used.
+    await pump(rowHeight: GridViewContent.defaultRowHeight);
+    final base = tile();
+    expect(base.top, 1.5, reason: 'the default card gap above the tile');
+    expect(base.height, 2 * 54.0 - 2 * 1.5, reason: 'two default rows, one gap');
+    expect(title().style!.fontSize, 10.5);
+    expect(tester.takeException(), isNull);
+
+    // Taller rows plus a chunky, translucent card.
+    const style = CourseCardStyle(
+      opacity: 0.5,
+      borderRadius: 16,
+      margin: 3,
+      fontScale: 1.2,
+    );
+    await pump(rowHeight: 72, style: style);
+    final tall = tile();
+    expect(tall.top, 3, reason: 'the larger gap shifts the tile down');
+    expect(tall.height, 2 * 72.0 - 2 * 3,
+        reason: 'both rows grew from 54 to 72');
+    expect(tall.height, greaterThan(base.height!));
+    expect(tall.width, closeTo(base.width! - 3, 0.01),
+        reason: 'a wider gap leaves a narrower tile');
+    expect(title().style!.fontSize, closeTo(12.6, 0.001),
+        reason: 'title text follows fontScale');
+    final deco = decoration();
+    expect(deco.color, AppTheme.courseColor.withValues(alpha: 0.5));
+    expect(deco.borderRadius, BorderRadius.circular(16));
+    expect(tester.takeException(), isNull);
   });
 }
