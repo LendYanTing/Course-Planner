@@ -259,3 +259,58 @@ final tileTextLinesProvider =
     NotifierProvider<TileTextLinesController, ({int title, int location})>(
   TileTextLinesController.new,
 );
+
+/// Material style of the floating bottom navigation bar.
+enum BottomBarStyle {
+  /// Liquid glass: real-time refraction via `ImageFilter.shader`. Impeller only
+  /// (`ImageFilter.isShaderFilterSupported`); the bar falls back to
+  /// [frostedBlur] on platforms that cannot render shader filters.
+  liquidGlass,
+
+  /// Standard frosted glass: `ImageFilter.blur` plus a highlight border.
+  /// Available on every platform.
+  frostedBlur,
+
+  /// Flat floating capsule: no offscreen blur, so it is the cheapest to draw.
+  solidCapsule,
+}
+
+/// Which material the floating bottom bar uses. Local-only; the bar itself
+/// degrades unsupported styles instead of failing.
+class BottomBarStyleController extends Notifier<BottomBarStyle> {
+  static const _key = 'bottom_bar_style';
+
+  @override
+  BottomBarStyle build() {
+    _restore();
+    return BottomBarStyle.liquidGlass;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      if (v != null) {
+        state = BottomBarStyle.values.firstWhere(
+          (s) => s.name == v,
+          orElse: () => BottomBarStyle.liquidGlass,
+        );
+      }
+    } on Object {
+      // Best effort: keep the default style.
+    }
+  }
+
+  Future<void> set(BottomBarStyle style) async {
+    state = style;
+    try {
+      await ref.read(prefStoreProvider).write(_key, style.name);
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final bottomBarStyleProvider =
+    NotifierProvider<BottomBarStyleController, BottomBarStyle>(
+  BottomBarStyleController.new,
+);

@@ -169,6 +169,9 @@ class _MonthPageState extends ConsumerState<MonthPage> {
           const Divider(height: 1),
           Expanded(
             child: SingleChildScrollView(
+              // The floating nav bar overlaps the viewport (extendBody), so the
+              // month's last rows must be able to scroll clear of it.
+              padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
               child: _MonthGrid(
                 userTime: userTime,
                 month: firstOfMonth,

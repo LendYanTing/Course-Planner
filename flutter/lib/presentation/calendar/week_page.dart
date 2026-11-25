@@ -352,6 +352,9 @@ class _WeekPageState extends ConsumerState<WeekPage> {
       // vertical-drag recogniser instead, which shares the scrollable's slop and
       // wins the arena because it is hit-tested first.
       return SingleChildScrollView(
+        // The floating nav bar overlaps the viewport (extendBody), so reserve
+        // its height here: the 24h timeline must scroll clear of it.
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
         physics: _dragActive
             ? const NeverScrollableScrollPhysics()
             : const AlwaysScrollableScrollPhysics(),

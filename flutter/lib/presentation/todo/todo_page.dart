@@ -127,10 +127,17 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openEditor(context),
-        icon: const Icon(Icons.add),
-        label: const Text('新建待办'),
+      // The floating nav bar lives in the shell's bottom slot, so this page's
+      // own Scaffold still places the FAB at the very bottom — i.e. under the
+      // bar. Lifting it by the same inset the body receives keeps it above the
+      // capsule (Scaffold only accounts for a *Material* bottomNavigationBar).
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+        child: FloatingActionButton.extended(
+          onPressed: () => _openEditor(context),
+          icon: const Icon(Icons.add),
+          label: const Text('新建待办'),
+        ),
       ),
       body: Column(
         children: [
@@ -143,7 +150,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                     : ListView(
                         // Room for the FAB, which otherwise sits on top of the
                         // last row when the list is scrolled to the bottom.
-                        padding: const EdgeInsets.only(bottom: 96),
+                        // Reserve the translucent floating nav bar's height
+                        // (extendBody) plus room for the FAB over the last row.
+                        padding: EdgeInsets.only(
+                          bottom: MediaQuery.paddingOf(context).bottom + 72,
+                        ),
                         children: [
                           for (final g in groups)
                             _CategoryGroup(

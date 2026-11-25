@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../state/sync_controller.dart';
+import 'widgets/liquid_floating_nav_bar.dart';
 
 /// Home shell with bottom navigation: Week / Month / Todo / Settings
 /// (agents/flutter-agent.md §页面). Driven by a go_router
 /// [StatefulShellRoute.indexedStack] so each tab keeps its own state.
+///
+/// The bottom is a floating glass bar, hence `extendBody`: pages show through
+/// behind it and reserve the bottom room themselves via `MediaQuery`.
 class HomeShell extends StatelessWidget {
   const HomeShell({super.key, required this.navigationShell});
 
@@ -15,35 +19,36 @@ class HomeShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: navigationShell,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) => navigationShell.goBranch(
-          index,
-          initialLocation: index == navigationShell.currentIndex,
-        ),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.view_week_outlined),
-            selectedIcon: Icon(Icons.view_week),
+      bottomNavigationBar: LiquidFloatingNavBar(
+        currentIndex: navigationShell.currentIndex,
+        items: const [
+          LiquidNavItem(
+            icon: Icons.view_week_outlined,
+            selectedIcon: Icons.view_week,
             label: '周视图',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
+          LiquidNavItem(
+            icon: Icons.calendar_month_outlined,
+            selectedIcon: Icons.calendar_month,
             label: '月视图',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_outlined),
-            selectedIcon: Icon(Icons.checklist),
+          LiquidNavItem(
+            icon: Icons.checklist_outlined,
+            selectedIcon: Icons.checklist,
             label: '待办',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
+          LiquidNavItem(
+            icon: Icons.settings_outlined,
+            selectedIcon: Icons.settings,
             label: '设置',
           ),
         ],
+        onSelected: (index) => navigationShell.goBranch(
+          index,
+          initialLocation: index == navigationShell.currentIndex,
+        ),
       ),
     );
   }

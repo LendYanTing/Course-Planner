@@ -217,6 +217,9 @@ class _GridViewContentState extends ConsumerState<GridViewContent> {
             // recogniser instead, which competes on equal footing and wins
             // because it is hit-tested first.
             return SingleChildScrollView(
+              // The floating nav bar overlaps the viewport (extendBody), so the
+              // last period row must be able to scroll above it.
+              padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
               physics: const AlwaysScrollableScrollPhysics(),
               child: SizedBox(
                 width: constraints.maxWidth,

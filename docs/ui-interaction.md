@@ -185,3 +185,16 @@ Refresh Token 被服务端明确拒绝（UNAUTHORIZED）时，不要强制退出
 - 提供一个显式的重新登录入口（toast 按钮、设置页条目）
 - 重新登录成功后自动恢复同步
 
+## 17. Floating Bottom Bar
+
+底部导航是**悬浮胶囊**，不是贴底的一条栏：
+
+- 外层 `Scaffold` 用 `extendBody: true`，页面内容从底栏下方穿过；内层页面自己用
+  `MediaQuery.paddingOf(context).bottom` 给滚动内容留出余量（该值此时等于底栏高度）。
+- 三档材质（设置 → 外观与界面 → 底栏外观，偏好持久化）：
+  `liquidGlass`（`ImageFilter.shader` 折射 + 色散 + 高斯模糊，仅 Impeller）、
+  `frostedBlur`（标准高斯模糊）、`solidCapsule`（纯色、低功耗）。
+  不支持 shader filter 的后端（如 Windows/Skia）自动降级为 `frostedBlur`。
+- 选中指示器是欠阻尼弹簧（`SpringSimulation`），切换 Tab 时按速度产生拉伸/压缩；
+  底栏支持按住横向拖动，松手吸附到最近的 Tab 并触发路由切换。
+

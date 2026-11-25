@@ -129,6 +129,56 @@ Future<void> _pickMonthCellHeight(BuildContext context, WidgetRef ref) async {
   if (picked != null) await ref.read(monthCellHeightProvider.notifier).set(picked);
 }
 
+/// Chinese name of a bottom-bar material.
+String _bottomBarStyleLabel(BottomBarStyle style) => switch (style) {
+      BottomBarStyle.liquidGlass => '液态玻璃',
+      BottomBarStyle.frostedBlur => '毛玻璃',
+      BottomBarStyle.solidCapsule => '纯色胶囊',
+    };
+
+/// One-line note under the style name inside the picker.
+String _bottomBarStyleDescription(BottomBarStyle style) => switch (style) {
+      BottomBarStyle.liquidGlass => '实时高斯模糊 + 边缘折射与色散（Impeller 专属，其余平台自动降级）',
+      BottomBarStyle.frostedBlur => '标准高斯模糊 + 高光描边，全平台可用',
+      BottomBarStyle.solidCapsule => '无实时模糊，低功耗',
+    };
+
+/// Short hint for the settings row subtitle.
+String _bottomBarStyleShortHint(BottomBarStyle style) => switch (style) {
+      BottomBarStyle.liquidGlass => '不支持时自动用毛玻璃',
+      BottomBarStyle.frostedBlur => '全平台可用',
+      BottomBarStyle.solidCapsule => '低功耗',
+    };
+
+/// Bottom-bar material picker. Every option is listed on every device: the bar
+/// itself falls back to frosted glass when shader filters are unavailable.
+Future<void> _pickBottomBarStyle(BuildContext context, WidgetRef ref) async {
+  final current = ref.read(bottomBarStyleProvider);
+  final picked = await showDialog<BottomBarStyle>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('底栏外观'),
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final style in BottomBarStyle.values)
+            ListTile(
+              title: Text(_bottomBarStyleLabel(style)),
+              subtitle: Text(
+                _bottomBarStyleDescription(style),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              trailing: current == style ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.pop(ctx, style),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (picked != null) await ref.read(bottomBarStyleProvider.notifier).set(picked);
+}
+
 /// Shows the last sync failure in full. The text is selectable and copyable so
 /// it can be pasted into a bug report.
 Future<void> _showSyncDetail(BuildContext context, SyncUiState sync) async {
@@ -282,6 +332,12 @@ class SettingsPage extends ConsumerWidget {
         ],
       ),
       body: ListView(
+        // Leaves scroll room for the floating bottom bar: the outer Scaffold
+        // will use `extendBody: true`, so MediaQuery.padding.bottom equals the
+        // bar's height.
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.paddingOf(context).bottom + 16,
+        ),
         children: [
           ListTile(
             leading: CircleAvatar(child: Text(profile?.username.isNotEmpty == true ? profile!.username[0].toUpperCase() : '?')),
@@ -406,6 +462,16 @@ class SettingsPage extends ConsumerWidget {
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _pickTileTextLines(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.blur_on_outlined),
+            title: const Text('底栏外观'),
+            subtitle: Text(
+              '${_bottomBarStyleLabel(ref.watch(bottomBarStyleProvider))} · '
+              '${_bottomBarStyleShortHint(ref.watch(bottomBarStyleProvider))}',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _pickBottomBarStyle(context, ref),
           ),
           const Divider(),
           const _SectionHeader('服务器与数据'),
