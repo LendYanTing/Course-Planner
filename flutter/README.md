@@ -57,23 +57,45 @@ lib/
 ## Dev commands (Windows)
 
 The Flutter SDK used during development lives at `.tools/flutter` (a writable
-copy of the toolchain) with `PUB_CACHE=.tools/pub-cache` — both are
-gitignored.
+copy of the toolchain) with `PUB_CACHE=.tools/pub-cache` — both are gitignored.
+Source the repo's env script instead of setting them by hand:
 
 ```powershell
-$env:PUB_CACHE = (Resolve-Path .tools/pub-cache)
-.tools\flutter\bin\flutter.bat pub get
-.tools\flutter\bin\flutter.bat analyze
-# host VM tests load sqlite3.dll from PATH (sqlite3 3.x auto-loader)
-$env:PATH = (Resolve-Path .tools/sqlite3).Path + ';' + $env:PATH
-.tools\flutter\bin\flutter.bat test
+. ..\scripts\dev-env.ps1
 ```
+
+```bash
+source scripts/dev-env.sh
+```
+
+It puts `.tools/flutter` (pinned SDK), `.tools/sqlite3` and the repo-local Go
+toolchain on `PATH` and points every cache at `.tools/`. Two of those are
+load-bearing, not tidiness:
+
+- **`PUB_CACHE=.tools/pub-cache`** — with the default cache on another drive
+  (it lands on `C:`), the Android release build dies in Kotlin's incremental
+  compiler: `this and base files have different roots`.
+- **`.tools/sqlite3` on `PATH`** — host VM tests load `sqlite3.dll` from `PATH`
+  (the sqlite3 3.x auto-loader).
+
+No `HTTP_PROXY`/`HTTPS_PROXY` is set: this box egresses through the Clash TUN
+adapter, which owns the default route. `pub.dev` is blocked by that proxy's
+rules, so dependency resolution only works against the local cache:
+
+```bash
+flutter pub get --offline
+flutter analyze
+flutter test
+```
+
+Keep `.tools/pub-cache` populated — it holds the full locked dependency set.
+Releases are packaged with `bash scripts/package-flutter.sh` (see the root
+README).
 
 Point the app at a running backend with:
 
-```powershell
-.tools\flutter\bin\flutter.bat run -d windows `
-  --dart-define=API_BASE_URL=http://127.0.0.1:8080/api/v1
+```bash
+flutter run -d windows --dart-define=API_BASE_URL=http://127.0.0.1:8080/api/v1
 ```
 
 ## Status / next steps
