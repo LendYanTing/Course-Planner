@@ -10,12 +10,11 @@ import '../../data/local/entities_snapshot.dart';
 import '../../data/local/view_models.dart';
 import '../../domain/calendar.dart';
 import '../../domain/calendar_event.dart';
-import '../../domain/entities.dart';
 import '../../domain/todo.dart';
-import '../../state/app_services.dart';
+import '../../state/calendar_controller.dart';
 import '../../state/prefs.dart';
 import '../../state/sync_controller.dart';
-import 'event_projection.dart';
+import '../../state/event_projection.dart';
 import 'month_page.dart' show weekGutterLabel;
 
 /// Grid (纯课表) view — spec docs/grid-view-web.md.
@@ -1063,12 +1062,10 @@ class _GridTileState extends ConsumerState<_GridTile> {
     );
     controller.dispose();
     if (text == null) return; // cancelled
-    await ref.read(servicesProvider).repo.localUpdate(
-          entityType: EntityTypes.todoBlock,
-          entityId: widget.event.sourceId,
-          changes: {'blockNote': text.isEmpty ? null : text},
+    await ref.read(calendarControllerProvider.notifier).updateBlockNote(
+          blockId: widget.event.sourceId,
+          note: text,
         );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 
   /// `M月d日 HH:mm` in the user's fixed timezone.

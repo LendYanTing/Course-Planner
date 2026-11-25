@@ -10,7 +10,7 @@ import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../sync/expander.dart';
-import 'event_projection.dart';
+import '../../state/event_projection.dart';
 
 /// Fills the blank gutter left of the weekday row: the month(s) the week spans.
 String weekGutterLabel(List<DateTime> days) {

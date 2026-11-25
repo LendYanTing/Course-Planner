@@ -3,7 +3,7 @@ import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/domain/calendar_event.dart';
 import 'package:course_planner/domain/entities.dart';
-import 'package:course_planner/presentation/calendar/event_projection.dart';
+import 'package:course_planner/state/event_projection.dart';
 import 'package:course_planner/presentation/calendar/grid_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

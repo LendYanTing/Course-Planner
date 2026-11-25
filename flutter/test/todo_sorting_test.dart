@@ -1,6 +1,6 @@
 import 'package:course_planner/data/local/view_models.dart';
 import 'package:course_planner/domain/todo.dart';
-import 'package:course_planner/presentation/todo/todo_sorting.dart';
+import 'package:course_planner/state/todo_sorting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Ticket #3: the todo page's open list orders its category groups and their

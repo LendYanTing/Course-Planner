@@ -3,7 +3,7 @@ import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/domain/calendar_event.dart';
 import 'package:course_planner/domain/entities.dart';
-import 'package:course_planner/presentation/calendar/event_projection.dart';
+import 'package:course_planner/state/event_projection.dart';
 import 'package:course_planner/presentation/calendar/month_page.dart';
 import 'package:course_planner/state/app_services.dart';
 import 'package:course_planner/state/session.dart';

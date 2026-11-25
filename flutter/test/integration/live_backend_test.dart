@@ -14,7 +14,7 @@ import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/data/local/view_models.dart';
 import 'package:course_planner/domain/entities.dart';
 import 'package:course_planner/domain/sync.dart';
-import 'package:course_planner/presentation/calendar/event_projection.dart';
+import 'package:course_planner/state/event_projection.dart';
 import 'package:course_planner/presentation/calendar/month_page.dart';
 import 'package:course_planner/sync/expander.dart';
 import 'package:course_planner/sync/sync_engine.dart';

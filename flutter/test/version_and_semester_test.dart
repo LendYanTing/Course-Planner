@@ -4,7 +4,7 @@ import 'package:course_planner/core/config/app_info.dart';
 import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/domain/calendar.dart';
 import 'package:course_planner/presentation/calendar/month_page.dart';
-import 'package:course_planner/presentation/calendar/week_page.dart';
+import 'package:course_planner/state/calendar_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

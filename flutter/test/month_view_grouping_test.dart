@@ -1,7 +1,7 @@
 import 'package:course_planner/core/time/user_time.dart';
 import 'package:course_planner/domain/calendar_event.dart';
 import 'package:course_planner/domain/entities.dart';
-import 'package:course_planner/presentation/calendar/event_projection.dart';
+import 'package:course_planner/state/event_projection.dart';
 import 'package:course_planner/presentation/calendar/month_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 

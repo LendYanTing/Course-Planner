@@ -4,7 +4,7 @@ import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/data/repo/entity_repo.dart';
 import 'package:course_planner/domain/entities.dart';
-import 'package:course_planner/presentation/calendar/event_projection.dart';
+import 'package:course_planner/state/event_projection.dart';
 import 'package:course_planner/sync/expander.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,15 +1,15 @@
 import 'package:timezone/timezone.dart' as tz;
 
-import '../../../core/time/user_time.dart';
-import '../../../core/util/clock_utils.dart';
-import '../../../data/local/entities_snapshot.dart';
-import '../../../data/local/view_models.dart';
-import '../../../domain/calendar.dart';
-import '../../../domain/calendar_event.dart';
-import '../../../domain/course.dart';
-import '../../../domain/entities.dart';
-import '../../../domain/todo.dart';
-import '../../../sync/expander.dart';
+import '../core/time/user_time.dart';
+import '../core/util/clock_utils.dart';
+import '../data/local/entities_snapshot.dart';
+import '../data/local/view_models.dart';
+import '../domain/calendar.dart';
+import '../domain/calendar_event.dart';
+import '../domain/course.dart';
+import '../domain/entities.dart';
+import '../domain/todo.dart';
+import '../sync/expander.dart';
 
 /// A UI-ready event placed on week/month grids, produced from the local
 /// mirror (docs/domain-model.md §14). No server call involved — the whole

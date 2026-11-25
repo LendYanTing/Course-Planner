@@ -4,17 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme.dart';
 import '../../core/time/user_time.dart';
 import '../../data/local/view_models.dart';
-import '../../domain/entities.dart';
 import '../../domain/todo.dart';
-import '../../state/app_services.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
+import '../../state/todo_controller.dart';
 import '../settings/courses_page.dart' show kPalette;
 import 'todo_blocks_sheet.dart';
-import 'todo_sorting.dart';
+import '../../state/todo_sorting.dart';
 
 /// Todo list (docs/domain-model.md §7-9): one_off / project, priority, status,
 /// deadline, estimated duration, tags/categories, linked blocks.
+///
+/// The page renders [todoBoardProvider] and forwards taps to
+/// [todoControllerProvider]; filtering, grouping, sorting and every repository
+/// write live in `lib/state/todo_controller.dart`. Only transient view state
+/// (collapsed sections, text controllers) stays here.
 class TodoPage extends ConsumerStatefulWidget {
   const TodoPage({super.key});
 
@@ -23,22 +27,15 @@ class TodoPage extends ConsumerStatefulWidget {
 }
 
 class _TodoPageState extends ConsumerState<TodoPage> {
-  bool _showCompleted = false;
-  final Set<String> _filterTagIds = {};
+  /// Collapsed category sections (`__none__` for the uncategorised group).
   final Set<String> _collapsed = {};
 
-  /// Sorter selection (ticket #3). In-memory like [_showCompleted] and
-  /// [_filterTagIds]: leaving and re-entering the page resets it to default.
-  TodoSort _sort = TodoSort.initialDeadlineWholePage;
-
-  bool _matchesFilters(Todo t) {
-    if (_filterTagIds.isNotEmpty && !_filterTagIds.any(t.tagIds.contains)) return false;
-    return true;
-  }
 
   @override
   Widget build(BuildContext context) {
-    final snap = ref.watch(snapshotProvider).value;
+    final board = ref.watch(todoBoardProvider);
+    final query = ref.watch(todoControllerProvider);
+    final controller = ref.read(todoControllerProvider.notifier);
     final syncState = ref.watch(syncCoordinatorProvider);
     final userTime = ref.watch(userTimeProvider);
     // A deadline reads as its user-tz wall clock (§5). Without a known user
@@ -47,40 +44,19 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     String? deadlineTextFor(Todo t) => userTime == null || t.deadlineAt == null
         ? null
         : userTime.formatDateYmdHm(t.deadlineAt!);
-    final todos = snap == null ? <Live<Todo>>[] : liveTodos(snap);
-    final tags = snap == null ? <Live<Tag>>[] : liveTags(snap);
-    final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
-    final blocks = snap == null ? <Live<TodoBlock>>[] : liveBlocks(snap);
 
-    final open = todos.where((t) => !t.value.isCompleted && _matchesFilters(t.value)).toList();
-    final done = todos.where((t) => t.value.isCompleted && _matchesFilters(t.value)).toList();
-
-    final tagById = {for (final t in tags) t.value.id: t.value};
-    final categoryById = {for (final c in categories) c.value.id: c.value};
-    final blocksByTodo = <String, List<TodoBlock>>{};
-    for (final b in blocks) {
-      blocksByTodo.putIfAbsent(b.value.todoId, () => []).add(b.value);
-    }
-
-    // Group by category so the list reads as collapsible sections instead of
-    // one flat run. Uncategorised (or dangling-category) todos form one group
-    // whose id is null. The sorter then orders the rows inside each group and,
-    // for the whole-page scope, the groups themselves — so no group has a fixed
-    // position (todo_sorting.dart).
-    final groups = sortTodoGroups(<TodoGroup>[
-      for (final c in categories)
-        if (open.any((t) => t.value.categoryId == c.value.id))
-          (id: c.value.id, items: open.where((t) => t.value.categoryId == c.value.id).toList()),
-      if (open.any((t) => t.value.categoryId == null ||
-          !categoryById.containsKey(t.value.categoryId)))
-        (
-          id: null,
-          items: open
-              .where((t) => t.value.categoryId == null ||
-                  !categoryById.containsKey(t.value.categoryId))
-              .toList(),
-        ),
-    ], _sort);
+    Widget tile(Live<Todo> live) => _TodoTile(
+          todo: live.value,
+          pending: live.pending,
+          tagById: board.tagById,
+          categoryById: board.categoryById,
+          blocks: board.blocksByTodo[live.value.id] ?? const [],
+          deadlineText: deadlineTextFor(live.value),
+          onChanged: (status) => controller.setStatus(live.value, status),
+          onDelete: () => controller.delete(live.value),
+          onEdit: () => _openEditor(context, existing: live.value),
+          onManageBlocks: () => _openBlocks(context, live.value),
+        );
 
     return Scaffold(
       appBar: AppBar(
@@ -98,28 +74,28 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           PopupMenuButton<Object>(
             tooltip: '排序',
             icon: const Icon(Icons.sort),
-            onSelected: (v) => setState(() {
-              if (v is TodoSortKey) _sort = _sort.copyWith(key: v);
-              if (v is TodoSortScope) _sort = _sort.copyWith(scope: v);
-            }),
+            onSelected: (v) {
+              if (v is TodoSortKey) controller.setSortKey(v);
+              if (v is TodoSortScope) controller.setSortScope(v);
+            },
             itemBuilder: (_) => [
               for (final k in TodoSortKey.values)
                 CheckedPopupMenuItem<Object>(
                   value: k,
-                  checked: _sort.key == k,
+                  checked: query.sort.key == k,
                   child: Text(_sortKeyLabel(k)),
                 ),
               const PopupMenuDivider(),
               for (final s in TodoSortScope.values)
                 CheckedPopupMenuItem<Object>(
                   value: s,
-                  checked: _sort.scope == s,
+                  checked: query.sort.scope == s,
                   child: Text(_sortScopeLabel(s)),
                 ),
             ],
           ),
           PopupMenuButton<String>(
-            onSelected: (v) => setState(() => _showCompleted = v == 'done'),
+            onSelected: (v) => controller.setShowCompleted(v == 'done'),
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'open', child: Text('仅进行中')),
               PopupMenuItem(value: 'done', child: Text('包含已完成')),
@@ -141,65 +117,37 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       ),
       body: Column(
         children: [
-          if (tags.isNotEmpty) _buildFilters(context, tags),
+          if (board.tags.isNotEmpty) _buildFilters(context, board.tags, query, controller),
           Expanded(
-            child: todos.isEmpty && snap != null
+            child: board.todoCount == 0 && board.loaded
                 ? const Center(child: Text('还没有待办，点右下角新建'))
-                : open.isEmpty && done.isEmpty
+                : board.groups.isEmpty && board.done.isEmpty
                     ? const Center(child: Text('没有符合条件的待办'))
                     : ListView(
-                        // Room for the FAB, which otherwise sits on top of the
-                        // last row when the list is scrolled to the bottom.
                         // Reserve the translucent floating nav bar's height
                         // (extendBody) plus room for the FAB over the last row.
                         padding: EdgeInsets.only(
                           bottom: MediaQuery.paddingOf(context).bottom + 72,
                         ),
                         children: [
-                          for (final g in groups)
+                          for (final g in board.groups)
                             _CategoryGroup(
-                              title: g.id == null ? '未分类' : categoryById[g.id]!.name,
-                              color: g.id == null ? null : categoryById[g.id]!.color,
+                              title: g.id == null ? '未分类' : board.categoryById[g.id]!.name,
+                              color: g.id == null ? null : board.categoryById[g.id]!.color,
                               count: g.items.length,
                               expanded: !_collapsed.contains(g.id ?? '__none__'),
                               onToggle: () => setState(() {
                                 final key = g.id ?? '__none__';
                                 if (!_collapsed.remove(key)) _collapsed.add(key);
                               }),
-                              children: [
-                                for (final live in g.items)
-                                  _TodoTile(
-                                    todo: live.value,
-                                    pending: live.pending,
-                                    tagById: tagById,
-                                    categoryById: categoryById,
-                                    blocks: blocksByTodo[live.value.id] ?? const [],
-                                    deadlineText: deadlineTextFor(live.value),
-                                    onChanged: (status) => _setStatus(live.value, status),
-                                    onDelete: () => _delete(live.value),
-                                    onEdit: () => _openEditor(context, existing: live.value),
-                                    onManageBlocks: () => _openBlocks(context, live.value),
-                                  ),
-                              ],
+                              children: [for (final live in g.items) tile(live)],
                             ),
-                          if (_showCompleted && done.isNotEmpty) ...[
+                          if (query.showCompleted && board.done.isNotEmpty) ...[
                             const Padding(
                               padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
                               child: Text('已完成', style: TextStyle(color: Colors.grey, fontSize: 12)),
                             ),
-                            for (final live in done)
-                              _TodoTile(
-                                todo: live.value,
-                                pending: live.pending,
-                                tagById: tagById,
-                                categoryById: categoryById,
-                                blocks: blocksByTodo[live.value.id] ?? const [],
-                                deadlineText: deadlineTextFor(live.value),
-                                onChanged: (status) => _setStatus(live.value, status),
-                                onDelete: () => _delete(live.value),
-                                onEdit: () => _openEditor(context, existing: live.value),
-                                onManageBlocks: () => _openBlocks(context, live.value),
-                              ),
+                            for (final live in board.done) tile(live),
                           ],
                         ],
                       ),
@@ -209,7 +157,12 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
   }
 
-  Widget _buildFilters(BuildContext context, List<Live<Tag>> tags) {
+  Widget _buildFilters(
+    BuildContext context,
+    List<Live<Tag>> tags,
+    TodoQuery query,
+    TodoController controller,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Column(
@@ -224,14 +177,8 @@ class _TodoPageState extends ConsumerState<TodoPage> {
               for (final t in tags)
                 FilterChip(
                   label: Text(t.value.name),
-                  selected: _filterTagIds.contains(t.value.id),
-                  onSelected: (v) => setState(() {
-                    if (v) {
-                      _filterTagIds.add(t.value.id);
-                    } else {
-                      _filterTagIds.remove(t.value.id);
-                    }
-                  }),
+                  selected: query.tagIds.contains(t.value.id),
+                  onSelected: (_) => controller.toggleTagFilter(t.value.id),
                 ),
             ],
           ),
@@ -249,22 +196,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
       useSafeArea: true,
       builder: (_) => TodoBlocksSheet(todo: todo, userTime: userTime),
     );
-  }
-
-  Future<void> _setStatus(Todo todo, TodoStatus status) async {
-    final services = ref.read(servicesProvider);
-    await services.repo.localUpdate(
-      entityType: EntityTypes.todo,
-      entityId: todo.id,
-      changes: {'status': status.wire},
-    );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
-  }
-
-  Future<void> _delete(Todo todo) async {
-    final services = ref.read(servicesProvider);
-    await services.repo.localDelete(entityType: EntityTypes.todo, entityId: todo.id);
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 
   Future<void> _openEditor(BuildContext context, {Todo? existing}) async {
@@ -728,11 +659,9 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   Future<void> _createCategory() async {
     final r = await _showCreateDialog('新建分类');
     if (r == null || !mounted) return;
-    final id = await ref.read(servicesProvider).repo.localCreate(
-      entityType: EntityTypes.category,
-      snapshot: {'name': r.name, 'color': r.color},
-    );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
+    final id = await ref
+        .read(todoControllerProvider.notifier)
+        .createCategory(name: r.name, color: r.color);
     if (!mounted) return;
     setState(() {
       _categories.add(Category(id: id, name: r.name, color: r.color, revision: 0));
@@ -743,11 +672,9 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   Future<void> _createTag() async {
     final r = await _showCreateDialog('新建标签');
     if (r == null || !mounted) return;
-    final id = await ref.read(servicesProvider).repo.localCreate(
-      entityType: EntityTypes.tag,
-      snapshot: {'name': r.name, 'color': r.color},
-    );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
+    final id = await ref
+        .read(todoControllerProvider.notifier)
+        .createTag(name: r.name, color: r.color);
     if (!mounted) return;
     setState(() {
       _tags.add(Tag(id: id, name: r.name, color: r.color, revision: 0));
@@ -816,37 +743,19 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   }
 
   Future<void> _save() async {
-    final services = ref.read(servicesProvider);
     final title = _title.text.trim();
     if (title.isEmpty) return;
-    final est = int.tryParse(_est.text.trim());
-    final changes = <String, dynamic>{
-      'title': title,
-      'type': _type.wire,
-      'description': _desc.text.trim().isEmpty ? null : _desc.text.trim(),
-      'categoryId': _categoryId,
-      'tagIds': _tagIds.toList(),
-      'priority': _priority.wire,
-      // Both types store it in deadlineAt; only the wording differs.
-      'deadlineAt': _deadline,
-    };
-    if (est != null) {
-      changes['estimatedMinutes'] = est;
-    }
-    final repo = services.repo;
-    if (widget.existing == null) {
-      await repo.localCreate(
-        entityType: EntityTypes.todo,
-        snapshot: {...changes, 'status': TodoStatus.todo.wire},
-      );
-    } else {
-      await repo.localUpdate(
-        entityType: EntityTypes.todo,
-        entityId: widget.existing!.id,
-        changes: changes,
-      );
-    }
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
+    await ref.read(todoControllerProvider.notifier).saveTodo(
+          existingId: widget.existing?.id,
+          title: title,
+          type: _type,
+          description: _desc.text.trim().isEmpty ? null : _desc.text.trim(),
+          categoryId: _categoryId,
+          tagIds: _tagIds,
+          priority: _priority,
+          deadlineAt: _deadline,
+          estimatedMinutes: int.tryParse(_est.text.trim()),
+        );
     if (mounted) Navigator.of(context).pop();
   }
 }

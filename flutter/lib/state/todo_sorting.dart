@@ -1,5 +1,5 @@
-import '../../data/local/view_models.dart';
-import '../../domain/todo.dart';
+import '../data/local/view_models.dart';
+import '../domain/todo.dart';
 
 /// Ordering for the todo page's open list (ticket #3).
 ///

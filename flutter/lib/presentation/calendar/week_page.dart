@@ -9,18 +9,12 @@ import 'package:timezone/timezone.dart' as tz;
 import '../../app/theme.dart';
 import '../../core/error/api_exception.dart';
 import '../../core/time/user_time.dart';
-import '../../data/local/view_models.dart';
-import '../../domain/calendar.dart';
 import '../../domain/calendar_event.dart';
-import '../../domain/entities.dart';
-import '../../domain/override.dart';
-import '../../domain/todo.dart';
-import '../../state/app_services.dart';
+import '../../state/calendar_controller.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
-import '../../sync/expander.dart';
-import 'event_projection.dart';
+import '../../state/event_projection.dart';
 import 'grid_view.dart';
 import 'month_page.dart' show weekGutterLabel;
 
@@ -29,24 +23,6 @@ const double _timeGutter = 46.0;
 
 /// Week tab view modes: continuous 7×24 timeline vs period Grid (纯课表).
 enum WeekViewMode { timeline, grid }
-
-/// Which week of which semester the given local Monday falls in.
-///
-/// Returns null when the week is outside every known semester, which the header
-/// then renders as 「不在本学期」 rather than guessing a number.
-({int week, String calendarId})? semesterWeekFor(
-  List<AcademicCalendar> calendars,
-  UserTime userTime,
-  DateTime weekMondayLocal,
-) {
-  final dateStr = userTime.localDateString(weekMondayLocal);
-  final expander = EventExpander(userTime);
-  for (final c in calendars) {
-    final n = expander.weekOf(c.firstDay, dateStr);
-    if (n >= 1 && n <= c.totalWeeks) return (week: n, calendarId: c.id);
-  }
-  return null;
-}
 
 /// Local Monday of the week that contains [local].
 tz.TZDateTime mondayOf(UserTime userTime, DateTime local) {
@@ -163,17 +139,12 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     ];
     final window = localWindowToUtc(userTime, days.first, userTime.addLocalDays(days.last, 1));
 
-    List<UiEvent> events = const [];
-    if (snap != null) {
-      events = EventProjection(EventExpander(userTime))
-          .project(snap, startUtc: window.start, endUtc: window.end)
-          .events;
-    }
-
-    final calendars = snap == null
-        ? const <AcademicCalendar>[]
-        : liveCalendars(snap).map((e) => e.value).toList();
-    final semesterWeek = semesterWeekFor(calendars, userTime, days.first);
+    // Projection and semester lookup are derived providers (calendar_controller),
+    // so scrolling/rebuilding the page does not re-expand the whole mirror.
+    final events = ref.watch(calendarEventsProvider(
+      (startUtc: window.start, endUtc: window.end),
+    ));
+    final semesterWeek = ref.watch(semesterWeekProvider(days.first));
     final nowLocal = userTime.localFromUtc(now ?? DateTime.now().toUtc());
     final rangeText = days.length == 7
         ? '${days.first.month}月${days.first.day}日 – ${days.last.month}月${days.last.day}日'
@@ -477,7 +448,6 @@ class _WeekPageState extends ConsumerState<WeekPage> {
   // ---- interaction ----------------------------------------------------------
 
   Future<void> _onEmptySlotTap(DateTime day, int minute) async {
-    final userTime = ref.read(userTimeProvider)!;
     final snapped = _snap(minute);
     final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -487,35 +457,15 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     final title = result['title'] as String? ?? '';
     final duration = (result['durationMinutes'] as num?)?.toInt() ?? 60;
     final todoId = result['todoId'] as String?;
-    final blockStart = userTime.fromLocalParts(day.year, day.month, day.day, snapped ~/ 60, snapped % 60);
-    final blockEnd = blockStart.add(Duration(minutes: duration));
-    try {
-      final services = ref.read(servicesProvider);
-      String? targetTodoId = todoId;
-      targetTodoId ??= await services.repo.localCreate(
-        entityType: EntityTypes.todo,
-        snapshot: {
-          'title': title,
-          'type': TodoType.oneOff.wire,
-          'priority': TodoPriority.normal.wire,
-          'status': TodoStatus.todo.wire,
-          'tagIds': <String>[],
-        },
-      );
-      await services.repo.localCreate(
-        entityType: EntityTypes.todoBlock,
-        snapshot: {
-          'todoId': targetTodoId,
-          'startAt': blockStart.toUtc(),
-          'endAt': blockEnd.toUtc(),
-          'status': BlockStatus.scheduled.wire,
-        },
-      );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('创建失败: ${e.message}')));
-      }
+    final error = await ref.read(calendarControllerProvider.notifier).createQuickBlock(
+          day: day,
+          startMinute: snapped,
+          durationMinutes: duration,
+          title: title,
+          todoId: todoId,
+        );
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('创建失败: ${error.message}')));
     }
   }
 
@@ -526,55 +476,13 @@ class _WeekPageState extends ConsumerState<WeekPage> {
   }
 
   Future<void> _commitEventMove(UiEvent event, DateTime newStartUtc, DateTime newEndUtc) async {
-    final services = ref.read(servicesProvider);
-    if (event.sourceType == EntityTypes.todoBlock) {
-      final blockId = event.sourceId;
-      await services.repo.localUpdate(
-        entityType: EntityTypes.todoBlock,
-        entityId: blockId,
-        changes: {
-          'startAt': newStartUtc,
-          'endAt': newEndUtc,
-        },
-      );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
-      return;
-    }
-    // course / recurring schedule occurrence edits are server-owned (series
-    // apply) and therefore need connectivity.
-    try {
-      final seriesType = event.sourceType == EntityTypes.courseMeeting
-          ? SeriesTypes.courseMeeting
-          : SeriesTypes.recurringSchedule;
-      final userTime = ref.read(userTimeProvider)!;
-      final local = userTime.localFromUtc(newStartUtc);
-      final dateStr = userTime.localDateString(local);
-      await services.dataApi.seriesApply(
-        seriesType: seriesType,
-        seriesId: event.sourceId,
-        scope: SeriesScopes.thisOne,
-        occurrenceDateLocal: dateStr,
-        operation: {
-          'type': SeriesOperations.move,
-          'startAt': _fmt(newStartUtc),
-          'endAt': _fmt(newEndUtc),
-        },
-      );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e is NetworkException ? '离线时无法修改课程/周期安排' : '修改失败: ${e.message}')),
-        );
-      }
-    }
-  }
-
-  String _fmt(DateTime d) {
-    final u = d.toUtc();
-    final s = '${u.year.toString().padLeft(4, '0')}-${u.month.toString().padLeft(2, '0')}-${u.day.toString().padLeft(2, '0')}'
-        'T${u.hour.toString().padLeft(2, '0')}:${u.minute.toString().padLeft(2, '0')}:${u.second.toString().padLeft(2, '0')}Z';
-    return s;
+    final error = await ref
+        .read(calendarControllerProvider.notifier)
+        .moveEvent(event: event, startUtc: newStartUtc, endUtc: newEndUtc);
+    if (error == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error is NetworkException ? '离线时无法修改课程/周期安排' : '修改失败: ${error.message}')),
+    );
   }
 }
 
@@ -1220,65 +1128,21 @@ class _EventSheet extends ConsumerWidget {
   }
 
   Future<void> _commit(BuildContext context, WidgetRef ref, DateTime s, DateTime e) async {
-    final services = ref.read(servicesProvider);
-    if (event.sourceType == EntityTypes.todoBlock) {
-      await services.repo.localUpdate(
-        entityType: EntityTypes.todoBlock,
-        entityId: event.sourceId,
-        changes: {'startAt': s.toUtc(), 'endAt': e.toUtc()},
-      );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
-    } else {
-      final seriesType = event.sourceType == EntityTypes.courseMeeting
-          ? SeriesTypes.courseMeeting
-          : SeriesTypes.recurringSchedule;
-      try {
-        await services.dataApi.seriesApply(
-          seriesType: seriesType,
-          seriesId: event.sourceId,
-          scope: SeriesScopes.thisOne,
-          occurrenceDateLocal: userTime.localDateString(userTime.localFromUtc(s)),
-          operation: {
-            'type': SeriesOperations.move,
-            'startAt': s.toUtc().toIso8601String(),
-            'endAt': e.toUtc().toIso8601String(),
-          },
-        );
-        ref.read(syncCoordinatorProvider.notifier).syncNow();
-      } on ApiException catch (err) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(err is NetworkException ? '离线时无法修改，请联网后重试' : err.message)));
-        }
-      }
+    final error = await ref
+        .read(calendarControllerProvider.notifier)
+        .moveEvent(event: event, startUtc: s.toUtc(), endUtc: e.toUtc());
+    if (error != null && context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error is NetworkException ? '离线时无法修改，请联网后重试' : error.message)));
     }
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    final services = ref.read(servicesProvider);
     if (event.type == EventType.deadline) return;
     Navigator.of(context).pop();
-    if (event.sourceType == EntityTypes.todoBlock) {
-      await services.repo.localDelete(entityType: EntityTypes.todoBlock, entityId: event.sourceId);
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
-    } else {
-      try {
-        final seriesType = event.sourceType == EntityTypes.courseMeeting
-            ? SeriesTypes.courseMeeting
-            : SeriesTypes.recurringSchedule;
-        await services.dataApi.seriesApply(
-          seriesType: seriesType,
-          seriesId: event.sourceId,
-          scope: SeriesScopes.thisOne,
-          occurrenceDateLocal: userTime.localDateString(userTime.localFromUtc(event.startUtc)),
-          operation: {'type': SeriesOperations.cancel},
-        );
-        ref.read(syncCoordinatorProvider.notifier).syncNow();
-      } on ApiException catch (err) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.message)));
-        }
-      }
+    final error = await ref.read(calendarControllerProvider.notifier).deleteEvent(event);
+    if (error != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 }
