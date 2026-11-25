@@ -434,9 +434,11 @@ class _GridCanvasState extends State<_GridCanvas> {
     // turn translucent (18% see-through) and the weekend veil thins out by the
     // same factor. Without a wallpaper the exact stock colours are kept (tests
     // pin them).
-    Color rowTint(Color c) => widget.hasBackground ? c.withValues(alpha: 0.82) : c;
+    // With a wallpaper behind the page the row tints only lightly wash the
+    // timetable, so the artwork stays clearly visible (0.82 used to hide it).
+    Color rowTint(Color c) => widget.hasBackground ? c.withValues(alpha: 0.45) : c;
     final weekendVeil =
-        Colors.black.withValues(alpha: widget.hasBackground ? 0.03 * 0.82 : 0.03);
+        Colors.black.withValues(alpha: widget.hasBackground ? 0.02 : 0.03);
     var pmStart = -1;
     for (var i = 0; i < layout.rows.length; i++) {
       if (layout.rows[i].start >= widget.noonBoundaryMinutes) {

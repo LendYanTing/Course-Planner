@@ -143,6 +143,61 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     setState(() => _anchor = ref.read(serverNowProvider).value ?? DateTime.now().toUtc());
   }
 
+  /// Actions for the period title: jump back to this week, toggle course
+  /// dragging (课表 tiles) and open the date picker. The old navigation row
+  /// (‹ 今天 › + switch) lived on screen permanently; folding it into a menu
+  /// gives the timetable back that vertical space.
+  Future<void> _showHeaderMenu(BuildContext context, UserTime userTime) async {
+    var editable = ref.read(courseEditableInCourseViewProvider);
+    await showAppDialog<void>(
+      context: context,
+      title: '日程视图',
+      content: StatefulBuilder(
+        builder: (dialogContext, setLocal) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: editable,
+              title: const Text('课程可长按拖动'),
+              subtitle: const Text('关闭后只能移动待办时间块'),
+              onChanged: (v) {
+                editable = v;
+                ref.read(courseEditableInCourseViewProvider.notifier).set(v);
+                setLocal(() {});
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.today_outlined),
+              title: const Text('回到当前周'),
+              onTap: () {
+                Navigator.of(context, rootNavigator: true).pop();
+                _goToday();
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_outlined),
+              title: const Text('选择日期…'),
+              onTap: () {
+                Navigator.of(context, rootNavigator: true).pop();
+                _pickDate(userTime);
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
   /// A day tapped in the month grid: anchor on it and show that week's 课表.
   void _selectDayInMonth(DateTime localDay) {
     final userTime = ref.read(userTimeProvider);
@@ -243,10 +298,10 @@ class _WeekPageState extends ConsumerState<WeekPage> {
       // explicitly tinted must stay transparent.
       backgroundColor: hasBackground ? Colors.transparent : null,
       appBar: AppTopBar(
-        // Tapping the title jumps to any date (also reachable by swiping the
-        // body left/right to step a week/month).
+        // The title is the period control now: it shows the semester week as
+        // the headline (date range underneath) and opens the actions menu.
         titleWidget: InkWell(
-          onTap: () => _pickDate(userTime),
+          onTap: () => _showHeaderMenu(context, userTime),
           child: isMonth
               ? Text(
                   '${anchorLocal.year}年${anchorLocal.month}月',
@@ -256,16 +311,17 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(rangeText, style: const TextStyle(fontSize: 16)),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
                         color: semesterWeek == null
                             ? Theme.of(context).colorScheme.error
-                            : Theme.of(context).colorScheme.primary,
+                            : null,
                       ),
                     ),
+                    Text(rangeText, style: const TextStyle(fontSize: 12)),
                   ],
                 ),
         ),
@@ -283,36 +339,12 @@ class _WeekPageState extends ConsumerState<WeekPage> {
             ),
         ],
       ),
-      // The period navigation (‹ 今天 › + the course-drag switch) is pinned
-      // above the animated area: swiping to another week/month slides only the
-      // timetable below it. Keeping it inside the switcher moved the very
-      // controls under the finger that was swiping.
+      // The period title above carries the period controls (menu: 回到当前周 /
+      // 课程可长按拖动 / 选择日期), so the body is just the sliding timetable.
       body: CalendarBackground(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _WeekNavRow(
-              // In 月 mode the same bar steps months instead of weeks.
-              onPrev: () => isMonth ? _moveMonth(-1) : _moveWeek(-1),
-              onNext: () => isMonth ? _moveMonth(1) : _moveWeek(1),
-              onToday: _goToday,
-              // The course-drag switch belongs to the 课表 view only.
-              trailing: viewMode == WeekViewMode.grid
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
-                        AppSwitch(
-                          value: ref.watch(courseEditableInCourseViewProvider),
-                          onChanged: (v) => ref
-                              .read(courseEditableInCourseViewProvider.notifier)
-                              .set(v),
-                        ),
-                      ],
-                    )
-                  : null,
-            ),
-            const Divider(height: 1),
             Expanded(
               // Swiping left/right steps a week (or a month in 月 mode);
               // vertical drags stay with the scrollable inside.
@@ -609,33 +641,6 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     if (error == null || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(error is NetworkException ? '离线时无法修改课程/周期安排' : '修改失败: ${error.message}')),
-    );
-  }
-}
-
-class _WeekNavRow extends StatelessWidget {
-  const _WeekNavRow({
-    required this.onPrev,
-    required this.onNext,
-    required this.onToday,
-    this.trailing,
-  });
-
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
-  final VoidCallback onToday;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        IconButton(onPressed: onPrev, icon: const Icon(Icons.chevron_left)),
-        TextButton(onPressed: onToday, child: const Text('今天')),
-        IconButton(onPressed: onNext, icon: const Icon(Icons.chevron_right)),
-        const Spacer(),
-        ?trailing,
-      ],
     );
   }
 }

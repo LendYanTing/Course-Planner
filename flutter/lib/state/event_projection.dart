@@ -1,5 +1,6 @@
 import 'package:timezone/timezone.dart' as tz;
 
+import '../core/theme/course_palette.dart';
 import '../core/time/user_time.dart';
 import '../core/util/clock_utils.dart';
 import '../data/local/entities_snapshot.dart';
@@ -143,7 +144,7 @@ class EventProjection {
         sourceType: EntityTypes.recurringSchedule,
         sourceId: occ.sourceId,
         conflict: conflict,
-        color: occ.color,
+        color: occ.color ?? CoursePalette.colorForLabel(occ.title ?? '日程'),
         note: occ.notes,
       ));
     }
@@ -221,7 +222,9 @@ class EventProjection {
         sourceType: EntityTypes.courseMeeting,
         sourceId: occ.sourceId,
         conflict: conflict,
-        color: occ.color,
+        // Legacy rows have no colour: derive a stable distinct one per course
+        // instead of painting the whole timetable in one blue.
+        color: occ.color ?? CoursePalette.colorForLabel(occ.title ?? '课程'),
         location: occ.location,
         teacher: occ.teacher,
         note: occ.notes,

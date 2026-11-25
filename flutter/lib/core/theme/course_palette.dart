@@ -103,6 +103,34 @@ abstract final class CoursePalette {
     return out;
   }
 
+  /// Stable palette colour for an entity that has none stored (courses added
+  /// before the colour palette existed, or a mirror written by an older
+  /// client). The same label always maps to the same slot, and different
+  /// labels spread over the 16 evenly spaced hues, so a timetable never renders
+  /// as one flat colour again. "重新配色" still writes real values.
+  static String colorForLabel(
+    String label, {
+    CoursePaletteStyle style = CoursePaletteStyle.morandi,
+  }) {
+    final slot = _stableHash(label) % paletteSize;
+    final hue = slot * (360.0 / paletteSize);
+    return switch (style) {
+      CoursePaletteStyle.morandi => _hexFromHsl(hue, 0.34, 0.62),
+      CoursePaletteStyle.vibrant => _hexFromHsl(hue, 0.82, 0.55),
+      CoursePaletteStyle.monetHarmony => _hexFromHsl(hue, 0.50, 0.64),
+    };
+  }
+
+  /// FNV-1a over the UTF-16 code units: deterministic across launches (unlike
+  /// `String.hashCode`, which is not guaranteed to be stable).
+  static int _stableHash(String s) {
+    var h = 0x811c9dc5;
+    for (final c in s.codeUnits) {
+      h = ((h ^ c) * 0x01000193) & 0x7fffffff;
+    }
+    return h;
+  }
+
   /// CIE76 colour difference (ΔE) between two hex colours, in Lab space.
   ///
   /// Invalid input yields `0.0` instead of throwing, which keeps the allocator
