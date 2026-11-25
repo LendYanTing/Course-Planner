@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/error/api_exception.dart';
 import '../../data/api/import_api.dart';
 import '../../data/local/view_models.dart';
 import '../../domain/calendar.dart';
+import '../../domain/local_csv_import.dart';
 import '../../state/app_services.dart';
 import '../../state/sync_controller.dart';
+import '../adaptive/adaptive.dart';
 
 /// Course CSV import (docs/csv-import.md). Flow: upload → parse → validate →
 /// preview → user confirms → commit. Parsing/validation are server-side.
@@ -21,6 +22,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
   String? _calendarId;
   final _csv = TextEditingController();
   bool _busy = false;
+  bool _autoCreatePeriods = true;
   CourseCsvPreview? _preview;
   List<CsvFieldError>? _errors;
 
@@ -37,7 +39,7 @@ class _ImportPageState extends ConsumerState<ImportPage> {
     _calendarId ??= calendars.isNotEmpty ? calendars.first.value.id : null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('导入课程（CSV）')),
+      appBar: AppTopBar(title: '导入课程（CSV）'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -78,7 +80,9 @@ class _ImportPageState extends ConsumerState<ImportPage> {
               ),
               if (_errors != null && _errors!.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Card(
+                AppCard(
+                  padding: EdgeInsets.zero,
+                  margin: const EdgeInsets.all(4),
                   color: Theme.of(context).colorScheme.errorContainer,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -95,7 +99,9 @@ class _ImportPageState extends ConsumerState<ImportPage> {
               ],
               if (_preview != null) ...[
                 const SizedBox(height: 16),
-                Card(
+                AppCard(
+                  padding: EdgeInsets.zero,
+                  margin: const EdgeInsets.all(4),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
@@ -113,6 +119,15 @@ class _ImportPageState extends ConsumerState<ImportPage> {
                             ),
                           ),
                         const SizedBox(height: 8),
+                        CheckboxListTile(
+                          value: _autoCreatePeriods,
+                          onChanged: (v) => setState(() => _autoCreatePeriods = v ?? true),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('自动补齐缺失的节次模板', style: TextStyle(fontSize: 13)),
+                          subtitle: const Text('按 45 分钟一节、课间 10 分钟补齐', style: TextStyle(fontSize: 11)),
+                        ),
                         FilledButton(
                           onPressed: _busy ? null : _commit,
                           child: const Text('确认导入'),
@@ -135,48 +150,58 @@ class _ImportPageState extends ConsumerState<ImportPage> {
       _preview = null;
       _errors = null;
     });
-    final api = ref.read(servicesProvider).importApi;
-    try {
-      final preview = await api.previewCourses(
-        calendarId: _calendarId!,
-        csvText: _csv.text,
-      );
-      if (!mounted) return;
-      setState(() {
-        _preview = preview;
-        _busy = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        if (e.code == ApiErrorCodes.csvValidationError || e.code == ApiErrorCodes.courseConflict) {
-          _errors = ImportApi.validationErrors(e);
-          if (e.code == ApiErrorCodes.courseConflict) {
-            _errors = [
-              const CsvFieldError(line: 0, field: 'conflict', code: 'COURSE_CONFLICT', message: '与已有课程时间冲突，请调整后重试'),
-            ];
-          }
-        } else {
-          _errors = [CsvFieldError(line: 0, field: '', code: e.code, message: e.message)];
-        }
-      });
+    final snap = ref.read(snapshotProvider).value;
+    final calendar = snap == null
+        ? null
+        : liveCalendars(snap)
+            .where((c) => c.value.id == _calendarId)
+            .map((c) => c.value)
+            .firstOrNull;
+    if (snap == null || calendar == null) {
+      setState(() => _busy = false);
+      return;
     }
+    final periods =
+        livePeriods(snap, calendarId: _calendarId).map((e) => e.value).toList();
+    // Parsing and validation are local (docs/plans/v1 phase 1): the CSV never
+    // leaves the device, and the whole flow works offline.
+    final result = LocalCsvImporter.parseAndValidate(
+      csv: _csv.text,
+      calendarId: _calendarId!,
+      calendar: calendar,
+      periods: periods,
+    );
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _preview = result.preview;
+      _errors = result.errors.isEmpty ? null : result.errors;
+    });
   }
 
   Future<void> _commit() async {
     setState(() => _busy = true);
-    final api = ref.read(servicesProvider).importApi;
+    final services = ref.read(servicesProvider);
+    final snap = ref.read(snapshotProvider).value;
+    final periods = snap == null
+        ? <PeriodTemplate>[]
+        : livePeriods(snap, calendarId: _calendarId).map((e) => e.value).toList();
     try {
-      final result = await api.commitCourses(previewId: _preview!.previewId);
+      final written = await LocalCsvImporter.commit(
+        repo: services.repo,
+        preview: _preview!,
+        calendarId: _calendarId!,
+        periods: periods,
+        autoCreatePeriods: _autoCreatePeriods,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('成功导入 ${result.courses} 门课程')),
+        SnackBar(content: Text('成功导入 $written 门课程')),
       );
       Navigator.of(context).pop();
-    } on ApiException catch (e) {
+    } on Object catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: ${e.message}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e')));
       setState(() => _busy = false);
     }
   }

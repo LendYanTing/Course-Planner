@@ -5,6 +5,7 @@ import '../../core/config/app_config.dart';
 import '../../data/auth/server_store.dart';
 import '../../state/app_services.dart';
 import '../../state/session.dart';
+import '../adaptive/adaptive.dart';
 
 /// Server selection + migration direction (multi-server support).
 ///
@@ -75,37 +76,35 @@ class _ServerPageState extends ConsumerState<ServerPage> {
 
   /// Asks which side wins. Returns true for cloud→local, false for local→cloud.
   Future<bool?> _askDirection(String url, {required bool isSameAsCurrent}) {
-    return showDialog<bool>(
+    return showAppDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('切换服务器'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('目标服务器：$url', style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            if (isSameAsCurrent)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text('与当前服务器相同，将重新执行一次同步方向选择。',
-                    style: TextStyle(fontSize: 12, color: Colors.orange)),
-              ),
-            const Text('本地数据与云端数据该如何合并？'),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('本地覆盖云端'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('云端覆盖本地'),
-          ),
+      title: '切换服务器',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('目标服务器：$url', style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 8),
+          if (isSameAsCurrent)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('与当前服务器相同，将重新执行一次同步方向选择。',
+                  style: TextStyle(fontSize: 12, color: Colors.orange)),
+            ),
+          const Text('本地数据与云端数据该如何合并？'),
         ],
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
+        TextButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(false),
+          child: const Text('本地覆盖云端'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(true),
+          child: const Text('云端覆盖本地'),
+        ),
+      ],
     );
   }
 
@@ -114,7 +113,7 @@ class _ServerPageState extends ConsumerState<ServerPage> {
     final services = ref.watch(servicesProvider);
     final active = services.http.baseUrl;
     return Scaffold(
-      appBar: AppBar(title: const Text('服务器')),
+      appBar: AppTopBar(title: '服务器'),
       body: ListView(
         children: [
           ListTile(

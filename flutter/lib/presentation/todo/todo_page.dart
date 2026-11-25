@@ -8,6 +8,7 @@ import '../../domain/todo.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../state/todo_controller.dart';
+import '../adaptive/adaptive.dart';
 import '../settings/courses_page.dart' show kPalette;
 import 'todo_blocks_sheet.dart';
 import '../../state/todo_sorting.dart';
@@ -59,18 +60,20 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('待办'),
+      appBar: AppTopBar(
+        title: '待办',
         actions: [
-          IconButton(
-            tooltip: '同步',
-            onPressed: syncState.syncing
-                ? null
-                : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
-            icon: syncState.syncing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.sync),
-          ),
+          // Hidden for a local session (no server to sync with).
+          if (ref.watch(cloudSyncEnabledProvider))
+            IconButton(
+              tooltip: '同步',
+              onPressed: syncState.syncing
+                  ? null
+                  : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
+              icon: syncState.syncing
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync),
+            ),
           PopupMenuButton<Object>(
             tooltip: '排序',
             icon: const Icon(Icons.sort),
@@ -190,7 +193,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
   Future<void> _openBlocks(BuildContext context, Todo todo) async {
     final userTime = ref.read(userTimeProvider);
     if (userTime == null) return;
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -202,7 +205,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     final snap = ref.read(snapshotProvider).value;
     final tags = snap == null ? <Live<Tag>>[] : liveTags(snap);
     final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -687,56 +690,54 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   Future<({String name, String? color})?> _showCreateDialog(String title) async {
     final nameCtrl = TextEditingController();
     String? color;
-    final result = await showDialog<({String name, String? color})>(
+    final result = await showAppDialog<({String name, String? color})>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(title),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: '名称'),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                children: [
-                  for (final hex in kPalette)
-                    InkWell(
-                      onTap: () => setDialogState(() => color = hex),
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppTheme.parseHex(hex),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: color == hex ? Colors.black : Colors.transparent,
-                            width: 2,
-                          ),
+      title: title,
+      content: StatefulBuilder(
+        builder: (ctx, setDialogState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '名称'),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final hex in kPalette)
+                  InkWell(
+                    onTap: () => setDialogState(() => color = hex),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: AppTheme.parseHex(hex),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: color == hex ? Colors.black : Colors.transparent,
+                          width: 2,
                         ),
                       ),
                     ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            FilledButton(
-              onPressed: () {
-                final name = nameCtrl.text.trim();
-                if (name.isEmpty) return;
-                Navigator.pop(ctx, (name: name, color: color));
-              },
-              child: const Text('保存'),
+                  ),
+              ],
             ),
           ],
         ),
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
+        FilledButton(
+          onPressed: () {
+            final name = nameCtrl.text.trim();
+            if (name.isEmpty) return;
+            Navigator.of(context, rootNavigator: true).pop((name: name, color: color));
+          },
+          child: const Text('保存'),
+        ),
+      ],
     );
     nameCtrl.dispose();
     return result;

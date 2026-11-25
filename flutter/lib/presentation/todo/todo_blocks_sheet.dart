@@ -7,6 +7,7 @@ import '../../domain/entities.dart';
 import '../../domain/todo.dart';
 import '../../state/app_services.dart';
 import '../../state/sync_controller.dart';
+import '../adaptive/adaptive.dart';
 
 /// Time-block manager for a project todo (docs/domain-model.md §8-9).
 ///
@@ -26,7 +27,7 @@ class TodoBlocksSheet extends ConsumerStatefulWidget {
 
 class _TodoBlocksSheetState extends ConsumerState<TodoBlocksSheet> {
   Future<void> _add() async {
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _BlockEditor(todo: widget.todo, userTime: widget.userTime),
@@ -34,7 +35,7 @@ class _TodoBlocksSheetState extends ConsumerState<TodoBlocksSheet> {
   }
 
   Future<void> _edit(TodoBlock block) async {
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => _BlockEditor(todo: widget.todo, userTime: widget.userTime, existing: block),
@@ -43,7 +44,6 @@ class _TodoBlocksSheetState extends ConsumerState<TodoBlocksSheet> {
 
   Future<void> _delete(TodoBlock block) async {
     await ref.read(servicesProvider).repo.localDelete(entityType: EntityTypes.todoBlock, entityId: block.id);
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 
   @override
@@ -292,7 +292,6 @@ class _BlockEditorState extends ConsumerState<_BlockEditor> {
         },
       );
     }
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
     if (mounted) Navigator.of(context).pop();
   }
 }

@@ -9,6 +9,7 @@ import '../../domain/course.dart';
 import '../../domain/entities.dart';
 import '../../state/app_services.dart';
 import '../../state/sync_controller.dart';
+import '../adaptive/adaptive.dart';
 
 const kPalette = <String>[
   '#4A6FA5', '#26A69A', '#7E57C2', '#EF6C00', '#E53935',
@@ -33,15 +34,15 @@ class CoursesPage extends ConsumerWidget {
 
     if (calendars.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('课程管理')),
+        appBar: AppTopBar(title: '课程管理'),
         body: const Center(child: Text('请先在「学期管理」中创建学期')),
       );
     }
     if (calendars.length == 1) {
       return Scaffold(
-        appBar: AppBar(title: const Text('课程管理')),
+        appBar: AppTopBar(title: '课程管理'),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => showModalBottomSheet<void>(
+          onPressed: () => showAppBottomSheet<void>(
             context: context,
             isScrollControlled: true,
             builder: (_) => CourseEditor(
@@ -63,8 +64,8 @@ class CoursesPage extends ConsumerWidget {
     return DefaultTabController(
       length: calendars.length,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('课程管理'),
+        appBar: AppTopBar(
+          title: '课程管理',
           bottom: TabBar(isScrollable: true, tabs: [for (final c in calendars) Tab(text: c.value.name)]),
         ),
         body: TabBarView(
@@ -131,7 +132,9 @@ class _CourseCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.read(servicesProvider).repo;
-    return Card(
+    return AppCard(
+      padding: EdgeInsets.zero,
+      margin: const EdgeInsets.all(4),
       child: ExpansionTile(
         leading: Container(
           width: 12,
@@ -153,7 +156,6 @@ class _CourseCard extends ConsumerWidget {
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () {
                   repo.localDelete(entityType: EntityTypes.courseMeeting, entityId: m.id);
-                  ref.read(syncCoordinatorProvider.notifier).syncNow();
                 },
               ),
             ),
@@ -164,7 +166,7 @@ class _CourseCard extends ConsumerWidget {
                 TextButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('添加课次'),
-                  onPressed: () => showModalBottomSheet<void>(
+                  onPressed: () => showAppBottomSheet<void>(
                     context: context,
                     builder: (_) => MeetingEditor(courseId: course.id, calendar: calendar),
                   ),
@@ -172,7 +174,7 @@ class _CourseCard extends ConsumerWidget {
                 TextButton.icon(
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('编辑课程'),
-                  onPressed: () => showModalBottomSheet<void>(
+                  onPressed: () => showAppBottomSheet<void>(
                     context: context,
                     isScrollControlled: true,
                     builder: (_) => CourseEditor(calendarId: course.calendarId, existing: course),
@@ -182,7 +184,6 @@ class _CourseCard extends ConsumerWidget {
                   icon: const Icon(Icons.delete),
                   onPressed: () {
                     repo.localDelete(entityType: EntityTypes.course, entityId: course.id);
-                    ref.read(syncCoordinatorProvider.notifier).syncNow();
                   },
                 ),
               ],
@@ -315,7 +316,6 @@ class _CourseEditorState extends ConsumerState<CourseEditor> {
         changes: Map.of(fields)..remove('calendarId'),
       );
     }
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
     if (mounted) Navigator.of(context).pop();
   }
 }
@@ -415,7 +415,6 @@ class _MeetingEditorState extends ConsumerState<MeetingEditor> {
         'weekRule': rule.toJson(),
       },
     );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
     if (mounted) Navigator.of(context).pop();
   }
 }

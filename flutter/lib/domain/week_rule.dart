@@ -113,6 +113,61 @@ class WeekRule {
     return false;
   }
 
+  /// Weeks strictly before [week] as a new rule (null when nothing remains).
+  ///
+  /// Mirrors the server `weekrule.Rule.RestrictBefore` used by the
+  /// THIS_AND_FUTURE series split. Parity segments keep their parity, so
+  /// `7-11单` clipped at 10 stays `7-9单`; a clip that contains no week of the
+  /// segment's parity (e.g. `2-8单` clipped at 3) is dropped entirely.
+  /// An empty rule means "every week", so it is clipped against 1 and 60.
+  WeekRule? restrictBefore(int week) {
+    if (segments.isEmpty) {
+      if (week <= 1) return null;
+      return WeekRule([WeekSegment(start: 1, end: week - 1)]);
+    }
+    final out = <WeekSegment>[];
+    for (final seg in segments) {
+      final hi = seg.end < week - 1 ? seg.end : week - 1;
+      if (hi < seg.start) continue;
+      if (!_hasParityInRange(seg.start, hi, seg.parity)) continue;
+      out.add(WeekSegment(start: seg.start, end: hi, parity: seg.parity));
+    }
+    return out.isEmpty ? null : WeekRule(out);
+  }
+
+  /// Weeks from [week] onwards as a new rule (null when nothing remains).
+  ///
+  /// Complement of [restrictBefore]: mirrors the server
+  /// `weekrule.Rule.RestrictFrom` used by the THIS_AND_FUTURE series split.
+  /// The 60 upper bound stands for "no limit" (see [isEveryWeek]).
+  WeekRule? restrictFrom(int week) {
+    final lower = week < 1 ? 1 : week;
+    if (segments.isEmpty) {
+      return WeekRule([WeekSegment(start: lower, end: 60)]);
+    }
+    final out = <WeekSegment>[];
+    for (final seg in segments) {
+      final lo = seg.start > lower ? seg.start : lower;
+      if (lo > seg.end) continue;
+      if (!_hasParityInRange(lo, seg.end, seg.parity)) continue;
+      out.add(WeekSegment(start: lo, end: seg.end, parity: seg.parity));
+    }
+    return out.isEmpty ? null : WeekRule(out);
+  }
+
+  /// Whether [lo]..[hi] (inclusive) contains at least one week of [parity].
+  static bool _hasParityInRange(int lo, int hi, WeekParity parity) {
+    if (lo > hi) return false;
+    switch (parity) {
+      case WeekParity.all:
+        return true;
+      case WeekParity.odd:
+        return lo.isOdd || hi.isOdd;
+      case WeekParity.even:
+        return lo.isEven || hi.isEven;
+    }
+  }
+
   /// Human-readable form for previews, e.g. `1-5、7-11单`.
   String describe() {
     if (segments.isEmpty) return 'all';

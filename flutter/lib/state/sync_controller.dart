@@ -9,6 +9,7 @@ import '../data/local/sync_store.dart';
 import '../sync/clock.dart';
 import '../sync/sync_engine.dart';
 import 'app_services.dart';
+import 'prefs.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -126,13 +127,22 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
   /// newly queued operations (kept out of `build()`: a Notifier must not
   /// subscribe to streams synchronously).
   void schedulePush() {
-    if (ref.read(sessionControllerProvider).phase != AuthPhase.signedIn) return;
+    if (!_cloudSyncActive) return;
     _schedule(seconds: 2);
+  }
+
+  /// Automatic sync is only allowed for a cloud account with sync switched on;
+  /// a local session has no server and an opted-out account must stay quiet.
+  bool get _cloudSyncActive {
+    final session = ref.read(sessionControllerProvider);
+    if (session.phase != AuthPhase.signedIn) return false;
+    if (session.isLocalMode) return false;
+    return ref.read(syncEnabledProvider);
   }
 
   void startPeriodicSync() {
     _periodic ??= Timer.periodic(const Duration(seconds: 60), (_) {
-      if (ref.read(sessionControllerProvider).phase != AuthPhase.signedIn) return;
+      if (!_cloudSyncActive) return;
       unawaited(syncNow());
     });
   }
@@ -140,7 +150,7 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
   void _schedule({int seconds = 2}) {
     _debounce?.cancel();
     _debounce = Timer(Duration(seconds: seconds), () {
-      if (ref.read(sessionControllerProvider).phase == AuthPhase.signedIn) {
+      if (_cloudSyncActive) {
         unawaited(syncNow());
       }
     });
@@ -185,7 +195,13 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
   }
 
   /// Runs one engine cycle if none is currently running.
+  ///
+  /// Returns null without any network traffic for a local (no-account) session
+  /// or while automatic sync is switched off — this applies to the explicit
+  /// "立即同步" button too, since a local session has no server to talk to.
   Future<SyncCycleResult?> syncNow() async {
+    final session = ref.read(sessionControllerProvider);
+    if (session.isLocalMode || !ref.read(syncEnabledProvider)) return null;
     if (_running) return null;
     _running = true;
     state = state.copyWith(syncing: true, lastError: null);
@@ -305,3 +321,12 @@ class SyncCoordinatorController extends Notifier<SyncUiState> {
 
 final syncCoordinatorProvider =
     NotifierProvider<SyncCoordinatorController, SyncUiState>(SyncCoordinatorController.new);
+
+/// Whether cloud sync is available for the current session: a signed-in cloud
+/// account with the optional sync switch on. Pages hide their sync actions
+/// otherwise (local mode has no server).
+final cloudSyncEnabledProvider = Provider<bool>((ref) {
+  final session = ref.watch(sessionControllerProvider);
+  if (session.phase != AuthPhase.signedIn || session.isLocalMode) return false;
+  return ref.watch(syncEnabledProvider);
+});

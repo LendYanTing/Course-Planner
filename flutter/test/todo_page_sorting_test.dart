@@ -4,10 +4,13 @@ import 'package:course_planner/data/local/sync_store.dart';
 import 'package:course_planner/domain/entities.dart';
 import 'package:course_planner/presentation/todo/todo_page.dart';
 import 'package:course_planner/state/providers.dart';
+import 'package:course_planner/state/session.dart';
 import 'package:course_planner/state/sync_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'helpers/week_page_harness.dart' show FakeSession;
 
 /// Ticket #3: the AppBar sorter reorders the open list in place — default
 /// deadline (near→far) across the whole page, and switching key reorders the
@@ -72,6 +75,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          // The page reads the session to decide whether to show cloud-sync UI.
+          sessionControllerProvider.overrideWith(FakeSession.new),
           userTimeProvider.overrideWithValue(
               withUserTime ? UserTime.tryCreate('Asia/Shanghai')! : null),
           snapshotProvider.overrideWith((ref) => Stream.value(snap ?? snapshot)),

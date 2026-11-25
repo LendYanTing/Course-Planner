@@ -6,6 +6,7 @@ import '../data/local/view_models.dart';
 import '../domain/calendar.dart';
 import '../domain/calendar_event.dart';
 import '../domain/entities.dart';
+import '../domain/local_series_service.dart';
 import '../domain/override.dart';
 import '../domain/todo.dart';
 import 'event_projection.dart';
@@ -45,34 +46,8 @@ class CalendarMutationState {
   final bool busy;
 }
 
-/// `seriesApply` payload for moving one occurrence of a course or recurring
-/// schedule, with the exact wire shape the server expects.
-Map<String, dynamic> seriesMoveOperation({
-  required DateTime startUtc,
-  required DateTime endUtc,
-}) =>
-    {
-      'type': SeriesOperations.move,
-      'startAt': isoInstant(startUtc),
-      'endAt': isoInstant(endUtc),
-    };
-
-/// RFC3339 in UTC with second precision — the shape the server accepted from
-/// the drag path before (and accepts alongside millisecond variants).
-String isoInstant(DateTime d) {
-  final u = d.toUtc();
-  String two(int v) => v.toString().padLeft(2, '0');
-  return '${u.year.toString().padLeft(4, '0')}-${two(u.month)}-${two(u.day)}'
-      'T${two(u.hour)}:${two(u.minute)}:${two(u.second)}Z';
-}
-
-/// Local `YYYY-MM-DD` of [instant] in the user's fixed timezone: how a series
-/// occurrence is addressed on the wire.
-String occurrenceLocalDate(UserTime userTime, DateTime instant) =>
-    userTime.localDateString(userTime.localFromUtc(instant));
-
-/// Owns every calendar write: block moves (local-first) and course / recurring
-/// occurrence edits (server series apply), plus quick creation and deletion.
+/// Owns every calendar write: block moves (local-first), course / recurring
+/// occurrence edits (local series service) and quick creation / deletion.
 ///
 /// Methods return the [ApiException] to display, or null on success, so each
 /// call site keeps its own wording.
@@ -83,8 +58,8 @@ class CalendarController extends Notifier<CalendarMutationState> {
   /// Moves or resizes one event.
   ///
   /// * todo block → local-first update, no network needed;
-  /// * course / recurring schedule occurrence → server series apply, so it
-  ///   requires connectivity.
+  /// * course / recurring schedule occurrence → a local `occurrence_override`
+  ///   (`LocalSeriesService.moveOccurrence`), also fully offline.
   Future<ApiException?> moveEvent({
     required UiEvent event,
     required DateTime startUtc,
@@ -97,18 +72,35 @@ class CalendarController extends Notifier<CalendarMutationState> {
         entityId: event.sourceId,
         changes: {'startAt': startUtc, 'endAt': endUtc},
       );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
       return null;
     }
     final userTime = ref.read(userTimeProvider);
-    if (userTime == null) return null;
-    return _seriesApply(
-      event: event,
-      // The occurrence is identified by its (new) local start date — the same
-      // anchor both the drag path and the event sheet used before.
-      occurrenceDateLocal: occurrenceLocalDate(userTime, startUtc),
-      operation: seriesMoveOperation(startUtc: startUtc, endUtc: endUtc),
-    );
+    final snapshot = ref.read(snapshotProvider).value;
+    if (userTime == null || snapshot == null) return null;
+    state = const CalendarMutationState(busy: true);
+    try {
+      await LocalSeriesService(
+        repo: services.repo,
+        userTime: userTime,
+      ).moveOccurrence(
+        snapshot: snapshot,
+        seriesType: _seriesTypeFor(event),
+        seriesId: event.sourceId,
+        // The displayed start is the anchor: for an occurrence already moved
+        // this is the existing override's replacementStartAt, so a second drag
+        // updates that override instead of adding another one.
+        originalStartUtc: event.startUtc,
+        newStartUtc: startUtc,
+        newEndUtc: endUtc,
+      );
+      // Kept for now; the sync trigger is converged separately (Step 4).
+      return null;
+    } on ApiException catch (e) {
+      return e;
+    } finally {
+      // Always clear: a non-ApiException escaping must not leave the flag on.
+      state = const CalendarMutationState();
+    }
   }
 
   /// Deletes one occurrence (deadlines are not deletable).
@@ -120,17 +112,30 @@ class CalendarController extends Notifier<CalendarMutationState> {
         entityType: EntityTypes.todoBlock,
         entityId: event.sourceId,
       );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
       return null;
     }
     final userTime = ref.read(userTimeProvider);
-    if (userTime == null) return null;
-    return _seriesApply(
-      event: event,
-      // Deleting refers to the occurrence the user tapped, not a new start.
-      occurrenceDateLocal: occurrenceLocalDate(userTime, event.startUtc),
-      operation: {'type': SeriesOperations.cancel},
-    );
+    final snapshot = ref.read(snapshotProvider).value;
+    if (userTime == null || snapshot == null) return null;
+    state = const CalendarMutationState(busy: true);
+    try {
+      await LocalSeriesService(
+        repo: services.repo,
+        userTime: userTime,
+      ).cancelOccurrence(
+        snapshot: snapshot,
+        seriesType: _seriesTypeFor(event),
+        seriesId: event.sourceId,
+        // Deleting refers to the occurrence the user tapped.
+        originalStartUtc: event.startUtc,
+      );
+      // Kept for now; the sync trigger is converged separately (Step 4).
+      return null;
+    } on ApiException catch (e) {
+      return e;
+    } finally {
+      state = const CalendarMutationState();
+    }
   }
 
   /// Creates a todo (when [todoId] is null) plus its time block at [startMinute]
@@ -174,7 +179,6 @@ class CalendarController extends Notifier<CalendarMutationState> {
           'status': BlockStatus.scheduled.wire,
         },
       );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
       return null;
     } on ApiException catch (e) {
       return e;
@@ -192,37 +196,15 @@ class CalendarController extends Notifier<CalendarMutationState> {
       entityId: blockId,
       changes: {'blockNote': note.isEmpty ? null : note},
     );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 
-  /// Shared course / recurring-schedule path: one occurrence through the
-  /// server's series endpoint, then a push.
-  Future<ApiException?> _seriesApply({
-    required UiEvent event,
-    required String occurrenceDateLocal,
-    required Map<String, dynamic> operation,
-  }) async {
-    state = const CalendarMutationState(busy: true);
-    final services = ref.read(servicesProvider);
-    try {
-      await services.dataApi.seriesApply(
-        seriesType: event.sourceType == EntityTypes.courseMeeting
-            ? SeriesTypes.courseMeeting
-            : SeriesTypes.recurringSchedule,
-        seriesId: event.sourceId,
-        scope: SeriesScopes.thisOne,
-        occurrenceDateLocal: occurrenceDateLocal,
-        operation: operation,
-      );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
-      return null;
-    } on ApiException catch (e) {
-      return e;
-    } finally {
-      // Always clear: a non-ApiException escaping must not leave the flag on.
-      state = const CalendarMutationState();
-    }
-  }
+  /// Shared course / recurring-schedule path is now
+  /// [LocalSeriesService] (local overrides + weekly splits), so no server
+  /// endpoint remains here.
+  String _seriesTypeFor(UiEvent event) =>
+      event.sourceType == EntityTypes.courseMeeting
+          ? SeriesTypes.courseMeeting
+          : SeriesTypes.recurringSchedule;
 }
 
 final calendarControllerProvider =

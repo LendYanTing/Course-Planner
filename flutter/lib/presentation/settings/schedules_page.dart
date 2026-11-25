@@ -10,6 +10,7 @@ import '../../domain/schedule.dart';
 import '../../domain/week_rule.dart';
 import '../../state/app_services.dart';
 import '../../state/sync_controller.dart';
+import '../adaptive/adaptive.dart';
 import 'courses_page.dart' show kPalette;
 
 /// Recurring schedule manager (docs/domain-model.md §6).
@@ -22,9 +23,9 @@ class SchedulesPage extends ConsumerWidget {
     final schedules = snap == null ? <Live<RecurringSchedule>>[] : liveSchedules(snap);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('周期安排')),
+      appBar: AppTopBar(title: '周期安排'),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showModalBottomSheet<void>(
+        onPressed: () => showAppBottomSheet<void>(
           context: context,
           isScrollControlled: true,
           builder: (_) => const ScheduleEditor(),
@@ -53,7 +54,6 @@ class SchedulesPage extends ConsumerWidget {
                       onPressed: () {
                         ref.read(servicesProvider).repo
                             .localDelete(entityType: EntityTypes.recurringSchedule, entityId: s.value.id);
-                        ref.read(syncCoordinatorProvider.notifier).syncNow();
                       },
                     ),
                   ),
@@ -315,7 +315,6 @@ class _ScheduleEditorState extends ConsumerState<ScheduleEditor> {
       entityType: EntityTypes.recurringSchedule,
       snapshot: {'title': title, 'color': _color, 'rule': rule, 'notes': null},
     );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
     if (mounted) Navigator.of(context).pop();
   }
 }

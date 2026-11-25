@@ -12,9 +12,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 /// The week view's derived data now lives in `lib/state/calendar_controller.dart`:
-/// the window projection, the semester-week lookup, and the wire payloads the
-/// mutations send (the mutations themselves need the service graph and are
-/// exercised on device).
+/// the window projection and the semester-week lookup. The mutations
+/// themselves are local-first and covered by `test/local_series_service_test.dart`
+/// (they need the DB-backed service graph).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -130,28 +130,6 @@ void main() {
       semesterWeekProvider(tz.TZDateTime(ut.location, 2027, 3, 1)),
     );
     expect(outside, isNull);
-  });
-
-  test('the move payload and occurrence date match the old wire calls', () {
-    // The drag path used to build this exact string (no milliseconds, `Z`).
-    expect(
-      isoInstant(DateTime.utc(2026, 9, 7, 1, 0, 0)),
-      '2026-09-07T01:00:00Z',
-    );
-
-    final operation = seriesMoveOperation(
-      startUtc: DateTime.utc(2026, 9, 7, 1, 0),
-      endUtc: DateTime.utc(2026, 9, 7, 1, 45),
-    );
-    expect(operation['type'], SeriesOperations.move);
-    expect(operation['startAt'], '2026-09-07T01:00:00Z');
-    expect(operation['endAt'], '2026-09-07T01:45:00Z');
-
-    // A series occurrence is addressed by its user-tz local date: 01:00Z is
-    // 09:00 Asia/Shanghai, still 2026-09-07. Around midnight the local date
-    // must follow the user timezone, not UTC.
-    expect(occurrenceLocalDate(ut, DateTime.utc(2026, 9, 7, 1, 0)), '2026-09-07');
-    expect(occurrenceLocalDate(ut, DateTime.utc(2026, 9, 7, 17, 0)), '2026-09-08');
   });
 
   test('a missing user timezone yields no projection and no semester week', () async {

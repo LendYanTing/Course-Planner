@@ -11,6 +11,7 @@ import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../sync/expander.dart';
 import '../../state/event_projection.dart';
+import '../adaptive/adaptive.dart';
 
 /// Fills the blank gutter left of the weekday row: the month(s) the week spans.
 String weekGutterLabel(List<DateTime> days) {
@@ -74,7 +75,7 @@ class _MonthPageState extends ConsumerState<MonthPage> {
     final userTime = ref.watch(userTimeProvider);
     if (userTime == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('月视图')),
+        appBar: AppTopBar(title: '月视图'),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -98,21 +99,23 @@ class _MonthPageState extends ConsumerState<MonthPage> {
     final todayLocal = today == null ? null : userTime.localFromUtc(today);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppTopBar(
         // Tapping the title jumps to any date; swiping left/right steps a month.
-        title: InkWell(
+        titleWidget: InkWell(
           onTap: () => _pickDate(userTime),
           child: Text('${local.year}年${local.month}月'),
         ),
         actions: [
-          IconButton(
-            onPressed: syncState.syncing
-                ? null
-                : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
-            icon: syncState.syncing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.sync),
-          ),
+          // Hidden for a local session (no server to sync with).
+          if (ref.watch(cloudSyncEnabledProvider))
+            IconButton(
+              onPressed: syncState.syncing
+                  ? null
+                  : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
+              icon: syncState.syncing
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync),
+            ),
         ],
       ),
       body: GestureDetector(
@@ -208,7 +211,7 @@ class _MonthPageState extends ConsumerState<MonthPage> {
   }
 
   void _showDay(DateTime day, List<UiEvent> events, UserTime userTime) {
-    showModalBottomSheet<void>(
+    showAppBottomSheet<void>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,

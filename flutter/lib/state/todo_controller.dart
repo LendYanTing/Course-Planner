@@ -99,14 +99,12 @@ class TodoController extends Notifier<TodoQuery> {
       entityId: todo.id,
       changes: {'status': status.wire},
     );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 
   /// Deletes a todo and its queued work (the mirror keeps the tombstone).
   Future<void> delete(Todo todo) async {
     final services = ref.read(servicesProvider);
     await services.repo.localDelete(entityType: EntityTypes.todo, entityId: todo.id);
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 
   /// Inline "new category" from the editor. Returns the new id.
@@ -116,7 +114,6 @@ class TodoController extends Notifier<TodoQuery> {
       entityType: EntityTypes.category,
       snapshot: {'name': name, 'color': color},
     );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
     return id;
   }
 
@@ -127,7 +124,6 @@ class TodoController extends Notifier<TodoQuery> {
       entityType: EntityTypes.tag,
       snapshot: {'name': name, 'color': color},
     );
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
     return id;
   }
 
@@ -170,7 +166,6 @@ class TodoController extends Notifier<TodoQuery> {
         changes: changes,
       );
     }
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 }
 

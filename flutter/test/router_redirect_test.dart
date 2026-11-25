@@ -70,5 +70,51 @@ void main() {
         '/home/week',
       );
     });
+
+    test('a local session may open the login and register pages', () {
+      // A no-account local session keeps working, but the user can go sign in
+      // to a cloud server at any time.
+      for (final location in ['/login', '/register']) {
+        expect(
+          resolveAuthRedirect(
+            phase: AuthPhase.signedIn,
+            isLocalMode: true,
+            location: location,
+          ),
+          isNull,
+          reason: 'local mode must reach $location to add a cloud account',
+        );
+      }
+      expect(
+        resolveAuthRedirect(
+          phase: AuthPhase.signedIn,
+          isLocalMode: true,
+          location: '/home/week',
+        ),
+        isNull,
+      );
+      expect(
+        resolveAuthRedirect(
+          phase: AuthPhase.signedIn,
+          isLocalMode: true,
+          location: '/',
+        ),
+        '/home/week',
+      );
+    });
+
+    test('a local session with the expired flag can still open the auth pages', () {
+      for (final location in ['/login', '/register']) {
+        expect(
+          resolveAuthRedirect(
+            phase: AuthPhase.signedIn,
+            authExpired: true,
+            isLocalMode: true,
+            location: location,
+          ),
+          isNull,
+        );
+      }
+    });
   });
 }

@@ -314,3 +314,114 @@ final bottomBarStyleProvider =
     NotifierProvider<BottomBarStyleController, BottomBarStyle>(
   BottomBarStyleController.new,
 );
+
+/// Visual engine of the whole app.
+enum UiVariant { material3, hyperOS }
+
+/// Which visual engine the app renders with. Local-only: the server has no
+/// notion of styling. Defaults to [UiVariant.material3] so an existing install
+/// keeps its current look until the user switches.
+class UiVariantController extends Notifier<UiVariant> {
+  static const _key = 'ui_variant';
+
+  @override
+  UiVariant build() {
+    _restore();
+    return UiVariant.material3;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      if (v != null) {
+        state = UiVariant.values.firstWhere(
+          (e) => e.name == v,
+          orElse: () => UiVariant.material3,
+        );
+      }
+    } on Object {
+      // Best effort: keep the default engine.
+    }
+  }
+
+  Future<void> set(UiVariant variant) async {
+    state = variant;
+    try {
+      await ref.read(prefStoreProvider).write(_key, variant.name);
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final uiVariantProvider =
+    NotifierProvider<UiVariantController, UiVariant>(UiVariantController.new);
+
+/// Whether the app talks to a server at all. Cloud sync is opt-in: a fresh
+/// install (and every no-account local session) stays fully local until the
+/// user signs in to a server.
+class SyncEnabledController extends Notifier<bool> {
+  static const _key = 'sync_enabled';
+
+  @override
+  bool build() {
+    _restore();
+    return false;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      if (v != null) state = v == 'true';
+    } on Object {
+      // Best effort: stay local-only.
+    }
+  }
+
+  Future<void> set(bool enabled) async {
+    state = enabled;
+    try {
+      await ref.read(prefStoreProvider).write(_key, '$enabled');
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final syncEnabledProvider =
+    NotifierProvider<SyncEnabledController, bool>(SyncEnabledController.new);
+
+/// IANA timezone used while no account is signed in (the server normally owns
+/// this value, but a local session has no server to ask).
+class LocalTimezoneController extends Notifier<String> {
+  static const defaultTimezone = 'Asia/Shanghai';
+
+  static const _key = 'local_timezone';
+
+  @override
+  String build() {
+    _restore();
+    return defaultTimezone;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      if (v != null && v.isNotEmpty) state = v;
+    } on Object {
+      // Best effort: keep the default timezone.
+    }
+  }
+
+  Future<void> set(String timezone) async {
+    state = timezone;
+    try {
+      await ref.read(prefStoreProvider).write(_key, timezone);
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final localTimezoneProvider =
+    NotifierProvider<LocalTimezoneController, String>(LocalTimezoneController.new);

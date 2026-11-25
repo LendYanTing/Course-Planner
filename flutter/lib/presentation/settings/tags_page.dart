@@ -7,6 +7,7 @@ import '../../domain/entities.dart';
 import '../../domain/todo.dart';
 import '../../state/app_services.dart';
 import '../../state/sync_controller.dart';
+import '../adaptive/adaptive.dart';
 import 'courses_page.dart' show kPalette;
 
 /// Tag & category manager (docs/domain-model.md §10-11).
@@ -36,8 +37,8 @@ class _TagsPageState extends ConsumerState<TagsPage>
     final onTagTab = _tabs.index == 0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('标签 / 分类'),
+      appBar: AppTopBar(
+        title: '标签 / 分类',
         bottom: TabBar(
           controller: _tabs,
           tabs: [
@@ -76,61 +77,57 @@ class _TagsPageState extends ConsumerState<TagsPage>
   Future<void> _add(String type) async {
     final name = TextEditingController();
     String? color;
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(type == EntityTypes.tag ? '新建标签' : '新建分类'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: '名称')),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                children: [
-                  for (final hex in kPalette)
-                    InkWell(
-                      onTap: () => setDialogState(() => color = hex),
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppTheme.parseHex(hex),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: color == hex ? Colors.black : Colors.transparent, width: 2),
-                        ),
+      title: type == EntityTypes.tag ? '新建标签' : '新建分类',
+      content: StatefulBuilder(
+        builder: (ctx, setDialogState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: '名称')),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final hex in kPalette)
+                  InkWell(
+                    onTap: () => setDialogState(() => color = hex),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: AppTheme.parseHex(hex),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: color == hex ? Colors.black : Colors.transparent, width: 2),
                       ),
                     ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            FilledButton(
-              onPressed: () {
-                if (name.text.trim().isNotEmpty) {
-                  ref.read(servicesProvider).repo.localCreate(
-                    entityType: type,
-                    snapshot: {'name': name.text.trim(), 'color': color},
-                  );
-                  ref.read(syncCoordinatorProvider.notifier).syncNow();
-                }
-                Navigator.pop(ctx);
-              },
-              child: const Text('保存'),
+                  ),
+              ],
             ),
           ],
         ),
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
+        FilledButton(
+          onPressed: () {
+            if (name.text.trim().isNotEmpty) {
+              ref.read(servicesProvider).repo.localCreate(
+                entityType: type,
+                snapshot: {'name': name.text.trim(), 'color': color},
+              );
+            }
+            Navigator.of(context, rootNavigator: true).pop();
+          },
+          child: const Text('保存'),
+        ),
+      ],
     );
     name.dispose();
   }
 
   Future<void> _delete(String type, String id) async {
     await ref.read(servicesProvider).repo.localDelete(entityType: type, entityId: id);
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
   }
 }
 

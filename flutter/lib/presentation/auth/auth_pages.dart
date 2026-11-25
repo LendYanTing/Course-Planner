@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/auth/server_store.dart';
 import '../../state/app_services.dart';
 import '../../state/session.dart';
+import '../adaptive/adaptive.dart';
 
 /// Common timezones offered at registration (docs/datetime.md §2). The
 /// selected IANA name is fixed forever by the server.
@@ -255,7 +256,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   Widget build(BuildContext context) {
     final busy = ref.watch(sessionControllerProvider.select((s) => s.busy));
     return Scaffold(
-      appBar: AppBar(title: const Text('注册')),
+      appBar: AppTopBar(title: '注册'),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),

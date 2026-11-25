@@ -4,8 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_config.dart';
+import '../core/error/api_exception.dart';
+import '../core/time/user_time.dart';
 import '../domain/user.dart';
 import 'app_services.dart';
+import 'prefs.dart';
 import 'sync_controller.dart';
 
 /// Current session state.
@@ -20,10 +23,21 @@ class SessionState {
     this.authExpired = false,
   });
 
+  /// The reserved user id of the no-account (offline-first) session.
+  static const String localUserId = 'local';
+
   final AuthPhase phase;
   final SessionProfile? profile;
   final String? error;
   final bool busy;
+
+  /// True when the signed-in profile is the local, server-less default user.
+  ///
+  /// A local session never talks to the network: no token refresh, no clock
+  /// fetch, no push/pull. It only ends when the user signs in to a server
+  /// (or parks a server switch).
+  bool get isLocalMode =>
+      phase == AuthPhase.signedIn && profile?.userId == localUserId;
 
   /// The server definitively rejected our credentials (refresh token dead).
   ///
@@ -88,6 +102,8 @@ class SessionController extends Notifier<SessionState> {
   /// user re-authenticates. Only the expired flag is raised — the app root
   /// shows a toast with a 重新登录 action, and the settings page keeps an entry.
   void _onSessionInvalidated(String reason) {
+    // A local session has no credentials to reject, so it never "expires".
+    if (state.isLocalMode) return;
     if (state.phase != AuthPhase.signedIn) return;
     if (state.authExpired) return; // already reported; do not spam the UI
     debugPrint('[session] credentials rejected: $reason — staying signed in, local-only');
@@ -105,16 +121,45 @@ class SessionController extends Notifier<SessionState> {
     }
   }
 
-  /// Startup: show the cached profile immediately (offline-first), then
-  /// refresh the access token in the background. The UI never blocks on a
-  /// network round-trip — that block previously made restarts spin forever
-  /// whenever a refresh/secure-storage read stalled.
+  /// Startup: open the cached session immediately (offline-first). A local
+  /// (no-account) profile stops there. A cloud profile only refreshes the
+  /// access token and pulls in the background when automatic sync is enabled.
+  /// The UI never blocks on a network round-trip — that block previously made
+  /// restarts spin forever whenever a refresh/secure-storage read stalled.
   Future<void> bootstrap() async {
     try {
       debugPrint('[session] bootstrap start');
       final services = ref.read(servicesProvider);
       final meta = await services.store.meta().timeout(const Duration(seconds: 15));
       debugPrint('[session] meta read ok: user=${meta?.userId} tz=${meta?.timezone}');
+
+      // The cached mirror only belongs to the active server when they match;
+      // otherwise resuming would show (and later push) another server's data.
+      final active = services.http.baseUrl;
+      final dataServer = await services.serverStore.dataServer();
+      final dataMatchesServer = dataServer == null || dataServer == active;
+
+      final cached = meta;
+      final hasCachedProfile =
+          cached?.userId != null && cached!.timezone != null && dataMatchesServer;
+
+      // A no-account (local) profile opens straight into the app. Startup must
+      // never touch the network here: no token read, no refresh, no clock/pull.
+      if (hasCachedProfile && cached.userId == SessionState.localUserId) {
+        debugPrint('[session] resume local mode (no account, offline)');
+        state = SessionState(
+          phase: AuthPhase.signedIn,
+          profile: SessionProfile(
+            userId: cached.userId!,
+            username: cached.username ?? '本地用户',
+            timezone: cached.timezone!,
+            email: cached.email,
+          ),
+        );
+        bumpSessionRevision(ref);
+        return;
+      }
+
       final refresh = await services.tokenBox
           .readRefreshToken()
           .timeout(const Duration(seconds: 15))
@@ -129,15 +174,6 @@ class SessionController extends Notifier<SessionState> {
           'true';
       debugPrint('[session] credentials marked expired=$expired');
 
-      // The cached mirror only belongs to the active server when they match;
-      // otherwise resuming would show (and later push) another server's data.
-      final active = services.http.baseUrl;
-      final dataServer = await services.serverStore.dataServer();
-      final dataMatchesServer = dataServer == null || dataServer == active;
-
-      final cached = meta;
-      final hasCachedProfile =
-          cached?.userId != null && cached!.timezone != null && dataMatchesServer;
       if (hasCachedProfile) {
         debugPrint('[session] resume from cached profile (offline-first)');
         state = SessionState(
@@ -157,6 +193,12 @@ class SessionController extends Notifier<SessionState> {
           // mirror is complete locally. Re-login restarts sync.
           return;
         }
+        // Cloud sync is opt-in: a restart of a cloud account must stay quiet
+        // unless the user left automatic sync on.
+        if (!ref.read(syncEnabledProvider)) {
+          debugPrint('[session] cloud sync disabled → skip refresh + initial pull');
+          return;
+        }
         // Fire-and-forget token refresh; do not hold the homepage hostage.
         if (refresh != null && refresh.isNotEmpty) {
           unawaited(_ensureAccessToken());
@@ -171,7 +213,8 @@ class SessionController extends Notifier<SessionState> {
             '→ require sign-in');
       }
 
-      // No cached profile: we must authenticate over the network.
+      // No cached profile: try the stored refresh token, then fall back to a
+      // no-account local profile instead of the login wall.
       if (refresh != null && refresh.isNotEmpty) {
         try {
           debugPrint('[session] trying online refresh…');
@@ -182,6 +225,14 @@ class SessionController extends Notifier<SessionState> {
         } on Object catch (e) {
           debugPrint('[session] refresh failed: $e');
         }
+      }
+      // Nothing to resume: open the app as the local default user (offline).
+      // The login wall only appears if even that local bootstrap fails.
+      try {
+        await enterLocalMode();
+        return;
+      } on Object catch (e) {
+        debugPrint('[session] enterLocalMode failed: $e');
       }
       debugPrint('[session] no session → signedOut');
       state = const SessionState(phase: AuthPhase.signedOut);
@@ -208,6 +259,48 @@ class SessionController extends Notifier<SessionState> {
     } on Object catch (e) {
       debugPrint('[session] background refresh failed: $e');
     }
+  }
+
+  /// Enters the no-account (local) session: a default profile is persisted and
+  /// the app opens on the local mirror. Purely local — no network, and the
+  /// existing mirror / pending queue are kept as they are.
+  Future<void> enterLocalMode() async {
+    final services = ref.read(servicesProvider);
+    final profile = SessionProfile(
+      userId: SessionState.localUserId,
+      username: '本地用户',
+      timezone: ref.read(localTimezoneProvider),
+    );
+    await services.persistUser(profile);
+    state = SessionState(phase: AuthPhase.signedIn, profile: profile);
+    bumpSessionRevision(ref);
+  }
+
+  /// Changes the timezone of the local session (设置 → 时区). Only meaningful
+  /// without an account: a cloud profile takes its timezone from the server.
+  ///
+  /// Throws [ApiException] with [ApiErrorCodes.invalidTimezone] for an unknown
+  /// IANA name; does nothing when the session is not local.
+  Future<void> setLocalTimezone(String timezone) async {
+    final current = state.profile;
+    if (!state.isLocalMode || current == null) return;
+    final valid = UserTime.tryCreate(timezone);
+    if (valid == null) {
+      throw ApiException(
+        code: ApiErrorCodes.invalidTimezone,
+        message: '无效的时区: $timezone',
+      );
+    }
+    await ref.read(localTimezoneProvider.notifier).set(valid.ianaName);
+    final profile = SessionProfile(
+      userId: current.userId,
+      username: current.username,
+      timezone: valid.ianaName,
+      email: current.email,
+    );
+    await ref.read(servicesProvider).persistUser(profile);
+    state = SessionState(phase: AuthPhase.signedIn, profile: profile);
+    bumpSessionRevision(ref);
   }
 
   Future<String?> login({
@@ -305,6 +398,8 @@ class SessionController extends Notifier<SessionState> {
     services.tokenBox.setAccessToken(data.accessToken);
     services.http.setAccessToken(data.accessToken);
     await services.serverStore.remember(services.http.baseUrl, username: user.username);
+    // A real cloud account just signed in: automatic sync starts enabled.
+    await ref.read(syncEnabledProvider.notifier).set(true);
 
     final pending = _pendingSwitch;
     _pendingSwitch = null;
@@ -318,17 +413,26 @@ class SessionController extends Notifier<SessionState> {
       return;
     }
 
-    // Signing in on a server whose data we do not mirror yet: never push the
-    // previous server's working copy upstream. Pull the cloud copy instead.
-    final dataServer = await services.serverStore.dataServer();
-    final serverChanged =
-        dataServer != null && dataServer != services.http.baseUrl;
-    if (serverChanged || (meta?.userId != null && meta!.userId != user.id)) {
-      if (serverChanged) {
-        debugPrint('[session] first sign-in on ${services.http.baseUrl} → adopt cloud data');
+    // Local-first: when the previous session was the offline profile, the
+    // mirror is the only copy of the user's data. Upload it instead of wiping
+    // it (the old account-switch path treated it as "another user's data").
+    final wasLocal = meta?.userId == SessionState.localUserId;
+    if (wasLocal) {
+      debugPrint('[session] first cloud sign-in from local mode → upload local data');
+      await services.syncEngine.uploadAllLocal();
+    } else {
+      // Signing in on a server whose data we do not mirror yet: never push the
+      // previous server's working copy upstream. Pull the cloud copy instead.
+      final dataServer = await services.serverStore.dataServer();
+      final serverChanged =
+          dataServer != null && dataServer != services.http.baseUrl;
+      if (serverChanged || (meta?.userId != null && meta!.userId != user.id)) {
+        if (serverChanged) {
+          debugPrint('[session] first sign-in on ${services.http.baseUrl} → adopt cloud data');
+        }
+        await services.syncEngine.resetLocalData();
+        await services.syncEngine.pull(after: 0);
       }
-      await services.syncEngine.resetLocalData();
-      await services.syncEngine.pull(after: 0);
     }
     final profile = SessionProfile(
       userId: user.id,
@@ -381,6 +485,10 @@ class SessionController extends Notifier<SessionState> {
     unawaited(ref.read(syncCoordinatorProvider.notifier).syncClockAndPull());
   }
 
+  /// Signs out of the cloud account but keeps the app usable: the local
+  /// mirror and pending operations are the user's only copy, so they are never
+  /// wiped. The session returns to the no-account local mode instead of the
+  /// login wall.
   Future<void> logout() async {
     final services = ref.read(servicesProvider);
     final refresh = await services.tokenBox.readRefreshToken();
@@ -391,10 +499,16 @@ class SessionController extends Notifier<SessionState> {
     }
     await services.tokenBox.clearAll();
     services.http.setAccessToken(null);
-    await services.syncEngine.resetLocalData();
+    // Leaving the account stops every automatic network call.
+    await ref.read(syncEnabledProvider.notifier).set(false);
     await _clearExpired();
-    state = const SessionState(phase: AuthPhase.signedOut);
-    bumpSessionRevision(ref);
+    try {
+      await enterLocalMode();
+    } on Object catch (e) {
+      debugPrint('[session] enterLocalMode after logout failed: $e');
+      state = const SessionState(phase: AuthPhase.signedOut);
+      bumpSessionRevision(ref);
+    }
   }
 }
 

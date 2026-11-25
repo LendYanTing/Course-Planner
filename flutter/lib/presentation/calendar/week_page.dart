@@ -15,6 +15,7 @@ import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../state/event_projection.dart';
+import '../adaptive/adaptive.dart';
 import 'grid_view.dart';
 import 'month_page.dart' show weekGutterLabel;
 
@@ -119,7 +120,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     final userTime = ref.watch(userTimeProvider);
     if (userTime == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('周视图')),
+        appBar: AppTopBar(title: '周视图'),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -156,10 +157,10 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     );
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: AppTopBar(
         // Tapping the title jumps to any date (also reachable by swiping the
         // body left/right to step a week).
-        title: InkWell(
+        titleWidget: InkWell(
           onTap: () => _pickDate(userTime),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,13 +189,16 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                   : Icons.view_day_outlined,
             ),
           ),
-          IconButton(
-            tooltip: '同步',
-            onPressed: syncState.syncing ? null : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
-            icon: syncState.syncing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.sync),
-          ),
+          // The sync action only exists for a cloud account with sync on; a
+          // local session has no server to talk to.
+          if (ref.watch(cloudSyncEnabledProvider))
+            IconButton(
+              tooltip: '同步',
+              onPressed: syncState.syncing ? null : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
+              icon: syncState.syncing
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync),
+            ),
         ],
       ),
       // The period navigation (‹ 今天 › + the course-drag switch) is pinned
@@ -215,12 +219,11 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text('课程可长按拖动', style: TextStyle(fontSize: 12)),
-                      Switch(
+                      AppSwitch(
                         value: ref.watch(courseEditableInCourseViewProvider),
                         onChanged: (v) => ref
                             .read(courseEditableInCourseViewProvider.notifier)
                             .set(v),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ],
                   )
@@ -449,7 +452,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
 
   Future<void> _onEmptySlotTap(DateTime day, int minute) async {
     final snapped = _snap(minute);
-    final result = await showModalBottomSheet<Map<String, dynamic>>(
+    final result = await showAppBottomSheet<Map<String, dynamic>>(
       context: context,
       builder: (_) => _QuickCreateSheet(day: day, startMinute: snapped),
     );
@@ -825,7 +828,7 @@ class _PositionedEventState extends State<_PositionedEvent> {
   Future<void> _openEditor() async {
     final e = widget.event;
     if (e.type == EventType.deadline) return;
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
       useSafeArea: true,
       builder: (ctx) => _EventSheet(event: e, userTime: widget.userTime),

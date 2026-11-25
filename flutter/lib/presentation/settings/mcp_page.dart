@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/error/api_exception.dart';
 import '../../domain/mcp_token.dart';
 import '../../state/app_services.dart';
+import '../adaptive/adaptive.dart';
 import 'mcp_config.dart';
 
 /// The MCP secret minted during this session. The server returns the plaintext
@@ -95,7 +96,7 @@ class _McpPageState extends ConsumerState<McpPage> {
     final token = secret?.token;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('连接到 MCP')),
+      appBar: AppTopBar(title: '连接到 MCP'),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
@@ -118,14 +119,17 @@ class _McpPageState extends ConsumerState<McpPage> {
               decoration: const InputDecoration(labelText: '令牌名称'),
             ),
           ),
-          SwitchListTile(
-            value: _allowWrite,
-            onChanged: (v) => setState(() => _allowWrite = v),
+          ListTile(
+            dense: true,
+            onTap: () => setState(() => _allowWrite = !_allowWrite),
             title: const Text('允许写入'),
             subtitle: Text(_allowWrite
                 ? '可调用写工具（仍需 preview → apply 确认）'
                 : '只读：任何写工具与 apply_changes 都会被拒绝'),
-            dense: true,
+            trailing: AppSwitch(
+              value: _allowWrite,
+              onChanged: (v) => setState(() => _allowWrite = v),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -147,7 +151,8 @@ class _McpPageState extends ConsumerState<McpPage> {
           ),
 
           if (secret != null) ...[
-            Card(
+            AppCard(
+              padding: EdgeInsets.zero,
               margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -357,7 +362,8 @@ class _CopyBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return AppCard(
+      padding: EdgeInsets.zero,
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 4, 12),

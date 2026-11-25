@@ -9,6 +9,7 @@ import '../../core/config/app_info.dart';
 import '../../core/error/api_exception.dart';
 import '../../data/api/github_api.dart';
 import '../../state/app_services.dart';
+import '../adaptive/adaptive.dart';
 
 /// App version, update check and links to the project.
 ///
@@ -81,7 +82,7 @@ class _AboutPageState extends ConsumerState<AboutPage> {
           );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('关于')),
+      appBar: AppTopBar(title: '关于'),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
@@ -127,7 +128,8 @@ class _AboutPageState extends ConsumerState<AboutPage> {
             ),
 
           if (release != null && hasUpdate) ...[
-            Card(
+            AppCard(
+              padding: EdgeInsets.zero,
               margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Padding(
                 padding: const EdgeInsets.all(12),

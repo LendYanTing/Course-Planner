@@ -16,8 +16,10 @@ import '../presentation/settings/server_page.dart';
 import '../presentation/settings/settings_page.dart';
 import '../presentation/settings/tags_page.dart';
 import '../presentation/todo/todo_page.dart';
+import '../state/prefs.dart';
 import '../state/session.dart';
 import '../state/sync_controller.dart';
+import 'adaptive_page.dart';
 import 'theme.dart';
 
 /// Root [ScaffoldMessenger] key: the session-expired toast is raised from the
@@ -37,6 +39,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       return resolveAuthRedirect(
         phase: session.phase,
         authExpired: session.authExpired,
+        isLocalMode: session.isLocalMode,
         location: state.matchedLocation,
       );
     },
@@ -85,43 +88,83 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/settings/conflicts',
-        pageBuilder: (context, state) => const MaterialPage(child: ConflictsPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const ConflictsPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/semesters',
-        pageBuilder: (context, state) => const MaterialPage(child: SemestersPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const SemestersPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/courses',
-        pageBuilder: (context, state) => const MaterialPage(child: CoursesPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const CoursesPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/schedules',
-        pageBuilder: (context, state) => const MaterialPage(child: SchedulesPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const SchedulesPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/tags',
-        pageBuilder: (context, state) => const MaterialPage(child: TagsPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const TagsPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/import',
-        pageBuilder: (context, state) => const MaterialPage(child: ImportPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const ImportPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/server',
-        pageBuilder: (context, state) => const MaterialPage(child: ServerPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const ServerPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/about',
-        pageBuilder: (context, state) => const MaterialPage(child: AboutPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const AboutPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/mcp',
-        pageBuilder: (context, state) => const MaterialPage(child: McpPage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const McpPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/restore',
-        pageBuilder: (context, state) => const MaterialPage(child: RestorePage()),
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const RestorePage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
     ],
   );
@@ -134,11 +177,16 @@ final routerProvider = Provider<GoRouter>((ref) {
 /// intentionally kept alive for local viewing: the login page then stays
 /// reachable (so the user can re-authenticate from the toast / settings) while
 /// every other location remains available.
+///
+/// [isLocalMode] marks the no-account local session: it may freely open
+/// `/login` and `/register` to add a cloud account later, and every other page
+/// is available just like for a signed-in user.
 @visibleForTesting
 String? resolveAuthRedirect({
   required AuthPhase phase,
   required String location,
   bool authExpired = false,
+  bool isLocalMode = false,
 }) {
   final onAuthPage = location == '/login' || location == '/register';
   if (phase == AuthPhase.unknown) {
@@ -151,7 +199,7 @@ String? resolveAuthRedirect({
   // profile restart boots at '/' while already signed in — without this the
   // splash spinner would never leave (/home/week on auth pages was already
   // handled, but '/' was not).
-  if (onAuthPage) return authExpired ? null : '/home/week';
+  if (onAuthPage) return (authExpired || isLocalMode) ? null : '/home/week';
   if (location == '/') return '/home/week';
   return null;
 }
@@ -207,7 +255,10 @@ class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    if (ref.read(sessionControllerProvider).phase != AuthPhase.signedIn) return;
+    final session = ref.read(sessionControllerProvider);
+    if (session.phase != AuthPhase.signedIn) return;
+    // No server for a local session, and an opted-out account stays offline.
+    if (session.isLocalMode || !ref.read(syncEnabledProvider)) return;
     final coordinator = ref.read(syncCoordinatorProvider.notifier);
     // ignore: unawaited_futures
     coordinator.syncClock();
@@ -217,10 +268,13 @@ class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp>
 
   @override
   Widget build(BuildContext context) {
-    // Push queued operations shortly after any local mutation lands.
+    // Push queued operations shortly after any local mutation lands — only for
+    // a cloud account that left automatic sync on.
     ref.listen(snapshotProvider, (previous, next) {
       final snapshot = next.value;
       if (snapshot == null || snapshot.pendingOps.isEmpty) return;
+      final session = ref.read(sessionControllerProvider);
+      if (!ref.read(syncEnabledProvider) || session.isLocalMode) return;
       ref.read(syncCoordinatorProvider.notifier).schedulePush();
     });
     // Expired credentials must not kick the user out: warn once, keep the
@@ -242,12 +296,15 @@ class _CoursePlannerAppState extends ConsumerState<CoursePlannerApp>
       );
     });
     final router = ref.watch(routerProvider);
+    final variant = ref.watch(uiVariantProvider);
     return MaterialApp.router(
       title: 'Course Planner',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: scaffoldMessengerKey,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: AppTheme.light(variant),
+      darkTheme: AppTheme.dark(variant),
+      themeAnimationDuration: const Duration(milliseconds: 280),
+      themeAnimationCurve: Curves.easeInOutCubicEmphasized,
       routerConfig: router,
     );
   }

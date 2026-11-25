@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/app_config.dart';
 import '../../data/backup/backup_service.dart';
 import '../../state/app_services.dart';
-import '../../state/sync_controller.dart';
+import '../adaptive/adaptive.dart';
 
 /// Restore a backup file, choosing which categories to take.
 ///
@@ -93,28 +93,26 @@ class _RestorePageState extends ConsumerState<RestorePage> {
     if (doc == null || _sel.isEmpty) return;
     final services = ref.read(servicesProvider);
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认导入'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('导入会覆盖本地同 id 的数据，并把导入内容排队上传到：'),
-            const SizedBox(height: 6),
-            Text(services.http.baseUrl,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            const SizedBox(height: 6),
-            const Text('导入前会自动把当前本地数据导出为一个安全备份。',
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('导入')),
+      title: '确认导入',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('导入会覆盖本地同 id 的数据，并把导入内容排队上传到：'),
+          const SizedBox(height: 6),
+          Text(services.http.baseUrl,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          const SizedBox(height: 6),
+          const Text('导入前会自动把当前本地数据导出为一个安全备份。',
+              style: TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(false), child: const Text('取消')),
+        FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(true), child: const Text('导入')),
+      ],
     );
     if (confirmed != true || !mounted) return;
 
@@ -147,32 +145,29 @@ class _RestorePageState extends ConsumerState<RestorePage> {
       );
 
       if (!mounted) return;
-      await showDialog<void>(
+      await showAppDialog<void>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('导入完成'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('写入 ${result.entities} 个实体，已排队上传 ${result.queuedUploads} 条'),
-              if (result.serversApplied > 0) Text('服务器配置 ${result.serversApplied} 条'),
-              if (result.credentialsApplied > 0) Text('登录凭据 ${result.credentialsApplied} 条'),
-              const SizedBox(height: 8),
-              if (safetyPath != null)
-                SelectableText('导入前的安全备份：\n$safetyPath',
-                    style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              const SizedBox(height: 8),
-              const Text('若导入了服务器地址或登录凭据，请重启应用使连接生效。',
-                  style: TextStyle(fontSize: 12)),
-            ],
-          ),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('好')),
+        title: '导入完成',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('写入 ${result.entities} 个实体，已排队上传 ${result.queuedUploads} 条'),
+            if (result.serversApplied > 0) Text('服务器配置 ${result.serversApplied} 条'),
+            if (result.credentialsApplied > 0) Text('登录凭据 ${result.credentialsApplied} 条'),
+            const SizedBox(height: 8),
+            if (safetyPath != null)
+              SelectableText('导入前的安全备份：\n$safetyPath',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            const SizedBox(height: 8),
+            const Text('若导入了服务器地址或登录凭据，请重启应用使连接生效。',
+                style: TextStyle(fontSize: 12)),
           ],
         ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('好')),
+        ],
       );
-      ref.read(syncCoordinatorProvider.notifier).syncNow();
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -187,7 +182,7 @@ class _RestorePageState extends ConsumerState<RestorePage> {
   Widget build(BuildContext context) {
     final preview = _preview;
     return Scaffold(
-      appBar: AppBar(title: const Text('导入备份')),
+      appBar: AppTopBar(title: '导入备份'),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [

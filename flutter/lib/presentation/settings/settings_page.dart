@@ -19,22 +19,21 @@ import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../state/sync_controller.dart';
+import '../adaptive/adaptive.dart';
 
 /// Drops the current connections and re-syncs. The same thing happens
 /// automatically after a sync timeout, but a manual trigger makes a wedged app
 /// recoverable without killing it.
 Future<void> _resetNetwork(BuildContext context, WidgetRef ref) async {
-  final ok = await showDialog<bool>(
+  final ok = await showAppDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('重置网络连接？'),
-      content: const Text('会中断正在进行的同步，丢弃现有连接后重新读取服务器时间并同步一次。'
-          '不会删除本地数据。'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('重置')),
-      ],
-    ),
+    title: '重置网络连接？',
+    content: const Text('会中断正在进行的同步，丢弃现有连接后重新读取服务器时间并同步一次。'
+        '不会删除本地数据。'),
+    actions: [
+      TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(false), child: const Text('取消')),
+      FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(true), child: const Text('重置')),
+    ],
   );
   if (ok != true || !context.mounted) return;
   final messenger = ScaffoldMessenger.of(context);
@@ -46,9 +45,10 @@ Future<void> _resetNetwork(BuildContext context, WidgetRef ref) async {
 /// than one line, long course names more than two.
 Future<void> _pickTileTextLines(BuildContext context, WidgetRef ref) async {
   var lines = ref.read(tileTextLinesProvider);
-  final picked = await showDialog<({int title, int location})>(
+  final picked = await showAppDialog<({int title, int location})>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
+    title: '课表文字行数',
+    content: StatefulBuilder(
       builder: (ctx, setLocal) {
         Widget slider(String label, int value, ValueChanged<int> onChanged) => Column(
               children: [
@@ -64,29 +64,26 @@ Future<void> _pickTileTextLines(BuildContext context, WidgetRef ref) async {
                 ),
               ],
             );
-        return AlertDialog(
-          title: const Text('课表文字行数'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              slider('课程名称', lines.title,
-                  (v) => lines = (title: v, location: lines.location)),
-              slider('上课地点', lines.location,
-                  (v) => lines = (title: lines.title, location: v)),
-              const Text('地点较长的教室（如「逸夫楼201-阶梯教室」）可以调成 2 行。',
-                  style: TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, lines),
-              child: const Text('保存'),
-            ),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            slider('课程名称', lines.title,
+                (v) => lines = (title: v, location: lines.location)),
+            slider('上课地点', lines.location,
+                (v) => lines = (title: lines.title, location: v)),
+            const Text('地点较长的教室（如「逸夫楼201-阶梯教室」）可以调成 2 行。',
+                style: TextStyle(fontSize: 11, color: Colors.grey)),
           ],
         );
       },
     ),
+    actions: [
+      TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
+      FilledButton(
+        onPressed: () => Navigator.of(context, rootNavigator: true).pop(lines),
+        child: const Text('保存'),
+      ),
+    ],
   );
   if (picked == null) return;
   final notifier = ref.read(tileTextLinesProvider.notifier);
@@ -97,34 +94,32 @@ Future<void> _pickTileTextLines(BuildContext context, WidgetRef ref) async {
 /// Row-height picker for the month grid.
 Future<void> _pickMonthCellHeight(BuildContext context, WidgetRef ref) async {
   var value = ref.read(monthCellHeightProvider);
-  final picked = await showDialog<double>(
+  final picked = await showAppDialog<double>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setLocal) => AlertDialog(
-        title: const Text('月视图格子高度'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('${value.round()} dp', style: const TextStyle(fontSize: 14)),
-            Slider(
-              value: value.clamp(MonthCellHeightController.minDp,
-                  MonthCellHeightController.maxDp),
-              min: MonthCellHeightController.minDp,
-              max: MonthCellHeightController.maxDp,
-              divisions: 13,
-              label: '${value.round()}',
-              onChanged: (v) => setLocal(() => value = v),
-            ),
-            const Text('格子越高，日期格里的条目显示得越完整；竖屏下方留白过多时调大即可。',
-                style: TextStyle(fontSize: 11, color: Colors.grey)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, value), child: const Text('保存')),
+    title: '月视图格子高度',
+    content: StatefulBuilder(
+      builder: (ctx, setLocal) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${value.round()} dp', style: const TextStyle(fontSize: 14)),
+          Slider(
+            value: value.clamp(MonthCellHeightController.minDp,
+                MonthCellHeightController.maxDp),
+            min: MonthCellHeightController.minDp,
+            max: MonthCellHeightController.maxDp,
+            divisions: 13,
+            label: '${value.round()}',
+            onChanged: (v) => setLocal(() => value = v),
+          ),
+          const Text('格子越高，日期格里的条目显示得越完整；竖屏下方留白过多时调大即可。',
+              style: TextStyle(fontSize: 11, color: Colors.grey)),
         ],
       ),
     ),
+    actions: [
+      TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
+      FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(value), child: const Text('保存')),
+    ],
   );
   if (picked != null) await ref.read(monthCellHeightProvider.notifier).set(picked);
 }
@@ -154,12 +149,12 @@ String _bottomBarStyleShortHint(BottomBarStyle style) => switch (style) {
 /// itself falls back to frosted glass when shader filters are unavailable.
 Future<void> _pickBottomBarStyle(BuildContext context, WidgetRef ref) async {
   final current = ref.read(bottomBarStyleProvider);
-  final picked = await showDialog<BottomBarStyle>(
+  final picked = await showAppDialog<BottomBarStyle>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('底栏外观'),
-      contentPadding: const EdgeInsets.symmetric(vertical: 8),
-      content: Column(
+    title: '底栏外观',
+    content: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (final style in BottomBarStyle.values)
@@ -170,7 +165,7 @@ Future<void> _pickBottomBarStyle(BuildContext context, WidgetRef ref) async {
                 style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
               trailing: current == style ? const Icon(Icons.check) : null,
-              onTap: () => Navigator.pop(ctx, style),
+              onTap: () => Navigator.of(context, rootNavigator: true).pop(style),
             ),
         ],
       ),
@@ -179,38 +174,69 @@ Future<void> _pickBottomBarStyle(BuildContext context, WidgetRef ref) async {
   if (picked != null) await ref.read(bottomBarStyleProvider.notifier).set(picked);
 }
 
+/// Which visual engine the whole app renders with. The switch is immediate:
+/// `MaterialApp.router` in `app/router.dart` watches [uiVariantProvider], so no
+/// restart is needed.
+Future<void> _pickUiVariant(BuildContext context, WidgetRef ref) async {
+  final current = ref.read(uiVariantProvider);
+  final picked = await showAppDialog<UiVariant>(
+    context: context,
+    title: '界面风格引擎',
+    content: Builder(
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final variant in UiVariant.values)
+            ListTile(
+              title: Text(variant == UiVariant.hyperOS
+                  ? 'HyperOS 风格'
+                  : 'Material Design 3'),
+              subtitle: Text(
+                variant == UiVariant.hyperOS
+                    ? '超椭圆大圆角、细描边与弹簧动效'
+                    : '标准 Material 外观，跟随系统阴影与配色',
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+              trailing: current == variant ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.pop(ctx, variant),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (picked != null) await ref.read(uiVariantProvider.notifier).set(picked);
+}
+
 /// Shows the last sync failure in full. The text is selectable and copyable so
 /// it can be pasted into a bug report.
 Future<void> _showSyncDetail(BuildContext context, SyncUiState sync) async {
   final detail = sync.lastErrorDetail ?? sync.lastError ?? '(无详情)';
-  await showDialog<void>(
+  await showAppDialog<void>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('同步失败详情'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: SelectableText(
-            detail,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-          ),
+    title: '同步失败详情',
+    content: SizedBox(
+      width: double.maxFinite,
+      child: SingleChildScrollView(
+        child: SelectableText(
+          detail,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: detail));
-            if (ctx.mounted) Navigator.pop(ctx);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('已复制报错详情')));
-            }
-          },
-          child: const Text('复制'),
-        ),
-        FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-      ],
     ),
+    actions: [
+      TextButton(
+        onPressed: () async {
+          await Clipboard.setData(ClipboardData(text: detail));
+          if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('已复制报错详情')));
+          }
+        },
+        child: const Text('复制'),
+      ),
+      FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('关闭')),
+    ],
   );
 }
 
@@ -264,37 +290,35 @@ Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
   try {
     final result = await ref.read(servicesProvider).backupService.export();
     if (!context.mounted) return;
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('备份已导出'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${result.entityCount} 个实体 · ${result.pendingCount} 条待上传 · '
-                '${result.conflictCount} 条冲突 · ${result.serverCount} 个服务器凭据 '
-                '（${(result.bytes / 1024).toStringAsFixed(1)} KB）'),
-            const SizedBox(height: 8),
-            const Text('文件路径：', style: TextStyle(fontSize: 12, color: Colors.grey)),
-            SelectableText(result.path, style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            const Text('注意：文件包含登录凭据（refresh token），请妥善保管。',
-                style: TextStyle(fontSize: 12, color: Colors.orange)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: result.path));
-              if (ctx.mounted) Navigator.pop(ctx);
-              messenger.showSnackBar(const SnackBar(content: Text('路径已复制')));
-            },
-            child: const Text('复制路径'),
-          ),
-          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('好')),
+      title: '备份已导出',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${result.entityCount} 个实体 · ${result.pendingCount} 条待上传 · '
+              '${result.conflictCount} 条冲突 · ${result.serverCount} 个服务器凭据 '
+              '（${(result.bytes / 1024).toStringAsFixed(1)} KB）'),
+          const SizedBox(height: 8),
+          const Text('文件路径：', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          SelectableText(result.path, style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 8),
+          const Text('注意：文件包含登录凭据（refresh token），请妥善保管。',
+              style: TextStyle(fontSize: 12, color: Colors.orange)),
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: result.path));
+            if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+            messenger.showSnackBar(const SnackBar(content: Text('路径已复制')));
+          },
+          child: const Text('复制路径'),
+        ),
+        FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('好')),
+      ],
     );
   } on Object catch (e) {
     messenger.showSnackBar(
@@ -318,17 +342,19 @@ class SettingsPage extends ConsumerWidget {
     final profile = session.profile;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置'),
+      appBar: AppTopBar(
+        title: '设置',
+        // Cloud sync is optional: hide its action for a local session.
         actions: [
-          IconButton(
-            onPressed: sync.syncing
-                ? null
-                : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
-            icon: sync.syncing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.sync),
-          ),
+          if (ref.watch(cloudSyncEnabledProvider))
+            IconButton(
+              onPressed: sync.syncing
+                  ? null
+                  : () => ref.read(syncCoordinatorProvider.notifier).syncNow(),
+              icon: sync.syncing
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.sync),
+            ),
         ],
       ),
       body: ListView(
@@ -352,6 +378,25 @@ class SettingsPage extends ConsumerWidget {
             trailing: conflicts.isEmpty ? null : const Icon(Icons.chevron_right),
             onTap: conflicts.isEmpty ? null : () => context.push('/settings/conflicts'),
           ),
+          // Local-first: without a cloud account everything stays on this
+          // device; once signed in the user opts into automatic sync here.
+          if (session.isLocalMode)
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('本地模式'),
+              subtitle: const Text('数据保存在本机；登录云端账号后可开启云同步'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.go('/login'),
+            )
+          else
+            SwitchListTile(
+              value: ref.watch(syncEnabledProvider),
+              onChanged: (v) => ref.read(syncEnabledProvider.notifier).set(v),
+              secondary: const Icon(Icons.cloud_sync_outlined),
+              title: const Text('自动云同步'),
+              subtitle: const Text('关闭后所有修改只保存在本机'),
+            ),
+          if (ref.watch(cloudSyncEnabledProvider)) ...[
           ListTile(
             leading: Icon(
               sync.lastError == null ? Icons.cloud_sync_outlined : Icons.sync_problem,
@@ -386,22 +431,21 @@ class SettingsPage extends ConsumerWidget {
             title: const Text('硬刷新本地缓存'),
             subtitle: const Text('保留未上传修改，从服务器重建本地数据'),
             onTap: () async {
-              final ok = await showDialog<bool>(
+              final ok = await showAppDialog<bool>(
                 context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('硬刷新？'),
-                  content: const Text('将清空本地缓存并按服务器重建（未上传的修改会保留并重放）。'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('硬刷新')),
-                  ],
-                ),
+                title: '硬刷新？',
+                content: const Text('将清空本地缓存并按服务器重建（未上传的修改会保留并重放）。'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(false), child: const Text('取消')),
+                  FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(true), child: const Text('硬刷新')),
+                ],
               );
               if (ok == true) {
                 await ref.read(syncCoordinatorProvider.notifier).hardRefresh();
               }
             },
           ),
+          ],
           const Divider(),
           const _SectionHeader('课程与学期'),
           ListTile(
@@ -472,6 +516,15 @@ class SettingsPage extends ConsumerWidget {
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _pickBottomBarStyle(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_outlined),
+            title: const Text('界面风格引擎'),
+            subtitle: Text(ref.watch(uiVariantProvider) == UiVariant.hyperOS
+                ? 'HyperOS 风格 · 超椭圆大圆角与弹簧动效'
+                : 'Material Design 3 · 标准 Material 外观'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _pickUiVariant(context, ref),
           ),
           const Divider(),
           const _SectionHeader('服务器与数据'),
@@ -733,14 +786,15 @@ class ConflictsPage extends ConsumerWidget {
     final conflicts = snap?.conflicts ?? const [];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('冲突处理')),
+      appBar: AppTopBar(title: '冲突处理'),
       body: conflicts.isEmpty
           ? const Center(child: Text('没有待处理的冲突'))
           : ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [
                 for (final c in conflicts)
-                  Card(
+                  AppCard(
+                    padding: EdgeInsets.zero,
                     margin: const EdgeInsets.all(8),
                     child: Padding(
                       padding: const EdgeInsets.all(12),
@@ -866,9 +920,9 @@ class SemestersPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('学期管理')),
+      appBar: AppTopBar(title: '学期管理'),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showModalBottomSheet(
+        onPressed: () => showAppBottomSheet(
           context: context,
           isScrollControlled: true,
           builder: (_) => const SemesterEditor(),
@@ -924,7 +978,7 @@ class SemestersPage extends ConsumerWidget {
                             TextButton.icon(
                               icon: const Icon(Icons.add),
                               label: const Text('添加节次'),
-                              onPressed: () => showModalBottomSheet(
+                              onPressed: () => showAppBottomSheet(
                                 context: context,
                                 builder: (_) => PeriodEditor(
                                   calendarId: cal.value.id,
@@ -936,7 +990,7 @@ class SemestersPage extends ConsumerWidget {
                             TextButton.icon(
                               icon: const Icon(Icons.edit_outlined),
                               label: const Text('编辑学期'),
-                              onPressed: () => showModalBottomSheet(
+                              onPressed: () => showAppBottomSheet(
                                 context: context,
                                 isScrollControlled: true,
                                 builder: (_) => SemesterEditor(existing: cal.value),
@@ -1060,7 +1114,6 @@ class _SemesterEditorState extends ConsumerState<SemesterEditor> {
         changes: {'name': _name.text.trim(), 'firstDay': firstDay, 'totalWeeks': totalWeeks},
       );
     }
-    ref.read(syncCoordinatorProvider.notifier).syncNow();
     if (mounted) Navigator.of(context).pop();
   }
 }
@@ -1234,7 +1287,6 @@ class _PeriodEditorState extends ConsumerState<PeriodEditor> {
                   'endLocal': fmt(_end),
                 },
               );
-              ref.read(syncCoordinatorProvider.notifier).syncNow();
               nav.pop();
             },
             child: const Text('添加'),

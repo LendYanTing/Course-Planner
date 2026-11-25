@@ -60,6 +60,9 @@ class SyncBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Only a cloud account with sync enabled has anything to sync; a local
+    // session keeps the action out of the UI entirely.
+    if (!ref.watch(cloudSyncEnabledProvider)) return const SizedBox.shrink();
     final sync = ref.watch(syncCoordinatorProvider);
     return IconButton(
       tooltip: '同步',

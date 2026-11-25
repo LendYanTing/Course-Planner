@@ -15,6 +15,7 @@ import '../../state/calendar_controller.dart';
 import '../../state/prefs.dart';
 import '../../state/sync_controller.dart';
 import '../../state/event_projection.dart';
+import '../adaptive/adaptive.dart';
 import 'month_page.dart' show weekGutterLabel;
 
 /// Grid (纯课表) view — spec docs/grid-view-web.md.
@@ -645,38 +646,36 @@ class _GridCanvasState extends State<_GridCanvas> {
     final done = blocks.where((b) => b.status == BlockStatus.completed).length;
     final local = widget.userTime.localFromUtc(e.startUtc);
 
-    await showDialog<void>(
+    await showAppDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(e.title),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.flag, size: 16, color: AppTheme.deadlineColor),
-                const SizedBox(width: 6),
-                Text('${e.reminder ? '提醒' : '截止'} ${_dateTime(local)}',
-                    style: const TextStyle(color: AppTheme.deadlineColor, fontWeight: FontWeight.w600)),
-              ]),
-              const SizedBox(height: 10),
-              Text('时间块 $done/${blocks.length} 已完成',
-                  style: const TextStyle(fontSize: 13)),
-              if (blocks.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 6),
-                  child: Text('尚未安排时间块', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                )
-              else
-                for (final b in blocks) _blockRow(b),
-            ],
-          ),
+      title: e.title,
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.flag, size: 16, color: AppTheme.deadlineColor),
+              const SizedBox(width: 6),
+              Text('${e.reminder ? '提醒' : '截止'} ${_dateTime(local)}',
+                  style: const TextStyle(color: AppTheme.deadlineColor, fontWeight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 10),
+            Text('时间块 $done/${blocks.length} 已完成',
+                style: const TextStyle(fontSize: 13)),
+            if (blocks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('尚未安排时间块', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              )
+            else
+              for (final b in blocks) _blockRow(b),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-        ],
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('关闭')),
+      ],
     );
   }
 
@@ -995,45 +994,43 @@ class _GridTileState extends ConsumerState<_GridTile> {
       if (e.note != null && e.note!.isNotEmpty) (label: '备注', value: e.note!),
     ];
 
-    showDialog<void>(
+    showAppDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(e.title),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final r in rows)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 44,
-                        child: Text(r.label,
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      ),
-                      Expanded(child: Text(r.value, style: const TextStyle(fontSize: 13))),
-                    ],
-                  ),
+      title: e.title,
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final r in rows)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 44,
+                      child: Text(r.label,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ),
+                    Expanded(child: Text(r.value, style: const TextStyle(fontSize: 13))),
+                  ],
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
-        actions: [
-          if (e.type == EventType.todoBlock)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _editBlockNote();
-              },
-              child: const Text('编辑备注'),
-            ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-        ],
       ),
+      actions: [
+        if (e.type == EventType.todoBlock)
+          TextButton(
+            onPressed: () {
+              Navigator.of(context, rootNavigator: true).pop();
+              _editBlockNote();
+            },
+            child: const Text('编辑备注'),
+          ),
+        TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('关闭')),
+      ],
     );
   }
 
@@ -1041,24 +1038,22 @@ class _GridTileState extends ConsumerState<_GridTile> {
   /// update immediately, the sync engine pushes in the background).
   Future<void> _editBlockNote() async {
     final controller = TextEditingController(text: widget.event.note ?? '');
-    final text = await showDialog<String>(
+    final text = await showAppDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('编辑备注'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 3,
-          decoration: const InputDecoration(labelText: '备注', hintText: '例如：先做第 3 章习题'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
+      title: '编辑备注',
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        maxLines: 3,
+        decoration: const InputDecoration(labelText: '备注', hintText: '例如：先做第 3 章习题'),
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('取消')),
+        FilledButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(controller.text.trim()),
+          child: const Text('保存'),
+        ),
+      ],
     );
     controller.dispose();
     if (text == null) return; // cancelled
