@@ -8,6 +8,7 @@ import '../../domain/entities.dart';
 import '../../domain/sync.dart';
 import '../auth/server_store.dart';
 import '../local/sync_store.dart';
+import 'backup_file_service.dart';
 
 /// Result of a full local export.
 class BackupResult {
@@ -259,6 +260,32 @@ class BackupService {
 
     return BackupResult(
       path: file.path,
+      entityCount: (doc['entities'] as List).length,
+      pendingCount: (doc['pendingOps'] as List).length,
+      conflictCount: (doc['conflicts'] as List).length,
+      serverCount: (doc['tokens'] as Map).length,
+      bytes: utf8.encode(json).length,
+    );
+  }
+
+  /// Builds the backup and asks the user where to save it through the system
+  /// dialog. Returns null when the dialog was cancelled or unavailable.
+  Future<BackupResult?> exportViaPicker({
+    required BackupFileService files,
+  }) async {
+    final doc = await build();
+    final json = const JsonEncoder.withIndent('  ').convert(doc);
+    final stamp = DateTime.now()
+        .toUtc()
+        .toIso8601String()
+        .replaceAll(RegExp(r'[:.]'), '-');
+    final target = await files.saveJson(
+      suggestedName: 'course_planner_backup_$stamp.json',
+      json: json,
+    );
+    if (target == null) return null;
+    return BackupResult(
+      path: target.path ?? target.label,
       entityCount: (doc['entities'] as List).length,
       pendingCount: (doc['pendingOps'] as List).length,
       conflictCount: (doc['conflicts'] as List).length,

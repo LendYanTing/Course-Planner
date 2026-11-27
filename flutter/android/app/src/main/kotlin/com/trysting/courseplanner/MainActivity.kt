@@ -43,10 +43,13 @@ class MainActivity : FlutterActivity() {
         const val CHANNEL_NAME = "course_planner/speech"
         const val MEDIA_CHANNEL_NAME = "course_planner/media"
         const val EDU_CHANNEL_NAME = "course_planner/edu_webview"
+        const val BACKUP_CHANNEL_NAME = "course_planner/backup"
         const val SPEECH_REQUEST_CODE = 4301
         const val AUDIO_PERMISSION_REQUEST_CODE = 4302
         const val PICK_WALLPAPER_REQUEST_CODE = 4303
         const val EDU_WEBVIEW_REQUEST_CODE = 4304
+        const val CREATE_BACKUP_REQUEST_CODE = 4305
+        const val OPEN_BACKUP_REQUEST_CODE = 4306
         const val MAX_RECORD_MS = 30_000L
     }
 
@@ -55,6 +58,9 @@ class MainActivity : FlutterActivity() {
     private var pendingPermissionResult: MethodChannel.Result? = null
     private var pendingWallpaperResult: MethodChannel.Result? = null
     private var pendingEduWebViewResult: MethodChannel.Result? = null
+    private var pendingBackupSaveResult: MethodChannel.Result? = null
+    private var pendingBackupSource: File? = null
+    private var pendingBackupPickResult: MethodChannel.Result? = null
 
     private var recorder: MediaRecorder? = null
     private var recordFile: File? = null
@@ -88,6 +94,14 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "openEduWebView" -> openEduWebView(call, result)
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BACKUP_CHANNEL_NAME)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "saveBackup" -> saveBackup(call, result)
+                    "pickBackup" -> pickBackup(result)
                     else -> result.notImplemented()
                 }
             }
@@ -135,6 +149,157 @@ class MainActivity : FlutterActivity() {
         } else {
             // Back button / closed without extracting: not an error.
             result.success(null)
+        }
+    }
+
+    // ---- Backup file dialogs (SAF) ----------------------------------------
+
+    /**
+     * Opens ACTION_CREATE_DOCUMENT so the user picks a real public location
+     * (Downloads, Drive, …). The JSON was written to a private temp file by
+     * Dart; its bytes are copied into the returned content:// URI.
+     */
+    private fun saveBackup(call: MethodCall, result: MethodChannel.Result) {
+        if (pendingBackupSaveResult != null) {
+            result.error("busy", "正在保存备份", null)
+            return
+        }
+        val sourcePath = call.argument<String>("path")
+        val source = sourcePath?.trim()?.takeIf { it.isNotEmpty() }?.let(::File)
+        if (source == null || !source.exists()) {
+            result.error("invalid_source", "找不到要保存的备份内容", null)
+            return
+        }
+        val name = call.argument<String>("name")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "course_planner_backup.json"
+        pendingBackupSaveResult = result
+        pendingBackupSource = source
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, name)
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, CREATE_BACKUP_REQUEST_CODE)
+        } catch (e: Exception) {
+            pendingBackupSaveResult = null
+            pendingBackupSource = null
+            result.error("save_failed", e.message ?: "无法打开保存对话框", null)
+        }
+    }
+
+    private fun completeBackupSave(resultCode: Int, data: Intent?) {
+        val result = pendingBackupSaveResult ?: return
+        val source = pendingBackupSource
+        pendingBackupSaveResult = null
+        pendingBackupSource = null
+        val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
+        if (uri == null || source == null || !source.exists()) {
+            result.success(null)
+            return
+        }
+        try {
+            val out = contentResolver.openOutputStream(uri)
+            if (out == null) {
+                result.error("save_failed", "无法写入所选位置", null)
+                return
+            }
+            out.use { sink ->
+                source.inputStream().use { input -> input.copyTo(sink) }
+            }
+            result.success(
+                mapOf(
+                    "uri" to uri.toString(),
+                    "name" to (queryDisplayName(uri) ?: source.name),
+                ),
+            )
+        } catch (e: Exception) {
+            result.error("save_failed", e.message ?: "无法保存备份", null)
+        }
+    }
+
+    /** Opens ACTION_OPEN_DOCUMENT and copies the chosen JSON into cache. */
+    private fun pickBackup(result: MethodChannel.Result) {
+        if (pendingBackupPickResult != null) {
+            result.error("busy", "正在选择备份", null)
+            return
+        }
+        pendingBackupPickResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/json",
+                    "text/json",
+                    "text/plain",
+                    "application/octet-stream",
+                ),
+            )
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, OPEN_BACKUP_REQUEST_CODE)
+        } catch (e: Exception) {
+            pendingBackupPickResult = null
+            result.error("pick_failed", e.message ?: "无法打开文件选择器", null)
+        }
+    }
+
+    private fun completeBackupPick(resultCode: Int, data: Intent?) {
+        val result = pendingBackupPickResult ?: return
+        pendingBackupPickResult = null
+        val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
+        if (uri == null) {
+            result.success(null)
+            return
+        }
+        try {
+            val target = File(cacheDir, "backup_import_${System.currentTimeMillis()}.json")
+            val input = contentResolver.openInputStream(uri)
+            if (input == null) {
+                result.error("pick_failed", "无法读取所选文件", null)
+                return
+            }
+            input.use { source ->
+                target.outputStream().use { sink -> source.copyTo(sink) }
+            }
+            if (target.length() == 0L) {
+                target.delete()
+                result.error("pick_failed", "所选文件为空", null)
+                return
+            }
+            result.success(
+                mapOf(
+                    "path" to target.absolutePath,
+                    "name" to (queryDisplayName(uri) ?: target.name),
+                ),
+            )
+        } catch (e: Exception) {
+            result.error("pick_failed", e.message ?: "无法读取所选文件", null)
+        }
+    }
+
+    private fun queryDisplayName(uri: android.net.Uri): String? {
+        return try {
+            contentResolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    null
+                } else {
+                    val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) cursor.getString(index) else null
+                }
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -256,6 +421,8 @@ class MainActivity : FlutterActivity() {
             SPEECH_REQUEST_CODE -> completeSpeechRecognition(resultCode, data)
             PICK_WALLPAPER_REQUEST_CODE -> completeWallpaperPick(resultCode, data)
             EDU_WEBVIEW_REQUEST_CODE -> completeEduWebView(resultCode, data)
+            CREATE_BACKUP_REQUEST_CODE -> completeBackupSave(resultCode, data)
+            OPEN_BACKUP_REQUEST_CODE -> completeBackupPick(resultCode, data)
         }
     }
 
@@ -433,6 +600,9 @@ class MainActivity : FlutterActivity() {
         pendingPermissionResult = null
         pendingWallpaperResult = null
         pendingEduWebViewResult = null
+        pendingBackupSaveResult = null
+        pendingBackupSource = null
+        pendingBackupPickResult = null
         super.onDestroy()
     }
 }

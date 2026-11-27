@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../data/backup/backup_file_service.dart';
 import '../../data/backup/backup_service.dart';
 import '../../state/app_services.dart';
 import '../adaptive/adaptive.dart';
@@ -24,17 +25,10 @@ class _RestorePageState extends ConsumerState<RestorePage> {
   BackupSelection _sel = BackupSelection.all;
   Map<String, dynamic>? _doc;
   BackupImportPreview? _preview;
-  String? _path;
+  String? _displayName;
   String? _error;
-  List<FileSystemEntity> _files = const [];
   final _pathCtrl = TextEditingController();
   bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFiles();
-  }
 
   @override
   void dispose() {
@@ -42,14 +36,17 @@ class _RestorePageState extends ConsumerState<RestorePage> {
     super.dispose();
   }
 
-  Future<void> _loadFiles() async {
-    try {
-      final files = await ref.read(servicesProvider).backupService.listBackups();
-      if (!mounted) return;
-      setState(() => _files = files);
-    } on Object {
-      // No directory access in this environment; the path field still works.
+  Future<void> _pickFile() async {
+    final picked = await ref.read(backupFileServiceProvider).pickJson();
+    if (!mounted) return;
+    if (picked == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未选择备份文件')),
+      );
+      return;
     }
+    _displayName = picked.displayName;
+    await _open(picked.path);
   }
 
   Future<void> _open(String path) async {
@@ -62,7 +59,7 @@ class _RestorePageState extends ConsumerState<RestorePage> {
       if (!mounted) return;
       setState(() {
         _doc = doc;
-        _path = path;
+        _displayName ??= path.split(Platform.pathSeparator).last;
         _pathCtrl.text = path;
         _preview = ref.read(servicesProvider).backupService.preview(doc, _sel);
       });
@@ -157,8 +154,8 @@ class _RestorePageState extends ConsumerState<RestorePage> {
             if (result.credentialsApplied > 0) Text('登录凭据 ${result.credentialsApplied} 条'),
             const SizedBox(height: 8),
             if (safetyPath != null)
-              SelectableText('导入前的安全备份：\n$safetyPath',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              const Text('导入前的内部安全备份已自动保存。',
+                  style: TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(height: 8),
             const Text('若导入了服务器地址或登录凭据，请重启应用使连接生效。',
                 style: TextStyle(fontSize: 12)),
@@ -190,39 +187,48 @@ class _RestorePageState extends ConsumerState<RestorePage> {
             padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text('选择备份文件', style: TextStyle(fontSize: 13, color: Colors.grey)),
           ),
-          if (_files.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('备份目录里没有找到 .json 文件，可粘贴完整路径：',
-                  style: TextStyle(fontSize: 12)),
-            ),
-          for (final f in _files)
-            ListTile(
-              dense: true,
-              leading: Icon(Icons.description_outlined,
-                  color: f.path == _path ? Theme.of(context).colorScheme.primary : null),
-              title: Text(f.path.split(Platform.pathSeparator).last,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(_sizeLabel(f), style: const TextStyle(fontSize: 11)),
-              onTap: _busy ? null : () => _open(f.path),
-            ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _pathCtrl,
-                    decoration: const InputDecoration(labelText: '备份文件完整路径'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _busy ? null : () => _open(_pathCtrl.text.trim()),
-                  child: const Text('读取'),
-                ),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: FilledButton.tonalIcon(
+              onPressed: _busy ? null : _pickFile,
+              icon: const Icon(Icons.folder_open_outlined),
+              label: Text(_busy ? '正在读取…' : '从文件管理器选择备份'),
             ),
+          ),
+          if (_displayName != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text('已选择：$_displayName',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12)),
+            ),
+          const SizedBox(height: 4),
+          ExpansionTile(
+            leading: const Icon(Icons.edit_note_outlined),
+            title: const Text('高级：手动输入文件路径', style: TextStyle(fontSize: 12)),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _pathCtrl,
+                        decoration: const InputDecoration(labelText: '备份文件完整路径'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: _busy ? null : () => _open(_pathCtrl.text.trim()),
+                      child: const Text('读取'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           if (_error != null)
             Padding(
@@ -259,13 +265,13 @@ class _RestorePageState extends ConsumerState<RestorePage> {
                 detail: '${preview.tokens} 条'),
             _tile('学期与课程', '学期、节次模板、课程、上课安排、周期安排',
                 _sel.academic, (v) => _setSelection(_sel.copyWith(academic: v)),
-                detail: _typeDetail(preview, _academicCount)),
+                detail: _typeDetail(preview, _academicTypes)),
             _tile('待办与时间块', '待办条目及其时间块',
                 _sel.todos, (v) => _setSelection(_sel.copyWith(todos: v)),
-                detail: _typeDetail(preview, _todoCount)),
+                detail: _typeDetail(preview, _todoTypes)),
             _tile('分类与标签', '待办分类和标签',
                 _sel.taxonomy, (v) => _setSelection(_sel.copyWith(taxonomy: v)),
-                detail: _typeDetail(preview, _taxonomyCount)),
+                detail: _typeDetail(preview, _taxonomyTypes)),
             _tile('未上传的改动与冲突', '待上传操作队列与待处理冲突',
                 _sel.queue, (v) => _setSelection(_sel.copyWith(queue: v)),
                 detail: '${preview.pendingOps} 条改动 · ${preview.conflicts} 条冲突'),
@@ -300,19 +306,17 @@ class _RestorePageState extends ConsumerState<RestorePage> {
     );
   }
 
-  int _academicCount(BackupImportPreview p) => _sum(p, _academicTypes);
-  int _todoCount(BackupImportPreview p) => _sum(p, _todoTypes);
-  int _taxonomyCount(BackupImportPreview p) => _sum(p, _taxonomyTypes);
-
   static int _sum(BackupImportPreview p, Set<String> types) =>
       types.fold(0, (a, t) => a + (p.entitiesByType[t] ?? 0));
 
-  String _typeDetail(BackupImportPreview p, int Function(BackupImportPreview) count) {
-    final n = count(p);
+  String _typeDetail(BackupImportPreview p, Set<String> types) {
+    final n = _sum(p, types);
     if (n == 0) return '备份中无此类数据';
     final parts = <String>[];
     p.entitiesByType.forEach((type, c) {
-      if (_labelFor(type) != null && c > 0) parts.add('${_labelFor(type)} $c');
+      if (types.contains(type) && c > 0 && _labelFor(type) != null) {
+        parts.add('${_labelFor(type)} $c');
+      }
     });
     return '$n 条 · ${parts.join('，')}';
   }
@@ -327,15 +331,6 @@ class _RestorePageState extends ConsumerState<RestorePage> {
       isThreeLine: detail != null,
       dense: true,
     );
-  }
-
-  static String _sizeLabel(FileSystemEntity f) {
-    try {
-      final kb = (f as File).lengthSync() / 1024;
-      return '${kb.toStringAsFixed(1)} KB';
-    } on Object {
-      return '';
-    }
   }
 }
 

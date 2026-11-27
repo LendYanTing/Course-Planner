@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/error/api_exception.dart';
 import '../../core/time/user_time.dart';
 import '../../core/util/json_utils.dart';
+import '../../data/backup/backup_file_service.dart';
 import '../../data/local/entities_snapshot.dart';
 import '../../data/local/sync_store.dart';
 import '../../data/local/view_models.dart';
@@ -57,12 +58,19 @@ Future<void> _pickLocalTimezone(BuildContext context, WidgetRef ref) async {
 }
 
 /// Writes a full local backup (working copy + operation queue + conflicts +
-/// known servers + refresh tokens) and reports where it landed. The path is
-/// shown and copyable because the app has no file-picker dependency.
+/// known servers + refresh tokens) through the system save dialog and reports
+/// where the user put it.
 Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
-    final result = await ref.read(servicesProvider).backupService.export();
+    final result = await ref
+        .read(servicesProvider)
+        .backupService
+        .exportViaPicker(files: ref.read(backupFileServiceProvider));
+    if (result == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('已取消导出')));
+      return;
+    }
     if (!context.mounted) return;
     await showAppDialog<void>(
       context: context,
@@ -75,7 +83,7 @@ Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
               '${result.conflictCount} 条冲突 · ${result.serverCount} 个服务器凭据 '
               '（${(result.bytes / 1024).toStringAsFixed(1)} KB）'),
           const SizedBox(height: 8),
-          const Text('文件路径：', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const Text('保存位置：', style: TextStyle(fontSize: 12, color: Colors.grey)),
           SelectableText(result.path, style: const TextStyle(fontSize: 12)),
           const SizedBox(height: 8),
           const Text('注意：文件包含登录凭据（refresh token），请妥善保管。',
@@ -87,9 +95,9 @@ Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
           onPressed: () async {
             await Clipboard.setData(ClipboardData(text: result.path));
             if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-            messenger.showSnackBar(const SnackBar(content: Text('路径已复制')));
+            messenger.showSnackBar(const SnackBar(content: Text('位置已复制')));
           },
-          child: const Text('复制路径'),
+          child: const Text('复制位置'),
         ),
         FilledButton(onPressed: () => Navigator.of(context, rootNavigator: true).pop(), child: const Text('好')),
       ],
