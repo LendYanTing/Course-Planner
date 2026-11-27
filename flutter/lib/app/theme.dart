@@ -94,7 +94,7 @@ class AppStyleTokens extends ThemeExtension<AppStyleTokens> {
     useElevation: false,
     cardElevation: 0,
     borderColor: Color(0x00000000),
-    borderWidth: 0.6,
+    borderWidth: 0.5,
     groupSurface: null,
     motionCurve: _hyperMotionCurve,
     spring: _spring,
@@ -317,28 +317,34 @@ abstract class AppTheme {
     ColorScheme? scheme,
   ]) {
     final isHyper = variant == UiVariant.hyperOS;
+    final isLight = brightness == Brightness.light;
     final seeded = scheme ??
         ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
+    // HyperOS keeps the seed/Monet tonal ladder instead of pinning surfaces to
+    // pure white / black, so the theme colour washes the whole canvas. MD3
+    // uses the seeded scheme untouched.
     final effective = isHyper ? _hyperScheme(seeded, brightness) : seeded;
+    // Cards, dialogs and sheets sit one tonal step above the canvas: bright in
+    // light mode, container-high in dark mode.
+    final cardSurface =
+        isLight ? effective.surfaceBright : effective.surfaceContainerHigh;
+    final canvas = isHyper
+        ? (isLight
+            ? effective.surfaceContainer
+            : effective.surfaceContainerLowest)
+        : effective.surface;
     final tokens = isHyper
         ? AppStyleTokens.hyperOS.copyWith(
-            borderColor: brightness == Brightness.light
-                ? Colors.white.withValues(alpha: 0.9)
-                : Colors.white.withValues(alpha: 0.10),
-            groupSurface: brightness == Brightness.light
-                ? const Color(0xFFF7F8FA)
-                : const Color(0xFF141416),
+            borderColor: effective.outlineVariant.withValues(alpha: 0.28),
+            borderWidth: 0.5,
+            groupSurface: effective.surfaceContainer,
           )
         : AppStyleTokens.material3;
     final fontFamily = _fontFamilyForPlatform();
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: effective,
-      scaffoldBackgroundColor: isHyper
-          ? (brightness == Brightness.light
-              ? const Color(0xFFF2F3F5)
-              : const Color(0xFF000000))
-          : effective.surface,
+      scaffoldBackgroundColor: canvas,
       appBarTheme: isHyper
           ? AppBarTheme(
               centerTitle: tokens.topBarCenterTitle,
@@ -356,18 +362,17 @@ abstract class AppTheme {
               backgroundColor: effective.surface,
               elevation: 0,
             ),
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-        isDense: true,
-      ),
+      inputDecorationTheme: _inputDecorationTheme(effective),
+      chipTheme: _chipTheme(effective),
+      sliderTheme: _sliderTheme(effective),
       cardTheme: CardThemeData(
-        color: effective.surfaceContainerLow,
+        color: cardSurface,
         elevation: tokens.cardElevation,
         surfaceTintColor: isHyper ? Colors.transparent : null,
         shape: _cardShape(tokens),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: effective.surfaceContainerHigh,
+        backgroundColor: cardSurface,
         elevation: isHyper ? 0 : 6,
         shape: isHyper
             ? RoundedSuperellipseBorder(
@@ -379,7 +384,7 @@ abstract class AppTheme {
       ),
       bottomSheetTheme: isHyper
           ? BottomSheetThemeData(
-              backgroundColor: effective.surface,
+              backgroundColor: cardSurface,
               elevation: 0,
               showDragHandle: false,
               shape: RoundedSuperellipseBorder(
@@ -387,6 +392,7 @@ abstract class AppTheme {
               ),
             )
           : BottomSheetThemeData(
+              backgroundColor: cardSurface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(tokens.sheetRadius),
@@ -421,35 +427,90 @@ abstract class AppTheme {
     );
   }
 
-  /// HyperOS surface ladder: a grey canvas with white sheets in light mode and
-  /// a black canvas with near-black cards in dark mode. Accent colours still
-  /// come from the seeded scheme.
+  /// HyperOS surface ladder built on top of the seed/Monet scheme.
+  ///
+  /// Light mode: the canvas is `surfaceContainer` and cards are `surfaceBright`
+  /// so the seeded hue tints the whole page. Dark mode: the canvas is
+  /// `surfaceContainerLowest` and cards are `surfaceContainerHigh`, one tonal
+  /// step above it. No surface is pinned to pure white or black.
   static ColorScheme _hyperScheme(ColorScheme scheme, Brightness brightness) {
     if (brightness == Brightness.light) {
       return scheme.copyWith(
-        surface: const Color(0xFFFFFFFF),
-        surfaceDim: const Color(0xFFE6E7EA),
-        surfaceBright: const Color(0xFFFFFFFF),
-        surfaceContainerLowest: const Color(0xFFFFFFFF),
-        surfaceContainerLow: const Color(0xFFFFFFFF),
-        surfaceContainer: const Color(0xFFF7F8FA),
-        surfaceContainerHigh: const Color(0xFFFFFFFF),
-        surfaceContainerHighest: const Color(0xFFEDEEF1),
-        outline: const Color(0xFFC9CBD1),
-        outlineVariant: const Color(0xFFE1E3E8),
+        surface: scheme.surfaceBright,
+        surfaceDim: scheme.surfaceDim,
+        surfaceBright: scheme.surfaceBright,
+        surfaceContainerLowest: scheme.surfaceContainerLowest,
+        surfaceContainerLow: scheme.surfaceContainerLow,
+        surfaceContainer: scheme.surfaceContainer,
+        surfaceContainerHigh: scheme.surfaceContainerHigh,
+        surfaceContainerHighest: scheme.surfaceContainerHighest,
+        outline: scheme.outline,
+        outlineVariant: scheme.outlineVariant,
       );
     }
+    // In dark mode the "surface" doubles as the card colour, so anything that
+    // falls back to `surface` lands on the card tone instead of the canvas.
     return scheme.copyWith(
-      surface: const Color(0xFF1C1C1E),
-      surfaceDim: const Color(0xFF000000),
-      surfaceBright: const Color(0xFF2C2C2E),
-      surfaceContainerLowest: const Color(0xFF000000),
-      surfaceContainerLow: const Color(0xFF1C1C1E),
-      surfaceContainer: const Color(0xFF1C1C1E),
-      surfaceContainerHigh: const Color(0xFF242426),
-      surfaceContainerHighest: const Color(0xFF2C2C2E),
-      outline: const Color(0xFF48484A),
-      outlineVariant: const Color(0xFF38383A),
+      surface: scheme.surfaceContainerHigh,
+      surfaceDim: scheme.surfaceContainerLowest,
+      surfaceBright: scheme.surfaceContainerHigh,
+      surfaceContainerLowest: scheme.surfaceContainerLowest,
+      surfaceContainerLow: scheme.surfaceContainerLow,
+      surfaceContainer: scheme.surfaceContainer,
+      surfaceContainerHigh: scheme.surfaceContainerHigh,
+      surfaceContainerHighest: scheme.surfaceContainerHighest,
+      outline: scheme.outline,
+      outlineVariant: scheme.outlineVariant,
+    );
+  }
+
+  /// Borderless filled input; only the focused state draws a primary ring.
+  static InputDecorationTheme _inputDecorationTheme(ColorScheme scheme) {
+    final radius = BorderRadius.circular(16);
+    return InputDecorationTheme(
+      filled: true,
+      fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.65),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      border: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: scheme.primary, width: 1.5),
+      ),
+    );
+  }
+
+  /// Borderless chips: a tonal fill instead of the default outline.
+  static ChipThemeData _chipTheme(ColorScheme scheme) {
+    return ChipThemeData(
+      side: BorderSide.none,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+      selectedColor: scheme.secondaryContainer,
+      labelStyle: TextStyle(color: scheme.onSurface),
+      secondaryLabelStyle: TextStyle(color: scheme.onSecondaryContainer),
+    );
+  }
+
+  /// Capsule track + hollow ring thumb; the thumb paints itself, so only its
+  /// fill colour is read from [SliderThemeData.thumbColor].
+  static SliderThemeData _sliderTheme(ColorScheme scheme) {
+    return SliderThemeData(
+      trackHeight: 8,
+      activeTrackColor: scheme.primary,
+      inactiveTrackColor: scheme.primary.withValues(alpha: 0.18),
+      thumbColor: scheme.surfaceContainerLowest,
+      overlayColor: scheme.primary.withValues(alpha: 0.12),
+      trackShape: const RoundedRectSliderTrackShape(),
+      thumbShape: const _HollowRingSliderThumbShape(),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
     );
   }
 
@@ -479,6 +540,67 @@ abstract class AppTheme {
     final v = int.tryParse(h, radix: 16);
     if (v == null) return null;
     return Color(v);
+  }
+}
+
+/// Capsule-slider thumb: a 24dp disc filled with the surface colour and
+/// outlined by a 2.5dp primary ring.
+///
+/// Both colours are read from the resolved [SliderThemeData], so every
+/// [Slider] in the app gets the same look without a local [SliderTheme].
+class _HollowRingSliderThumbShape extends SliderComponentShape {
+  const _HollowRingSliderThumbShape();
+
+  static const double _diameter = 24;
+  static const double _ringWidth = 2.5;
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) =>
+      const Size.square(_diameter);
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    required bool isDiscrete,
+    required TextPainter labelPainter,
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required TextDirection textDirection,
+    required double value,
+    required double textScaleFactor,
+    required Size sizeWithOverflow,
+  }) {
+    final canvas = context.canvas;
+    final t = enableAnimation.value;
+    final fill = Color.lerp(
+          sliderTheme.disabledThumbColor,
+          sliderTheme.thumbColor,
+          t,
+        ) ??
+        sliderTheme.thumbColor ??
+        const Color(0xFFFFFFFF);
+    final ring = Color.lerp(
+          sliderTheme.disabledActiveTrackColor,
+          sliderTheme.activeTrackColor,
+          t,
+        ) ??
+        sliderTheme.activeTrackColor ??
+        fill;
+
+    const radius = _diameter / 2;
+    canvas.drawCircle(center, radius, Paint()..color = fill);
+    // The stroke is centred on the rim so the outer diameter stays 24dp.
+    canvas.drawCircle(
+      center,
+      radius - _ringWidth / 2,
+      Paint()
+        ..color = ring
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = _ringWidth,
+    );
   }
 }
 

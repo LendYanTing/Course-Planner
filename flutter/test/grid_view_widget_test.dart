@@ -165,7 +165,16 @@ void main() {
     expect(find.text('高等数学'), findsWidgets); // course tile (row run)
     expect(find.text('生化大作业'), findsWidgets); // todo block tile
     expect(find.text('线代作业 · 18:00'), findsWidgets); // pinned deadline marker
-    expect(find.textContaining('现在'), findsOneWidget); // now line label
+    // The current-time rule is back, but it starts after the 节次 gutter: no
+    // 「现在」 label covers the period numbers.
+    expect(find.textContaining('现在'), findsNothing);
+    final nowSegments = find.byWidgetPredicate(
+      (w) =>
+          w is ColoredBox &&
+          (w.color == AppTheme.nowLineColor ||
+              w.color == AppTheme.nowLineColor.withValues(alpha: 0.5)),
+    );
+    expect(nowSegments, findsNWidgets(7));
     // The 上午/下午 capsule label was removed; the tinted halves and the rule
     // between them carry the distinction now.
     expect(find.text('上午 AM · 下午 PM'), findsNothing);

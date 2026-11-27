@@ -316,12 +316,14 @@ void main() {
       );
     });
 
-    test('HyperOS keeps its surface ladder on top of the custom scheme', () {
+    test('HyperOS keeps its tonal surface ladder on the custom scheme', () {
       final theme = AppTheme.light(UiVariant.hyperOS, customLight);
       expect(theme.extension<AppStyleTokens>()!.variant, UiVariant.hyperOS);
       expect(theme.colorScheme.primary, customLight.primary);
-      expect(theme.colorScheme.surface, const Color(0xFFFFFFFF));
-      expect(theme.scaffoldBackgroundColor, const Color(0xFFF2F3F5));
+      // Surfaces are derived from the scheme instead of being pinned to white.
+      expect(theme.colorScheme.surface, customLight.surfaceBright);
+      expect(theme.scaffoldBackgroundColor, customLight.surfaceContainer);
+      expect(theme.scaffoldBackgroundColor, isNot(Colors.white));
     });
   });
 

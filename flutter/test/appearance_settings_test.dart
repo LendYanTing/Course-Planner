@@ -1,4 +1,5 @@
 import 'package:course_planner/app/theme.dart';
+import 'package:course_planner/core/media/wallpaper_picker.dart';
 import 'package:course_planner/presentation/settings/appearance_settings_page.dart';
 import 'package:course_planner/presentation/widgets/calendar_background.dart';
 import 'package:course_planner/state/prefs.dart';
@@ -7,6 +8,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/memory_prefs.dart';
+
+/// Never touches the platform: the appearance page now copies typed paths into
+/// private storage through [WallpaperPickerService].
+class _FakeWallpaperPicker implements WallpaperPickerService {
+  const _FakeWallpaperPicker({this.importedPath});
+
+  final String? importedPath;
+
+  @override
+  Future<String?> pickWallpaper() async => null;
+
+  @override
+  Future<String?> importFromFilePath(String rawPath) async => importedPath;
+}
 
 /// Phase 3 appearance page: section layout, theme seeds, wallpaper choices,
 /// live card-style sliders, the reset action and the `CalendarBackground`
@@ -120,7 +135,16 @@ void main() {
   testWidgets('a preset wallpaper is stored and painted by the preview',
       (tester) async {
     useTallSurface(tester);
-    final container = createContainer();
+    final container = ProviderContainer(
+      overrides: [
+        prefStoreProvider.overrideWithValue(MemoryPrefs()),
+        // The apply action now imports the typed path into private storage.
+        wallpaperPickerProvider.overrideWithValue(
+          const _FakeWallpaperPicker(importedPath: r'C:\walls\photo.jpg'),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
     await tester.pumpWidget(page(container));
     await tester.pumpAndSettle();
 
@@ -132,6 +156,10 @@ void main() {
     expect(config.hasBackground, isTrue);
     // The live preview now paints the preset gradient layer.
     expect(find.byKey(calendarBackgroundPresetKey), findsOneWidget);
+
+    // The legacy path field lives in the advanced expansion tile.
+    await tester.tap(find.text('高级：手动输入图片路径'));
+    await tester.pumpAndSettle();
 
     // A typed local path replaces the preset (the two sources are exclusive).
     await tester.enterText(

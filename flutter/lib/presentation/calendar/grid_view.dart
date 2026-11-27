@@ -13,8 +13,8 @@ import '../../domain/calendar_event.dart';
 import '../../domain/todo.dart';
 import '../../state/calendar_controller.dart';
 import '../../state/prefs.dart';
-import '../../state/sync_controller.dart';
 import '../../state/event_projection.dart';
+import '../../state/sync_controller.dart';
 import '../adaptive/adaptive.dart';
 import 'month_page.dart' show weekGutterLabel;
 
@@ -24,7 +24,8 @@ import 'month_page.dart' show weekGutterLabel;
 /// deduplicated on equal starts); 7 weekday columns, no continuous time axis.
 /// Events are clipped/merged onto the rows they touch (≥45-min gaps split a
 /// tile), morning/afternoon are separated with a divider, weekend columns are
-/// tinted, and the now/deadline markers are pinned to row boundaries.
+/// tinted, and deadline markers are pinned to row boundaries. The current-time
+/// line belongs to the continuous timeline (周) only, not to 课表.
 ///
 /// Todo blocks are always draggable/resizable; course & recurring-schedule
 /// tiles only when the toolbar switch is on (single occurrence edits pushed
@@ -295,50 +296,76 @@ class _GridViewContentState extends ConsumerState<GridViewContent> {
 
   Widget _weekHeader(DateTime? nowLocal) {
     const labels = ['一', '二', '三', '四', '五', '六', '日'];
-    final colors = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        // The gutter over the period column carries the month.
-        SizedBox(
-          width: GridViewContent.leftWidth,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Text(
-              weekGutterLabel(widget.days),
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 11, color: colors.outline),
-            ),
-          ),
-        ),
-        for (var i = 0; i < 7; i++)
-          Expanded(
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    // The whole row (month column included) sits on a tonal backdrop: the plain
+    // surface container normally, a translucent one over a wallpaper so the
+    // artwork still reads while the labels stay legible.
+    final headerBg = widget.hasBackground
+        ? colors.surfaceContainer.withValues(alpha: isDark ? 0.78 : 0.85)
+        : colors.surfaceContainer;
+    return ColoredBox(
+      color: headerBg,
+      child: Row(
+        children: [
+          // The gutter over the period column carries the month.
+          SizedBox(
+            width: GridViewContent.leftWidth,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Column(
-                children: [
-                  Text('周${labels[i]}', style: TextStyle(fontSize: 11, color: colors.outline)),
-                  const SizedBox(height: 1),
-                  Container(
-                    width: 20,
-                    height: 20,
-                    alignment: Alignment.center,
-                    decoration: _isToday(i, nowLocal)
-                        ? BoxDecoration(color: colors.primary, shape: BoxShape.circle)
-                        : null,
-                    child: Text(
-                      '${widget.days[i].day}',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
-                        color: _isToday(i, nowLocal) ? Colors.white : colors.onSurface,
-                      ),
-                    ),
-                  ),
-                ],
+              padding: const EdgeInsets.only(right: 6),
+              child: Text(
+                weekGutterLabel(widget.days),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: colors.primary,
+                ),
               ),
             ),
           ),
-      ],
+          for (var i = 0; i < 7; i++)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Column(
+                  children: [
+                    Text(
+                      '周${labels[i]}',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: _isToday(i, nowLocal)
+                            ? colors.primary
+                            : colors.onSurface.withValues(alpha: 0.88),
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Container(
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      decoration: _isToday(i, nowLocal)
+                          ? BoxDecoration(color: colors.primary, shape: BoxShape.circle)
+                          : null,
+                      child: Text(
+                        '${widget.days[i].day}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: _isToday(i, nowLocal)
+                              ? colors.onPrimary
+                              : colors.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -429,16 +456,27 @@ class _GridCanvasState extends State<_GridCanvas> {
   Widget build(BuildContext context) {
     final layout = widget.layout;
     final rowHeight = layout.rowHeight;
-    final colors = Theme.of(context).colorScheme;
-    // Over a wallpaper the flat row tints would hide it completely, so they
-    // turn translucent (18% see-through) and the weekend veil thins out by the
-    // same factor. Without a wallpaper the exact stock colours are kept (tests
-    // pin them).
-    // With a wallpaper behind the page the row tints only lightly wash the
-    // timetable, so the artwork stays clearly visible (0.82 used to hide it).
-    Color rowTint(Color c) => widget.hasBackground ? c.withValues(alpha: 0.45) : c;
-    final weekendVeil =
-        Colors.black.withValues(alpha: widget.hasBackground ? 0.02 : 0.03);
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    // 上午/下午 row tints. The default light look keeps the stock pastel pair
+    // (tests pin it); dark mode mixes the scheme surfaces with the primary /
+    // tertiary accents instead. Over a wallpaper the tint turns translucent so
+    // the artwork reads through without losing the grid, and the weekend veil
+    // thins out for the same reason.
+    Color rowTint({required bool afternoon}) {
+      final base = isDark
+          ? (afternoon
+              ? Color.lerp(colors.surfaceContainer, colors.tertiary, 0.10)!
+              : Color.lerp(colors.surfaceContainerLow, colors.primary, 0.10)!)
+          : (afternoon ? const Color(0xFFFFF2E4) : const Color(0xFFEDF4FF));
+      if (!widget.hasBackground) return base;
+      return base.withValues(alpha: isDark ? 0.55 : 0.45);
+    }
+
+    final weekendVeil = isDark
+        ? Colors.white.withValues(alpha: widget.hasBackground ? 0.01 : 0.015)
+        : Colors.black.withValues(alpha: widget.hasBackground ? 0.02 : 0.03);
     var pmStart = -1;
     for (var i = 0; i < layout.rows.length; i++) {
       if (layout.rows[i].start >= widget.noonBoundaryMinutes) {
@@ -460,9 +498,7 @@ class _GridCanvasState extends State<_GridCanvas> {
               right: 0,
               height: rowHeight,
               child: Container(
-                color: rowTint(pmStart < 0 || i < pmStart
-                    ? const Color(0xFFEDF4FF)
-                    : const Color(0xFFFFF2E4)),
+                color: rowTint(afternoon: pmStart >= 0 && i >= pmStart),
               ),
             ),
           for (var d = 5; d < 7; d++)
@@ -501,13 +537,17 @@ class _GridCanvasState extends State<_GridCanvas> {
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: pmStart >= 0 && i >= pmStart
-                                ? const Color(0xFFE07B39)
-                                : const Color(0xFF3A6FB0),
+                                ? (isDark ? colors.tertiary : const Color(0xFFE07B39))
+                                : (isDark ? colors.primary : const Color(0xFF3A6FB0)),
                           ),
                         ),
                         Text(
                           _hhmm(layout.rows[i].start),
-                          style: const TextStyle(fontSize: 9, color: Colors.black45),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: colors.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -559,8 +599,9 @@ class _GridCanvasState extends State<_GridCanvas> {
           if (_preview != null) _previewGhost(_preview!),
           for (final e in widget.events)
             if (e.type == EventType.deadline) _deadline(e),
-          // Current-time line: watches the server clock itself (see
-          // [_GridNowLine]) so a sync or a minute tick redraws only this rule.
+          // The current-time rule sits above the tiles but starts after the
+          // period gutter, so the 节次 column stays readable. Today's segment is
+          // opaque; the other days are dimmed so the current column stands out.
           _GridNowLine(
             userTime: widget.userTime,
             days: widget.days,
@@ -821,25 +862,32 @@ class _GridCanvasState extends State<_GridCanvas> {
   /// capsule label was removed — the background tint change plus this rule
   /// already carry the distinction.
   Widget _pmDivider(int pmStart) {
+    final colors = Theme.of(context).colorScheme;
     return Positioned(
       top: pmStart * widget.layout.rowHeight,
       left: GridViewContent.leftWidth,
       width: 7 * widget.dayWidth,
       height: 2,
-      child: Container(color: Colors.black.withValues(alpha: 0.35)),
+      child: Container(color: colors.outlineVariant),
     );
   }
 
   static String _hhmm(int minute) => '${(minute ~/ 60).toString().padLeft(2, '0')}:${(minute % 60).toString().padLeft(2, '0')}';
 }
 
-/// Current-time orange line for the 课表 grid (docs/ui-interaction.md §14).
+/// One event tile on the grid canvas.
 ///
-/// It watches [serverNowProvider] instead of taking a `now` snapshot from the
-/// page, so it is redrawn on the per-minute tick *and* right after every sync —
-/// a sync re-reads the server clock offset and bumps [clockRevisionProvider],
-/// which restarts the stream. Because the watch lives here, only this two-pixel
-/// overlay rebuilds; the grid, its tiles and the day headers stay untouched.
+/// Drag semantics follow docs/grid-view-web.md §4: todo blocks are always
+/// editable; course/recurring tiles only when the course switch is on. Body
+/// drag moves the occurrence (can change weekday for todo blocks), top/bottom
+/// edge drag resizes and snaps to 上课/下课 times. All local-time arithmetic
+/// happens in the user's fixed timezone.
+/// Current-time orange rule for the 课表 grid.
+///
+/// It starts at the right edge of the period gutter: the old design printed
+/// 「现在 HH:mm」 over the 节次 column, which hid the period numbers. Today's
+/// day segment is fully opaque; the other days are drawn at 50% so the current
+/// weekday is obvious without shouting across the whole grid.
 class _GridNowLine extends ConsumerWidget {
   const _GridNowLine({
     required this.userTime,
@@ -858,49 +906,29 @@ class _GridNowLine extends ConsumerWidget {
     final now = ref.watch(serverNowProvider).value;
     if (now == null) return const SizedBox.shrink();
     final local = userTime.localFromUtc(now);
-    // The line belongs to the week on screen only: another week draws nothing.
-    final onScreen = days.any((d) =>
-        d.year == local.year && d.month == local.month && d.day == local.day);
-    if (!onScreen) return const SizedBox.shrink();
+    final todayIndex = days.indexWhere(
+      (d) => d.year == local.year && d.month == local.month && d.day == local.day,
+    );
+    // The rule belongs to the week on screen only.
+    if (todayIndex < 0) return const SizedBox.shrink();
     final minute = local.hour * 60 + local.minute;
     final y = layout.yForMinute(minute);
-    final hhmm = '${(minute ~/ 60).toString().padLeft(2, '0')}:'
-        '${(minute % 60).toString().padLeft(2, '0')}';
-    // Tall enough for the gutter label: the rule itself is 2 dp and sits in the
-    // middle, so the 「现在 HH:mm」 text is no longer clipped to a sliver.
     return Positioned(
-      top: y - 7,
-      left: 0,
-      width: GridViewContent.leftWidth + 7 * dayWidth,
-      height: 14,
+      top: y - 1,
+      left: GridViewContent.leftWidth,
+      width: 7 * dayWidth,
+      height: 2,
       child: IgnorePointer(
         child: Row(
           children: [
-            SizedBox(
-              width: GridViewContent.leftWidth,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Text(
-                  '现在 $hhmm',
-                  textAlign: TextAlign.right,
-                  maxLines: 1,
-                  overflow: TextOverflow.clip,
-                  style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.nowLineColor,
+            for (var d = 0; d < 7; d++)
+              Expanded(
+                child: Container(
+                  color: AppTheme.nowLineColor.withValues(
+                    alpha: d == todayIndex ? 1.0 : 0.5,
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              // A SizedBox gives the 2 dp rule the full remaining width while
-              // the Row centers it vertically inside the 14 dp label box.
-              child: SizedBox(
-                height: 2,
-                child: ColoredBox(color: AppTheme.nowLineColor),
-              ),
-            ),
           ],
         ),
       ),
@@ -908,14 +936,6 @@ class _GridNowLine extends ConsumerWidget {
   }
 }
 
-
-/// One event tile on the grid canvas.
-///
-/// Drag semantics follow docs/grid-view-web.md §4: todo blocks are always
-/// editable; course/recurring tiles only when the course switch is on. Body
-/// drag moves the occurrence (can change weekday for todo blocks), top/bottom
-/// edge drag resizes and snaps to 上课/下课 times. All local-time arithmetic
-/// happens in the user's fixed timezone.
 class _GridTile extends ConsumerStatefulWidget {
   const _GridTile({
     super.key,

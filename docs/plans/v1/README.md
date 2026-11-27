@@ -41,6 +41,10 @@
 | **Phase 4** | `docs/plans/v1/phase-4-task-ux.md` | 极简添加任务面板、待办与时间块一站式创建、日程空白处快捷交互优化 | Phase 2 |
 | **Phase 5** | `docs/plans/v1/phase-5-builtin-agent.md` | 内置 Agent 聊天抽屉、本地 MCP 同构 Tools、ChangeSet 确认卡片、排期提示词优化 | Phase 1, Phase 2 |
 | **Phase 6** | `docs/plans/v1/phase-6-voice-and-edu-import.md` | 双模语音识别（原生 + 云端 API）、教务系统 WebView 抓取 + AI 智能解析导课 | Phase 1, Phase 5 |
+| **Phase 7** | `docs/plans/v1/phase-7-sukisu-ui-and-wallpaper.md` | **SukiSU 风格 UI 体系重构（莫奈浸润背景/分段圆角卡片/空心滑块）、课表星期栏深浅色对比度修复、Android 原生相册选图与沙盒持久化** | Phase 3 |
+| **Phase 8** | `docs/plans/v1/phase-8-todo-sheet-redesign.md` | **新建待办与待办页 UI 彻底重设计（消除线框感、无边框沉浸输入卡、单行时间胶囊、分段属性组）** | Phase 4, Phase 7 |
+| **Phase 9** | `docs/plans/v1/phase-9-agent-tab-and-markdown.md` | **AI 助手独立底栏 Tab 页（4-Tab 导航）与完整 Markdown 渲染引擎（标题/粗体/列表/代码块/表格）** | Phase 5, Phase 7 |
+| **Phase 10** | `docs/plans/v1/phase-10-universal-edu-import.md` | **全国 3570 所高校教务导入引擎（内置高校目录 + 原生 WebView 登录与跨 iframe 主动拉取脚本 + 15 大厂商本地解析 + `Parser_GPT` 表格权重压缩与本地 LLM Provider 自动兜底）** | Phase 6 |
 
 ---
 

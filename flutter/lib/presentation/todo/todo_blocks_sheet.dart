@@ -43,6 +43,22 @@ class _TodoBlocksSheetState extends ConsumerState<TodoBlocksSheet> {
   }
 
   Future<void> _delete(TodoBlock block) async {
+    final confirmed = await showAppDialog<bool>(
+      context: context,
+      title: '删除时间块？',
+      content: const Text('删除后无法恢复。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(true),
+          child: const Text('删除'),
+        ),
+      ],
+    );
+    if (confirmed != true || !mounted) return;
     await ref.read(servicesProvider).repo.localDelete(entityType: EntityTypes.todoBlock, entityId: block.id);
   }
 
@@ -190,10 +206,30 @@ class _BlockEditorState extends ConsumerState<_BlockEditor> {
       _end = widget.existing!.endAt;
     } else {
       final local = widget.userTime.localFromUtc(DateTime.now().toUtc());
-      final startMinute = ((local.hour + 1) * 60).clamp(0, 23 * 60);
-      _start = widget.userTime
-          .fromLocalParts(local.year, local.month, local.day, startMinute ~/ 60, 0)
-          .toUtc();
+      // A block must stay inside one local day (the server rejects cross-
+      // midnight windows). Late in the evening the next full hour would cross,
+      // so start tomorrow morning instead.
+      final DateTime startLocal;
+      if (local.hour >= 22) {
+        final tomorrow = widget.userTime.addLocalDays(local, 1);
+        startLocal = widget.userTime.fromLocalParts(
+          tomorrow.year,
+          tomorrow.month,
+          tomorrow.day,
+          9,
+          0,
+        );
+      } else {
+        final startMinute = (local.hour + 1) * 60;
+        startLocal = widget.userTime.fromLocalParts(
+          local.year,
+          local.month,
+          local.day,
+          startMinute ~/ 60,
+          0,
+        );
+      }
+      _start = startLocal.toUtc();
       _end = _start.add(const Duration(minutes: 60));
     }
   }
@@ -270,6 +306,17 @@ class _BlockEditorState extends ConsumerState<_BlockEditor> {
   Future<void> _save() async {
     final repo = ref.read(servicesProvider).repo;
     final note = _note.text.trim();
+    final startLocal = widget.userTime.localFromUtc(_start);
+    final endLocal = widget.userTime.localFromUtc(_end);
+    final sameDay = startLocal.year == endLocal.year &&
+        startLocal.month == endLocal.month &&
+        startLocal.day == endLocal.day;
+    if (!_end.isAfter(_start) || !sameDay) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('时间块不能跨天，且结束时间需晚于开始时间')),
+      );
+      return;
+    }
     if (widget.existing == null) {
       await repo.localCreate(
         entityType: EntityTypes.todoBlock,

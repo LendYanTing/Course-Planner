@@ -137,6 +137,44 @@ class MonthCellHeightController extends Notifier<double> {
 final monthCellHeightProvider =
     NotifierProvider<MonthCellHeightController, double>(MonthCellHeightController.new);
 
+/// How many completed todos the history page renders (0 = all). Persisted.
+class CompletedHistoryLimitController extends Notifier<int> {
+  static const _key = 'completed_history_limit';
+  static const defaultLimit = 100;
+  static const choices = [50, 100, 200, 500, 0];
+
+  @override
+  int build() {
+    _restore();
+    return defaultLimit;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      final n = v == null ? null : int.tryParse(v);
+      // Only values the chips offer are valid; anything else stays at 100.
+      if (n != null && choices.contains(n)) state = n;
+    } on Object {
+      // Best effort: keep the default limit.
+    }
+  }
+
+  Future<void> set(int value) async {
+    state = choices.contains(value) ? value : defaultLimit;
+    try {
+      await ref.read(prefStoreProvider).write(_key, '$state');
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final completedHistoryLimitProvider =
+    NotifierProvider<CompletedHistoryLimitController, int>(
+  CompletedHistoryLimitController.new,
+);
+
 /// Semester shown by the 课表 (Grid) view. Chosen in 设置 → 学期管理, so the
 /// grid itself carries no picker.
 class ActiveSemesterController extends Notifier<String?> {
@@ -396,6 +434,42 @@ class SyncEnabledController extends Notifier<bool> {
 
 final syncEnabledProvider =
     NotifierProvider<SyncEnabledController, bool>(SyncEnabledController.new);
+
+/// Whether the AI assistant keeps its tab in the bottom bar. Local-only: the
+/// agent stays reachable from 设置 → 内置 AI 助手 when the tab is hidden, and the
+/// route itself is never removed (only its nav entry).
+class AgentTabEnabledController extends Notifier<bool> {
+  static const _key = 'agent_tab_enabled';
+
+  @override
+  bool build() {
+    _restore();
+    return true;
+  }
+
+  Future<void> _restore() async {
+    try {
+      final v = await ref.read(prefStoreProvider).read(_key);
+      if (v != null) state = v == 'true';
+    } on Object {
+      // Best effort: keep the tab visible.
+    }
+  }
+
+  Future<void> set(bool value) async {
+    state = value;
+    try {
+      await ref.read(prefStoreProvider).write(_key, '$value');
+    } on Object {
+      // Best effort.
+    }
+  }
+}
+
+final agentTabEnabledProvider =
+    NotifierProvider<AgentTabEnabledController, bool>(
+  AgentTabEnabledController.new,
+);
 
 /// IANA timezone used while no account is signed in (the server normally owns
 /// this value, but a local session has no server to ask).

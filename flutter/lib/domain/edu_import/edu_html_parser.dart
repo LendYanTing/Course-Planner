@@ -4,8 +4,10 @@
 /// Three complementary formats are recognised:
 ///
 /// 1. new Zhengfang JSON (`kbList` / `sjkList`, optionally embedded in HTML as
-///    `var kbList = [...]`), including its period-time table when present;
-/// 2. generic / Zhengfang / Qiangzhi / Qingguo `<table>` timetables;
+///    `var kbList = [...]`), plus JinZhi / ShuWei / Qiangzhi Vue / Chaoxing
+///    JSON via `WakeupFormatNormalizer`;
+/// 2. generic / Zhengfang / Qiangzhi / Qingguo `<table>` timetables, including
+///    Qiangzhi `<font title="...">` cells and `-----`-separated courses;
 /// 3. a plain-text timetable copied from the page (one course per line).
 ///
 /// The output rows reuse [ParsedCsvCourse] so the caller can turn them into CSV
@@ -16,6 +18,7 @@ import 'dart:convert';
 
 import '../../core/util/week_text.dart';
 import '../../data/api/import_api.dart';
+import 'wakeup_normalizer.dart';
 
 /// One period slot read from an education-system timetable page.
 typedef EduPeriodTime = ({int periodNo, String startLocal, String endLocal});
@@ -34,7 +37,9 @@ class EduParseResult {
   /// Period time table, only when the source carried one (`08:00`-`08:45`).
   final List<EduPeriodTime> periods;
 
-  /// `zhengfang-json` | `table` | `text` | null when nothing was recognised.
+  /// `zhengfang-json` | `jinzhi-json` | `shuwei-json` | `qiangzhi-vue` |
+  /// `chaoxing-json` | `iclasses-json` | `table` | `text` | null when
+  /// nothing was recognised.
   final String? source;
 
   bool get isEmpty => courses.isEmpty;
@@ -86,6 +91,55 @@ abstract final class EduHtmlParser {
   );
 
   static final RegExp _tagPattern = RegExp(r'<[^>]*>');
+
+  /// Whole `<table>` elements, used by [compressHtmlForAi].
+  static final RegExp _tablePattern = RegExp(
+    r'<table\b[\s\S]*?</table\s*>',
+    caseSensitive: false,
+  );
+
+  static final RegExp _tableRowPattern = RegExp(
+    r'<tr\b[^>]*>([\s\S]*?)</tr\s*>',
+    caseSensitive: false,
+  );
+
+  static final RegExp _tableCellPattern = RegExp(
+    r'<t[dh]\b([^>]*)>([\s\S]*?)</t[dh]\s*>',
+    caseSensitive: false,
+  );
+
+  /// Opening tag with optional quoted attributes; quoted values may contain
+  /// `>` (`<font title="a>b">`), which keeps the rewrite from splitting a tag.
+  static final RegExp _aiOpenTagPattern = RegExp(
+    r'''<([a-zA-Z][a-zA-Z0-9:-]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>''',
+  );
+
+  /// Weekday header labels in a timetable grid (`星期一`..`星期日`, 1..7).
+  static final RegExp _aiWeekdayHeaderPattern = RegExp(
+    r'星期[一二三四五六日天1-7]',
+  );
+
+  /// Period-column labels: `节次`, `第1节`, `上午`, `08:00-09:35`.
+  static final RegExp _aiPeriodLabelPattern = RegExp(
+    r'节次|节|周\s*/?\s*节|上午|下午|晚上'
+    r'|\d{1,2}\s*[:：]\s*\d{2}\s*[-~—至]\s*\d{1,2}\s*[:：]\s*\d{2}',
+  );
+
+  /// Parser_GPT's five header keywords, in its original order.
+  static final List<RegExp> _aiKeywordPatterns = [
+    RegExp(r'课程'),
+    RegExp(r'教师|老师|教授'),
+    RegExp(r'地点|教室|楼|校区'),
+    RegExp(r'周|星期'),
+    RegExp(r'节次'),
+  ];
+
+  /// Qiangzhi `<font title="教师">...</font>` field annotations.
+  static final RegExp _fontTitlePattern = RegExp(
+    "<font\\b[^>]*\\btitle\\s*=\\s*[\"']?([^\"'>\\s]+)[\"']?[^>]*>"
+    "([\\s\\S]*?)</font\\s*>",
+    caseSensitive: false,
+  );
 
   // ---- public API -----------------------------------------------------------
 
@@ -179,6 +233,186 @@ abstract final class EduHtmlParser {
     return s;
   }
 
+  /// Picks the highest-weight `<table>` on a page and shrinks it to a compact
+  /// HTML skeleton for the AI fallback (port of Parser_GPT's `findTables` +
+  /// `getWeight` + `compressHtml`).
+  ///
+  /// Every table gets a 6-digit weight; the lexicographically largest one wins
+  /// (first in document order on ties). The winner keeps only `class`, `title`,
+  /// `rowspan` and `colspan` attributes, so `title="教师"` markers and
+  /// `rowspan` / `colspan` geometry survive while `onclick`, `id`, `data-*`,
+  /// `width` and `align` disappear.
+  ///
+  /// Falls back to [stripHtmlForAi] (plain text) when the page has no table or
+  /// when the best table looks like navigation / layout (`'000000'`).
+  /// Never throws: bad input yields an empty string.
+  static String compressHtmlForAi(String rawHtml, {int maxChars = 8000}) {
+    if (rawHtml.trim().isEmpty || maxChars <= 0) return '';
+    try {
+      _AiTable? best;
+      for (final match in _tablePattern.allMatches(rawHtml)) {
+        final html = match.group(0)!;
+        final weight = _tableWeight(html);
+        if (best == null || weight.compareTo(best.weight) > 0) {
+          best = _AiTable(html: html, weight: weight);
+        }
+      }
+      if (best == null || best.weight == '000000') {
+        return stripHtmlForAi(rawHtml, maxChars: maxChars);
+      }
+      return _truncateHtml(_compressTableHtml(best.html), maxChars);
+    } on Object {
+      return '';
+    }
+  }
+
+  /// `'000000'` when the table carries no schedule signal, otherwise the six
+  /// weight digits Parser_GPT uses (`[0]` weekday/period axis, `[1]` header
+  /// keywords, `[2]` body keywords, `[3]` wide grid, `[4]`/`[5]` reserved).
+  static String _tableWeight(String table) {
+    final rows = _tableRows(table);
+    final weight = List<int>.filled(6, 0);
+
+    var maxWidth = 0;
+    for (final row in rows) {
+      var width = 0;
+      for (final cell in row.cells) {
+        width += cell.colspan;
+      }
+      if (width > maxWidth) maxWidth = width;
+    }
+    if (rows.length >= 2 && maxWidth >= 4) weight[3] = 1;
+
+    var bodyHits = 0;
+    for (final row in rows) {
+      for (final cell in row.cells) {
+        for (final pattern in _aiKeywordPatterns) {
+          if (pattern.hasMatch(cell.text)) bodyHits++;
+        }
+      }
+    }
+    if (bodyHits > 0) weight[2] = bodyHits > 6 ? 6 : bodyHits;
+
+    if (rows.isNotEmpty) {
+      var headerHits = 0;
+      for (final cell in rows.first.cells) {
+        for (final pattern in _aiKeywordPatterns) {
+          if (pattern.hasMatch(cell.text)) headerHits++;
+        }
+      }
+      if (headerHits > 0) weight[1] = headerHits > 6 ? 6 : headerHits;
+    }
+
+    var weekdayLabels = 0;
+    if (rows.isNotEmpty) {
+      for (final cell in rows.first.cells) {
+        if (_aiWeekdayHeaderPattern.hasMatch(cell.text)) weekdayLabels++;
+      }
+    }
+    var periodLabels = 0;
+    for (final row in rows) {
+      if (row.cells.isEmpty) continue;
+      if (_aiPeriodLabelPattern.hasMatch(row.cells.first.text)) {
+        periodLabels++;
+      }
+    }
+    final half = rows.length ~/ 2;
+    if (weekdayLabels >= 3 || (periodLabels > 0 && periodLabels >= half)) {
+      weight[0] = 1;
+    }
+
+    // Parser_GPT ignores the first row and each row's first cell here; a table
+    // whose body is under 5% non-empty is treated as layout chrome.
+    var considered = 0;
+    var nonEmpty = 0;
+    for (var r = 1; r < rows.length; r++) {
+      for (var c = 1; c < rows[r].cells.length; c++) {
+        considered++;
+        if (rows[r].cells[c].text.trim().isNotEmpty) nonEmpty++;
+      }
+    }
+    if (considered == 0) {
+      for (var r = 1; r < rows.length; r++) {
+        for (final cell in rows[r].cells) {
+          considered++;
+          if (cell.text.trim().isNotEmpty) nonEmpty++;
+        }
+      }
+    }
+    if (considered > 0 && nonEmpty / considered < 0.05) return '000000';
+
+    return weight.join();
+  }
+
+  static List<_AiTableRow> _tableRows(String table) {
+    final rows = <_AiTableRow>[];
+    for (final row in _tableRowPattern.allMatches(table)) {
+      final cells = <_AiTableCell>[];
+      for (final cell in _tableCellPattern.allMatches(row.group(1)!)) {
+        cells.add(
+          _AiTableCell(
+            text: _fragmentToText(cell.group(2)!),
+            colspan: _spanOf(cell.group(1) ?? ''),
+          ),
+        );
+      }
+      rows.add(_AiTableRow(cells));
+    }
+    return rows;
+  }
+
+  /// Drops chrome elements and rewrites every opening tag to keep only
+  /// `class`, `title`, `rowspan` and `colspan` (always double-quoted).
+  static String _compressTableHtml(String table) {
+    var s = table.replaceAll(RegExp(r'<!--[\s\S]*?-->'), ' ');
+    for (final tag in const ['script', 'style', 'svg', 'head']) {
+      s = _removeElement(s, tag);
+    }
+    s = s.replaceAllMapped(_aiOpenTagPattern, (match) {
+      final name = match.group(1)!;
+      final attributes = match.group(2) ?? '';
+      final buffer = StringBuffer('<$name');
+      for (final key in const ['class', 'title', 'rowspan', 'colspan']) {
+        final value = _attributeOf(attributes, key);
+        if (value == null) continue;
+        buffer.write(' $key="${value.replaceAll('"', '&quot;')}"');
+      }
+      buffer.write('>');
+      return buffer.toString();
+    });
+    s = s.replaceAll(RegExp(r'[ \t\u00A0\u3000]+'), ' ');
+    s = s.replaceAll(RegExp(r' ?\n ?'), '\n');
+    s = s.replaceAll(RegExp(r'\n{2,}'), '\n');
+    return s.trim();
+  }
+
+  static String _truncateHtml(String html, int maxChars) {
+    if (html.length <= maxChars) return html;
+    final head = html.substring(0, maxChars);
+    final cut = head.lastIndexOf('>');
+    return cut >= 0 ? head.substring(0, cut + 1) : head;
+  }
+
+  static int _spanOf(String attributes) {
+    final value = _attributeOf(attributes, 'colspan');
+    if (value == null) return 1;
+    final number = int.tryParse(value.trim());
+    if (number == null || number < 1 || number > 100) return 1;
+    return number;
+  }
+
+  /// Reads one attribute, accepting `"..."`, `'...'` and unquoted values.
+  static String? _attributeOf(String attributes, String key) {
+    final pattern = RegExp(
+      '(?:^|\\s)${RegExp.escape(key)}\\s*=\\s*'
+      r'''(?:"([^"]*)"|'([^']*)'|([^\s>"']+))''',
+      caseSensitive: false,
+    );
+    final match = pattern.firstMatch(attributes);
+    if (match == null) return null;
+    return match.group(1) ?? match.group(2) ?? match.group(3) ?? '';
+  }
+
   /// Parses a plain-text timetable (one course per line, `\t` or spaces).
   /// Never throws; unrecognised text yields an empty result.
   static EduParseResult parseText(String text) {
@@ -263,9 +497,16 @@ abstract final class EduHtmlParser {
     );
   }
 
-  // ---- new Zhengfang JSON ---------------------------------------------------
+  // ---- JSON: Zhengfang first, then the vendor normaliser --------------------
 
   static EduParseResult? _tryJson(String raw) {
+    final zhengfang = _tryZhengfangJson(raw);
+    if (zhengfang != null) return zhengfang;
+    return _tryVendorJson(raw);
+  }
+
+  /// New Zhengfang `kbList` / `sjkList`, including the period-time table.
+  static EduParseResult? _tryZhengfangJson(String raw) {
     final decoded = _decodeWhole(raw);
     final lists = <List<dynamic>>[];
     var sawZhengfang = false;
@@ -328,6 +569,57 @@ abstract final class EduHtmlParser {
       periods: periods,
       source: 'zhengfang-json',
     );
+  }
+
+  /// Vendor JSON (JinZhi / ShuWei / Qiangzhi Vue / Chaoxing / IClasses) as a
+  /// whole document or embedded in a `<script>` block.
+  static EduParseResult? _tryVendorJson(String raw) {
+    final decoded = _decodeWhole(raw);
+    if (decoded != null) {
+      final parsed = WakeupFormatNormalizer.fromAnyJsonWithSource(decoded);
+      if (parsed.courses.isNotEmpty) {
+        return EduParseResult(courses: parsed.courses, source: parsed.source);
+      }
+      return null;
+    }
+    for (final key in const [
+      'arrangedList',
+      'studentTableVms',
+      'sdpkkbList',
+      'lessons',
+      'rows',
+    ]) {
+      final slice = _findKeyJson(raw, key);
+      if (slice == null) continue;
+      try {
+        final nested = jsonDecode(slice);
+        final parsed = WakeupFormatNormalizer.fromAnyJsonWithSource(
+          <String, Object?>{key: nested},
+        );
+        if (parsed.courses.isNotEmpty) {
+          return EduParseResult(
+            courses: parsed.courses,
+            source: parsed.source,
+          );
+        }
+      } on FormatException {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /// Finds `key: [...]` / `key: {...}` in a page source and returns the
+  /// balanced JSON slice.
+  static String? _findKeyJson(String raw, String key) {
+    final pattern = RegExp(
+      '["\']?${RegExp.escape(key)}["\']?\\s*[:=]\\s*([\\[{])',
+      caseSensitive: false,
+    );
+    final match = pattern.firstMatch(raw);
+    if (match == null) return null;
+    // The regex ends with the opening bracket, so the group starts at end - 1.
+    return _balancedJson(raw, match.end - 1);
   }
 
   static ParsedCsvCourse? _courseFromJson(Map<dynamic, dynamic> m, int line) {
@@ -449,7 +741,7 @@ abstract final class EduHtmlParser {
     if (match == null) return null;
     final start = raw.indexOf('[', match.start);
     if (start < 0) return null;
-    final slice = _balancedArray(raw, start);
+    final slice = _balancedJson(raw, start);
     if (slice == null) return null;
     try {
       final decoded = jsonDecode(slice);
@@ -460,8 +752,9 @@ abstract final class EduHtmlParser {
     return null;
   }
 
-  /// Slice of a balanced `[ ... ]` block starting at [start], string-aware.
-  static String? _balancedArray(String text, int start) {
+  /// Slice of a balanced `[ ... ]` / `{ ... }` block starting at [start],
+  /// string-aware.
+  static String? _balancedJson(String text, int start) {
     var depth = 0;
     var inString = false;
     var escaped = false;
@@ -479,9 +772,9 @@ abstract final class EduHtmlParser {
       }
       if (ch == '"') {
         inString = true;
-      } else if (ch == '[') {
+      } else if (ch == '[' || ch == '{') {
         depth++;
-      } else if (ch == ']') {
+      } else if (ch == ']' || ch == '}') {
         depth--;
         if (depth == 0) return text.substring(start, i + 1);
       }
@@ -562,14 +855,11 @@ abstract final class EduHtmlParser {
         if (entry.key >= cells.length) continue;
         for (final block in _cellBlocks(cells[entry.key])) {
           if (out.length >= _maxCourses) return;
-          final text = rowPeriod != null && _periodSpan(block) == null
-              ? '$block $rowPeriod'
-              : block;
-          final course = _courseFrom(
-            text,
-            weekdayHint: entry.value,
+          final course = _courseFromCell(
+            block,
+            weekday: entry.value,
             line: out.length + 1,
-            preferFirstAsName: true,
+            rowPeriod: rowPeriod,
           );
           if (course == null) continue;
           if (!seen.add(_key(course))) continue;
@@ -593,10 +883,38 @@ abstract final class EduHtmlParser {
     return mapping;
   }
 
-  /// Splits one table cell into course blocks. Single-course cells keep their
-  /// line breaks as spaces; multi-course cells split on the next name line
-  /// after a completed block (name + week rule).
+  /// Splits one table cell into course blocks.
+  ///
+  /// Qiangzhi stacks several courses in one cell and separates them with a run
+  /// of hyphens (`-----`) or a blank line (`<br><br>`); both are split first,
+  /// keeping the inner HTML so `<font title="...">` metadata survives until
+  /// [_courseFromCell] reads it. Single-course cells keep their line breaks as
+  /// spaces; multi-course cells split on the next name line after a completed
+  /// block (name + week rule).
   static List<String> _cellBlocks(String cellHtml) {
+    final blocks = <String>[];
+    for (final chunk in cellHtml.split(RegExp(r'-{4,}'))) {
+      if (chunk.trim().isEmpty) continue;
+      blocks.addAll(_blocksFromChunk(chunk));
+    }
+    return blocks;
+  }
+
+  static List<String> _blocksFromChunk(String chunk) {
+    final groups = chunk.split(
+      RegExp(r'(?:<br\s*/?>\s*){2,}', caseSensitive: false),
+    );
+    if (groups.length > 1) {
+      return [
+        for (final group in groups)
+          if (_fragmentToText(group).isNotEmpty) group.trim(),
+      ];
+    }
+    if (_fontTitlePattern.hasMatch(chunk)) return [chunk.trim()];
+    return _textBlocks(chunk);
+  }
+
+  static List<String> _textBlocks(String cellHtml) {
     final text = _fragmentToText(cellHtml);
     if (text.isEmpty) return const [];
     final lines = [
@@ -639,11 +957,105 @@ abstract final class EduHtmlParser {
 
   // ---- shared course extraction ---------------------------------------------
 
+  /// Extracts one course from a cell block, honouring Qiangzhi `<font title>`.
+  static ParsedCsvCourse? _courseFromCell(
+    String blockHtml, {
+    required int weekday,
+    required int line,
+    String? rowPeriod,
+  }) {
+    final hints = _fontHints(blockHtml);
+    var text = _fragmentToText(hints.html);
+    if (rowPeriod != null &&
+        _periodSpan(text) == null &&
+        hints.period == null) {
+      text = '$text $rowPeriod';
+    }
+    return _courseFrom(
+      text,
+      weekdayHint: weekday,
+      line: line,
+      preferFirstAsName: true,
+      teacherOverride: hints.teacher,
+      locationOverride: hints.location,
+      weekTextOverride: hints.weekText,
+      periodOverride: hints.period,
+    );
+  }
+
+  /// Reads Qiangzhi field annotations and removes those elements so the plain
+  /// text keeps only the course name.
+  static ({
+    String? teacher,
+    String? location,
+    String? weekText,
+    (int, int)? period,
+    String html,
+  }) _fontHints(String html) {
+    String? teacher;
+    String? location;
+    String? weekText;
+    (int, int)? period;
+    final cleaned = html.replaceAllMapped(_fontTitlePattern, (match) {
+      final title = _squeeze(match.group(1) ?? '');
+      final text = _fragmentToText(match.group(2) ?? '');
+      if (const {
+        '教师',
+        '老师',
+        '任课教师',
+        '上课教师',
+        '授课教师',
+      }.contains(title)) {
+        teacher ??= _cleanTeacher(text);
+        return '';
+      }
+      if (const {'教室', '上课地点', '地点', '上课教室'}.contains(title)) {
+        final value = _cleanLocation(text);
+        if (value != null) location = '${location ?? ''}$value';
+        return '';
+      }
+      if (title == '教学楼' || title == 'jxlmc') {
+        final value = _cleanLocation(text);
+        if (value != null) location = '$value${location ?? ''}';
+        return '';
+      }
+      if (title.contains('周次') || title.contains('节次')) {
+        if (title.contains('周次')) weekText ??= _weekTextFromFontTitle(text);
+        final span = _periodSpan(text);
+        if (span != null) period ??= (span.start, span.end);
+        return '';
+      }
+      return match.group(0)!;
+    });
+    return (
+      teacher: teacher,
+      location: location,
+      weekText: weekText,
+      period: period,
+      html: cleaned,
+    );
+  }
+
+  /// `1-16(周)[01-02节]` → `1-16`; `1-16周(单)` → `1-16单`.
+  static String? _weekTextFromFontTitle(String text) {
+    final parity = RegExp(r'[单双]').firstMatch(text)?.group(0) ?? '';
+    final numbers = RegExp(
+      r'\d{1,2}(?:\s*[-~—–－至]\s*\d{1,2})?'
+      r'(?:\s*[,，、]\s*\d{1,2}(?:\s*[-~—–－至]\s*\d{1,2})?)*',
+    ).firstMatch(text)?.group(0);
+    if (numbers == null) return null;
+    return _weeksFromRaw('$numbers$parity');
+  }
+
   static ParsedCsvCourse? _courseFrom(
     String raw, {
     int? weekdayHint,
     required int line,
     required bool preferFirstAsName,
+    String? teacherOverride,
+    String? locationOverride,
+    String? weekTextOverride,
+    (int, int)? periodOverride,
   }) {
     final text = _squeeze(raw);
     if (text.isEmpty) return null;
@@ -653,7 +1065,9 @@ abstract final class EduHtmlParser {
     if (weekday == null) return null;
 
     final weekMatch = _weeksPattern.firstMatch(text);
-    var period = _periodSpan(text);
+    var period = periodOverride == null
+        ? _periodSpan(text)
+        : (start: periodOverride.$1, end: periodOverride.$2, from: 0, to: 0);
     if (period == null) {
       // Last resort: "1-2" without 节, skipping the week column span.
       for (final m in _bareRangePattern.allMatches(text)) {
@@ -690,9 +1104,11 @@ abstract final class EduHtmlParser {
       weekday: weekday,
       periodStart: period.start,
       periodEnd: period.end,
-      teacher: resolved.teacher,
-      location: resolved.location,
-      weekRuleText: weekMatch == null ? null : _normalizeWeeks(weekMatch),
+      teacher: _cleanTeacher(teacherOverride) ?? resolved.teacher,
+      location: _cleanLocation(locationOverride) ?? resolved.location,
+      weekRuleText:
+          weekTextOverride ??
+          (weekMatch == null ? null : _normalizeWeeks(weekMatch)),
     );
   }
 
@@ -1145,4 +1561,25 @@ abstract final class EduHtmlParser {
 
   static String _squeeze(String text) =>
       text.replaceAll(RegExp(r'[\s\u00A0\u3000]+'), ' ').trim();
+}
+
+/// One `<table>` candidate for [EduHtmlParser.compressHtmlForAi].
+class _AiTable {
+  const _AiTable({required this.html, required this.weight});
+
+  final String html;
+  final String weight;
+}
+
+class _AiTableRow {
+  const _AiTableRow(this.cells);
+
+  final List<_AiTableCell> cells;
+}
+
+class _AiTableCell {
+  const _AiTableCell({required this.text, required this.colspan});
+
+  final String text;
+  final int colspan;
 }

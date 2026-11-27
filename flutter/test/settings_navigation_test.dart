@@ -1,6 +1,7 @@
 import 'package:course_planner/data/api/http_client.dart';
 import 'package:course_planner/data/local/entities_snapshot.dart';
 import 'package:course_planner/presentation/settings/appearance_settings_page.dart';
+import 'package:course_planner/presentation/settings/course_settings_page.dart';
 import 'package:course_planner/presentation/settings/settings_page.dart';
 import 'package:course_planner/presentation/settings/sync_settings_page.dart';
 import 'package:course_planner/state/app_services.dart';
@@ -15,7 +16,8 @@ import 'package:go_router/go_router.dart';
 import 'helpers/memory_prefs.dart';
 
 /// No-account session: the settings hub then shows the local status card and a
-/// "登录云端账号" row instead of 退出登录.
+/// "登录云端账号" row. Signing out lives on the sync page and only appears for a
+/// cloud account.
 class _LocalSession extends SessionController {
   @override
   SessionState build() => const SessionState(
@@ -39,6 +41,25 @@ class _CloudSession extends SessionController {
           timezone: 'Asia/Shanghai',
         ),
       );
+}
+
+/// Set by [_RecordingCloudSession]: the real `logout()` would need the whole
+/// service graph (token box, auth API), which these tests deliberately lack.
+bool _logoutCalled = false;
+
+class _RecordingCloudSession extends SessionController {
+  @override
+  SessionState build() => const SessionState(
+        phase: AuthPhase.signedIn,
+        profile: SessionProfile(
+          userId: 'u1',
+          username: 'webdev',
+          timezone: 'Asia/Shanghai',
+        ),
+      );
+
+  @override
+  Future<void> logout() async => _logoutCalled = true;
 }
 
 /// Minimal [AppServices] stand-in: the sync page only needs `http.baseUrl` to
@@ -109,9 +130,9 @@ void main() {
     expect(find.text('本地用户'), findsOneWidget);
     expect(find.textContaining('数据保存在本机'), findsWidgets);
 
-    // The five category headers.
+    // The five category headers. 课程与学期 is both the group label and the
+    // single row that opens the second-level page, so it appears twice.
     for (final title in [
-      '课程与学期',
       '外观与个性化',
       'AI 助手与连接',
       '数据与云同步',
@@ -119,13 +140,11 @@ void main() {
     ]) {
       expect(find.text(title), findsOneWidget, reason: 'missing group $title');
     }
+    expect(find.text('课程与学期'), findsNWidgets(2));
 
-    // Every migrated destination is still reachable from the hub.
+    // Every destination still reachable from the hub (the course sub-pages now
+    // live one level down).
     for (final entry in [
-      '学期管理',
-      '课程管理',
-      '周期安排',
-      '导入课程',
       '标签与分类',
       '外观与课表定制',
       '连接到 MCP',
@@ -136,8 +155,20 @@ void main() {
     ]) {
       expect(find.text(entry), findsOneWidget, reason: 'missing row $entry');
     }
+    expect(find.text('学期、课程、周期安排与导入'), findsOneWidget);
 
-    // Local mode: no cloud-sync switch, and the sign-in row replaces logout.
+    // The course sub-pages are no longer rows of the hub itself.
+    for (final moved in [
+      '学期管理',
+      '课程管理',
+      '周期安排',
+      '导入课程',
+      '从教务系统导入',
+    ]) {
+      expect(find.text(moved), findsNothing, reason: '$moved still on the hub');
+    }
+
+    // Local mode: no cloud-sync switch, and the sign-in row without logout.
     expect(find.text('自动云同步'), findsNothing);
     expect(find.text('登录云端账号'), findsOneWidget);
     expect(find.text('退出登录'), findsNothing);
@@ -149,7 +180,7 @@ void main() {
     expect(find.text('硬刷新本地缓存'), findsNothing);
   });
 
-  testWidgets('cloud account hub shows the sync state and logout',
+  testWidgets('cloud account hub shows the sync state without logout',
       (tester) async {
     _useTallSurface(tester);
     await tester.pumpWidget(
@@ -164,8 +195,43 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('云同步：开'), findsOneWidget);
-    expect(find.text('退出登录'), findsOneWidget);
+    // Signing out moved to the sync page, whichever the account type.
+    expect(find.text('退出登录'), findsNothing);
     expect(find.text('登录云端账号'), findsNothing);
+  });
+
+  testWidgets('cloud sync page offers logout behind a confirmation',
+      (tester) async {
+    _useTallSurface(tester);
+    _logoutCalled = false;
+    await tester.pumpWidget(
+      _app(
+        session: _RecordingCloudSession.new,
+        home: const SyncSettingsPage(),
+        services: _FakeServices(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('退出登录'), findsOneWidget);
+
+    // The dialog names the consequence before anything is dropped.
+    await tester.tap(find.text('退出登录'));
+    await tester.pumpAndSettle();
+    expect(find.text('退出登录？'), findsOneWidget);
+    expect(find.textContaining('本地数据会保留'), findsOneWidget);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('退出登录？'), findsNothing);
+    expect(_logoutCalled, isFalse);
+
+    await tester.tap(find.text('退出登录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('退出'));
+    await tester.pumpAndSettle();
+    expect(_logoutCalled, isTrue);
   });
 
   testWidgets('appearance page hosts every look-and-feel row', (tester) async {
@@ -212,6 +278,8 @@ void main() {
     expect(find.text('立即同步'), findsNothing);
     expect(find.text('冲突处理'), findsNothing);
     expect(find.text('重置网络连接'), findsNothing);
+    // Nothing to sign out of without an account.
+    expect(find.text('退出登录'), findsNothing);
   });
 
   testWidgets('hub pushes to the appearance page', (tester) async {
@@ -242,5 +310,43 @@ void main() {
     expect(find.text('界面风格引擎'), findsOneWidget);
     expect(find.text('中午分界点'), findsOneWidget);
     expect(find.text('外观与课表定制'), findsWidgets);
+  });
+
+  testWidgets('the course entry opens the course & semester page',
+      (tester) async {
+    _useTallSurface(tester);
+    final router = GoRouter(
+      initialLocation: '/settings',
+      routes: [
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsPage(),
+        ),
+        GoRoute(
+          path: '/settings/course-hub',
+          builder: (context, state) => const CourseSettingsPage(),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      _app(session: _LocalSession.new, router: router),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // The hub row, not the group label above it.
+    await tester.tap(find.widgetWithText(ListTile, '课程与学期'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('课程与学期'), findsOneWidget); // the page title
+    for (final entry in [
+      '学期管理',
+      '课程管理',
+      '周期安排',
+      '导入课程',
+      '从教务系统导入',
+    ]) {
+      expect(find.text(entry), findsOneWidget, reason: 'missing $entry');
+    }
   });
 }

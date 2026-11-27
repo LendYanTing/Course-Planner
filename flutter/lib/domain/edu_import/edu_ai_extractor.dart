@@ -11,6 +11,7 @@ import '../../agent/agent_config.dart';
 import '../../agent/llm_client.dart';
 import '../../core/util/week_text.dart';
 import '../../data/api/import_api.dart';
+import 'wakeup_normalizer.dart';
 
 /// Extracts courses from arbitrary timetable text through [LlmClient].
 class EduAiExtractor {
@@ -19,26 +20,90 @@ class EduAiExtractor {
   final LlmClient client;
   final LlmConfig config;
 
-  static const _maxChars = 6000;
+  /// Compressed table HTML is 2–6 KB; 12 K leaves room for long pages.
+  static const _maxChars = 12000;
   static const _maxPeriodNo = 20;
+  static const _maxCourses = 500;
 
+  /// Production prompt ported from Parser_GPT's AI parser: the model answers
+  /// with `IClassesItem[]` so period/week text never has to be invented.
   static const _systemPrompt =
-      '你是教务课表结构化助手。请把用户提供的教务网页文本或复制的课表文本解析为课程数组。\n'
-      '只输出一个 JSON 数组，不要 markdown 代码块，不要解释，不要输出任何多余文字。\n'
-      '每个元素的字段：\n'
-      '- name：课程名称，字符串，必填，保留括号、班号等原文；\n'
-      '- weekday：星期几，整数 1-7（周一=1，周日=7），必填；\n'
-      '- periodStart：开始节次，整数 1-20，必填；\n'
-      '- periodEnd：结束节次，整数 1-20，且不小于 periodStart，必填；\n'
-      '- teacher：教师，字符串，未知用 null；\n'
-      '- location：上课地点，字符串，未知用 null；\n'
-      '- weeks：周次，字符串，必填，使用 1-16、1-5,7-11单、2,4,6 这类写法。\n'
-      '同一门课的不同上课时间拆成多个元素；无法识别的行直接忽略；没有课程时输出 []。';
+      '请从用户提供的 html 文本中提取课表信息，返回 IClassesItem[]，'
+      '严格按照 JSON 格式返回，不要包含其他文字，'
+      'IClassesItem 的结构及相关字段的定义如下：\n'
+      'interface IClassesItem {\n'
+      '  /**\n'
+      '   * 课程标识，用来区分列表中的课程\n'
+      '   * 非必填，没有就是 ""\n'
+      '   */\n'
+      '  classDefId: string;\n'
+      '  /**\n'
+      '   * 课程名\n'
+      '   */\n'
+      '  courseName: string;\n'
+      '  /**\n'
+      '   * 上课时间地点\n'
+      '   */\n'
+      '  classTimeLoc: {\n'
+      '    /**\n'
+      '     * 任课老师 非必填，没有就是 ""\n'
+      '     */\n'
+      '    teacher: string;\n'
+      '    /**\n'
+      '     * 上课地点 非必填，没有就是 ""\n'
+      '     */\n'
+      '    location: string;\n'
+      '    /**\n'
+      '     * 唯一 id 非必填，没有就是 ""\n'
+      '     */\n'
+      '    classTimeLocId: string;\n'
+      '    /**\n'
+      '     * 必填\n'
+      '     * 周几上课，默认 0\n'
+      '     * 1- 星期一，2- 星期二，3- 星期三，4- 星期四，5- 星期五，'
+      '6- 星期六，0- 星期日\n'
+      '     */\n'
+      '    weekDay: number;\n'
+      '    /**\n'
+      '     * 暂时没用，写死 1\n'
+      '     * 1- 上午，2- 中午，3- 晚上\n'
+      '     */\n'
+      '    dayPart: number;\n'
+      '    /**\n'
+      '     * 必填，默认 [1,2,3,4,5,6,7,....25]\n'
+      '     * 上课周数，从 1 开始，第几周\n'
+      '     */\n'
+      '    weekNums: number[];\n'
+      '    /**\n'
+      '     * 必填，默认 [1,2]\n'
+      '     * 单节课 [1,1]、[2,2] 这样类推\n'
+      '     * 上课时间，课程节数如 [1,3] 标识第一节到第三节\n'
+      '     */\n'
+      '    classTimeDailyIdxList: number[];\n'
+      '  }[];\n'
+      '}\n'
+      '识别出所有课程，不要遗漏，classDefId、classTimeLocId 设置为空字符串，'
+      'dayPart 固定为 1，weekNums 不要出现代码，必须是显式周次数组（升序）。\n'
+      '其中 classTimeLoc 是数组，每个元素包含 teacher、location、weekDay、'
+      'weekNums、classTimeDailyIdxList 字段，同一个课程的不同上课时间点会拆分成'
+      '多个元素，每个元素代表一个具体的上课时间信息。\n'
+      '需要合并的情况：\n'
+      '1. 如果一个课程的具体上课信息中，除了上课周次不同之外，其他星期、地点、'
+      '老师、节次都相同，那么就合并为一个上课时段，weekNums 字段包含所有周数，'
+      '升序排序。\n'
+      '2. 如果一个课程的具体上课信息中，除了上课节次不同之外，其他星期、地点、'
+      '老师、周次都相同，也需要合并为一个上课时段，classTimeDailyIdxList 包含'
+      '开始和结束的节次（格式为 [开始节次, 结束节次]）。\n'
+      '其他情况，只要上课地点、老师、星期、周次、节次有任何一项不一样，'
+      '就表示是不同的上课时段，需要拆分为不同的上课时间点。\n'
+      '只输出一个 JSON 数组，不要使用 markdown 代码块，不要解释。';
 
   /// Sends the (already stripped) [strippedContent] and parses the JSON array.
   ///
-  /// Invalid entries are skipped. Throws [LlmException] when the answer carries
-  /// no usable course data at all; the model key is never logged or echoed.
+  /// Both the `IClassesItem[]` answer and the legacy flat course shape are
+  /// accepted; invalid entries are skipped. Throws [LlmException] when the
+  /// answer carries no usable course data at all; the model key is never logged
+  /// or echoed.
   Future<List<ParsedCsvCourse>> extract(String strippedContent) async {
     final content = strippedContent.trim();
     if (content.isEmpty) {
@@ -66,14 +131,31 @@ class EduAiExtractor {
     if (entries == null) {
       throw LlmException('模型返回的内容不是合法的 JSON 课程数组，请重试');
     }
-    if (entries.isEmpty) return const [];
 
     final courses = <ParsedCsvCourse>[];
+    final keys = <String>{};
+
+    void addAll(Iterable<ParsedCsvCourse> rows) {
+      for (final row in rows) {
+        if (courses.length >= _maxCourses) return;
+        if (!keys.add(_dedupeKey(row))) continue;
+        // Keep `line` gapless in generation order for the preview table.
+        courses.add(_withLine(row, courses.length + 1));
+      }
+    }
+
     for (final entry in entries) {
+      if (entry is! Map) continue;
+      if (entry.containsKey('courseName') &&
+          entry.containsKey('classTimeLoc')) {
+        addAll(WakeupFormatNormalizer.fromIClassesItems([entry]));
+        continue;
+      }
       final course = _courseFromEntry(entry, courses.length + 1);
       if (course == null) continue;
-      courses.add(course);
+      addAll([course]);
     }
+
     if (courses.isEmpty) {
       throw LlmException('模型返回的课程缺少课程名、星期、节次或周次，请重试');
     }
@@ -100,14 +182,33 @@ class EduAiExtractor {
     }
     if (decoded is List) return decoded;
     if (decoded is Map) {
-      for (final key in const ['courses', 'data', 'items', 'list']) {
+      for (final key in const ['courses', 'classes', 'data', 'items', 'list']) {
         final value = decoded[key];
         if (value is List) return value;
       }
-      if (decoded.containsKey('name')) return [decoded];
+      if (decoded.containsKey('name') || decoded.containsKey('courseName')) {
+        return [decoded];
+      }
     }
     return null;
   }
+
+  static String _dedupeKey(ParsedCsvCourse course) =>
+      '${course.name}\u0000${course.weekday}\u0000${course.periodStart}'
+      '\u0000${course.periodEnd}\u0000${course.weekRuleText ?? ''}'
+      '\u0000${course.teacher ?? ''}\u0000${course.location ?? ''}';
+
+  static ParsedCsvCourse _withLine(ParsedCsvCourse course, int line) =>
+      ParsedCsvCourse(
+        line: line,
+        name: course.name,
+        weekday: course.weekday,
+        periodStart: course.periodStart,
+        periodEnd: course.periodEnd,
+        teacher: course.teacher,
+        location: course.location,
+        weekRuleText: course.weekRuleText,
+      );
 
   static ParsedCsvCourse? _courseFromEntry(Object? entry, int line) {
     if (entry is! Map) return null;

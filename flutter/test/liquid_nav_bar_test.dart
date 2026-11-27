@@ -14,6 +14,7 @@ void main() {
   const items = <LiquidNavItem>[
     LiquidNavItem(icon: Icons.calendar_today_outlined, selectedIcon: Icons.calendar_today, label: '日程'),
     LiquidNavItem(icon: Icons.checklist_outlined, selectedIcon: Icons.checklist, label: '待办'),
+    LiquidNavItem(icon: Icons.auto_awesome_outlined, selectedIcon: Icons.auto_awesome, label: 'AI 助手'),
     LiquidNavItem(icon: Icons.settings_outlined, selectedIcon: Icons.settings, label: '设置'),
   ];
 
@@ -94,15 +95,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('tapping a tab reports its index', (tester) async {
-    int? selected;
-    await pumpBar(tester, onSelected: (i) => selected = i);
+  testWidgets('tapping each tab reports its index', (tester) async {
+    // The bar ignores taps on the already-selected tab, so every case starts
+    // from a different index.
+    for (var i = 1; i < items.length; i++) {
+      int? selected;
+      await pumpBar(tester, onSelected: (index) => selected = index);
 
-    await tester.tap(find.text('待办'));
+      await tester.tap(find.text(items[i].label));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(selected, i, reason: 'tapping ${items[i].label}');
+      expect(tester.takeException(), isNull);
+    }
+
+    int? backToFirst;
+    await pumpBar(tester, index: 2, onSelected: (index) => backToFirst = index);
+    await tester.tap(find.text('日程'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
+    expect(backToFirst, 0);
+  });
 
-    expect(selected, 1);
+  testWidgets('shows the filled icon only for the selected tab', (tester) async {
+    await pumpBar(tester, index: 2);
+
+    expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
+    expect(find.byIcon(Icons.auto_awesome_outlined), findsNothing);
+    expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today), findsNothing);
+
+    await pumpBar(tester, index: 3);
+    expect(find.byIcon(Icons.settings), findsOneWidget);
+    expect(find.byIcon(Icons.settings_outlined), findsNothing);
+    expect(find.byIcon(Icons.auto_awesome_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.auto_awesome), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -115,8 +143,8 @@ void main() {
     final itemWidth = capsule.width / items.length;
     final y = rect.center.dy;
     final start = Offset(capsule.left + itemWidth * 0.5, y);
-    // 2.1 items to the right: rounds to the last tab.
-    final end = Offset(capsule.left + itemWidth * 2.1, y);
+    // Far right: rounds to the last tab.
+    final end = Offset(capsule.left + capsule.width - 2, y);
 
     await tester.dragFrom(start, end - start);
     await tester.pump();

@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
 import '../../core/time/user_time.dart';
 import '../../data/local/view_models.dart';
+import '../../domain/entities.dart';
 import '../../domain/todo.dart';
+import '../../state/app_services.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
 import '../../state/todo_controller.dart';
 import '../adaptive/adaptive.dart';
-import '../agent/agent_chat_sheet.dart';
 import '../settings/courses_page.dart' show kPalette;
 import '../widgets/voice_input_button.dart';
 import 'todo_blocks_sheet.dart';
@@ -56,20 +58,14 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           blocks: board.blocksByTodo[live.value.id] ?? const [],
           deadlineText: deadlineTextFor(live.value),
           onChanged: (status) => controller.setStatus(live.value, status),
-          onDelete: () => controller.delete(live.value),
+          onDelete: () => _confirmDelete(context, live.value),
           onEdit: () => _openEditor(context, existing: live.value),
-          onManageBlocks: () => _openBlocks(context, live.value),
         );
 
     return Scaffold(
       appBar: AppTopBar(
         title: '待办',
         actions: [
-          IconButton(
-            tooltip: 'AI 助手',
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: () => AgentChatSheet.show(context),
-          ),
           // Hidden for a local session (no server to sync with).
           if (ref.watch(cloudSyncEnabledProvider))
             IconButton(
@@ -82,11 +78,14 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   : const Icon(Icons.sync),
             ),
           PopupMenuButton<Object>(
-            tooltip: '排序',
-            icon: const Icon(Icons.sort),
+            icon: const Icon(Icons.tune),
+            tooltip: '排序与筛选',
+            iconSize: 22,
+            padding: EdgeInsets.zero,
             onSelected: (v) {
               if (v is TodoSortKey) controller.setSortKey(v);
               if (v is TodoSortScope) controller.setSortScope(v);
+              if (v == 'completed') context.push('/todo/completed');
             },
             itemBuilder: (_) => [
               for (final k in TodoSortKey.values)
@@ -102,13 +101,11 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                   checked: query.sort.scope == s,
                   child: Text(_sortScopeLabel(s)),
                 ),
-            ],
-          ),
-          PopupMenuButton<String>(
-            onSelected: (v) => controller.setShowCompleted(v == 'done'),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'open', child: Text('仅进行中')),
-              PopupMenuItem(value: 'done', child: Text('包含已完成')),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'completed',
+                child: Text('已完成任务'),
+              ),
             ],
           ),
         ],
@@ -131,7 +128,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
           Expanded(
             child: board.todoCount == 0 && board.loaded
                 ? const Center(child: Text('还没有待办，点右下角新建'))
-                : board.groups.isEmpty && board.done.isEmpty
+                : board.groups.isEmpty
                     ? const Center(child: Text('没有符合条件的待办'))
                     : ListView(
                         // Reserve the translucent floating nav bar's height
@@ -152,13 +149,6 @@ class _TodoPageState extends ConsumerState<TodoPage> {
                               }),
                               children: [for (final live in g.items) tile(live)],
                             ),
-                          if (query.showCompleted && board.done.isNotEmpty) ...[
-                            const Padding(
-                              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
-                              child: Text('已完成', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                            ),
-                            for (final live in board.done) tile(live),
-                          ],
                         ],
                       ),
           ),
@@ -197,26 +187,37 @@ class _TodoPageState extends ConsumerState<TodoPage> {
     );
   }
 
-  Future<void> _openBlocks(BuildContext context, Todo todo) async {
-    final userTime = ref.read(userTimeProvider);
-    if (userTime == null) return;
-    await showAppBottomSheet<void>(
+  /// Deletes only after an explicit confirmation: a row tap opens the editor,
+  /// so the trailing icon must never remove data by itself.
+  Future<void> _confirmDelete(BuildContext context, Todo todo) async {
+    final confirmed = await showAppDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => TodoBlocksSheet(todo: todo, userTime: userTime),
+      title: '删除任务？',
+      content: const Text('删除后无法恢复。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context, rootNavigator: true).pop(true),
+          child: const Text('删除'),
+        ),
+      ],
     );
+    if (confirmed != true || !mounted) return;
+    await ref.read(todoControllerProvider.notifier).delete(todo);
   }
 
   Future<void> _openEditor(BuildContext context, {Todo? existing}) async {
     final snap = ref.read(snapshotProvider).value;
     final tags = snap == null ? <Live<Tag>>[] : liveTags(snap);
     final categories = snap == null ? <Live<Category>>[] : liveCategories(snap);
-    // The editor does not load existing blocks (it stays a quick create sheet);
-    // it only mentions how many the todo already has.
-    final existingBlockCount = snap == null || existing == null
-        ? 0
-        : liveBlocks(snap, todoId: existing.id).length;
+    // The editor shows an existing one-off block inline and hands a project's
+    // blocks over to TodoBlocksSheet, so it needs the current windows.
+    final existingBlocks = snap == null || existing == null
+        ? const <TodoBlock>[]
+        : liveBlocks(snap, todoId: existing.id).map((e) => e.value).toList();
     await showAppBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -225,7 +226,7 @@ class _TodoPageState extends ConsumerState<TodoPage> {
         existing: existing,
         tags: tags.map((e) => e.value).toList(),
         categories: categories.map((e) => e.value).toList(),
-        existingBlockCount: existingBlockCount,
+        existingBlocks: existingBlocks,
       ),
     );
   }
@@ -244,8 +245,8 @@ String _sortScopeLabel(TodoSortScope scope) => switch (scope) {
       TodoSortScope.withinGroup => '仅组内',
     };
 
-/// A collapsible category section of the todo list. Tapping the header
-/// expands/collapses it; the count stays visible when collapsed.
+/// A category section of the todo list: a dot + count badge header over the
+/// category's rows, which sit together in one segmented card.
 class _CategoryGroup extends StatelessWidget {
   const _CategoryGroup({
     required this.title,
@@ -269,32 +270,91 @@ class _CategoryGroup extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        InkWell(
-          onTap: onToggle,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: Row(
-              children: [
-                Icon(expanded ? Icons.expand_more : Icons.chevron_right, size: 20),
-                const SizedBox(width: 4),
-                Container(width: 10, height: 10, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(title,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: accent)),
-                ),
-                Text('$count', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              ],
-            ),
-          ),
+        _GroupHeader(
+          title: title,
+          count: count,
+          accent: accent,
+          expanded: expanded,
+          onToggle: onToggle,
+          countKey: ValueKey('todo-group-count-$title'),
         ),
-        if (expanded) ...children,
+        if (expanded)
+          AppSegmentedColumn(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            children: children,
+          ),
       ],
     );
   }
 }
 
-class _TodoTile extends StatelessWidget {
+/// Collapsible group header: accent dot, title, count badge and a chevron.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({
+    required this.title,
+    required this.count,
+    required this.accent,
+    this.expanded = false,
+    this.onToggle,
+    this.countKey,
+  });
+
+  final String title;
+  final int count;
+  final Color accent;
+  final bool expanded;
+  final VoidCallback? onToggle;
+  final Key? countKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onToggle,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: accent),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$count',
+                key: countKey,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: accent),
+              ),
+            ),
+            if (onToggle != null)
+              Icon(
+                expanded ? Icons.expand_more : Icons.chevron_right,
+                size: 18,
+                color: accent,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TodoTile extends ConsumerWidget {
   const _TodoTile({
     required this.todo,
     required this.pending,
@@ -305,7 +365,6 @@ class _TodoTile extends StatelessWidget {
     required this.onChanged,
     required this.onDelete,
     required this.onEdit,
-    this.onManageBlocks,
   });
 
   final Todo todo;
@@ -321,83 +380,133 @@ class _TodoTile extends StatelessWidget {
   final ValueChanged<TodoStatus> onChanged;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
-  final VoidCallback? onManageBlocks;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final category = todo.categoryId == null ? null : categoryById[todo.categoryId];
     final done = todo.isCompleted;
-    return ListTile(
+    // A queue chip only means something when a cloud server can actually take
+    // the push; local mode and switched-off sync never upload.
+    final showPending = pending && ref.watch(cloudSyncEnabledProvider);
+    final completedBlocks = blocks.where((b) => b.status == BlockStatus.completed).length;
+    final pills = <Widget>[
+      if (deadlineText != null)
+        _Pill(
+          text: '截止 $deadlineText',
+          color: _overdue(todo.deadlineAt!) ? AppTheme.deadlineColor : null,
+        ),
+      if (category != null)
+        _Pill(
+          text: category.name,
+          color: AppTheme.parseHex(category.color) ?? scheme.secondary,
+        ),
+      for (final id in todo.tagIds)
+        if (tagById[id] != null)
+          _Pill(
+            text: tagById[id]!.name,
+            color: AppTheme.parseHex(tagById[id]!.color) ?? scheme.tertiary,
+          ),
+      if (todo.type == TodoType.project) const _Pill(text: '项目'),
+      // Every priority is visible, with its own wording and tone.
+      switch (todo.priority) {
+        TodoPriority.urgent => _Pill(
+            text: '紧急',
+            color: AppTheme.deadlineColor,
+            background: scheme.errorContainer,
+          ),
+        TodoPriority.high => _Pill(
+            text: '高',
+            color: scheme.onTertiaryContainer,
+            background: scheme.tertiaryContainer,
+          ),
+        TodoPriority.normal => _Pill(
+            text: '普通',
+            color: scheme.onSecondaryContainer,
+            background: scheme.secondaryContainer,
+          ),
+        TodoPriority.low => _Pill(text: '低', color: scheme.outline),
+      },
+      if (todo.estimatedMinutes != null) _Pill(text: '约${todo.estimatedMinutes}分钟'),
+      // A one-off is a single window, so a 0/1 counter would only add noise;
+      // the project progress pill appears once there is something to track.
+      if (todo.type == TodoType.project && blocks.length > 1)
+        _Pill(text: '$completedBlocks 块已完成/${blocks.length}'),
+    ];
+    return InkWell(
       onTap: onEdit,
-      leading: Checkbox(
-        value: done,
-        onChanged: (_) => onChanged(done ? TodoStatus.todo : TodoStatus.completed),
-      ),
-      title: Row(
-        children: [
-          Flexible(
-            child: Text(
-              todo.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: done ? const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey) : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 2, top: 3),
+              child: Checkbox(
+                value: done,
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                onChanged: (_) => onChanged(done ? TodoStatus.todo : TodoStatus.completed),
+              ),
             ),
-          ),
-          if (pending) ...[
             const SizedBox(width: 6),
-            const Icon(Icons.cloud_upload_outlined, size: 14, color: Colors.orange),
-          ],
-        ],
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (todo.description != null && todo.description!.isNotEmpty)
-            Text(todo.description!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-          Wrap(
-            spacing: 4,
-            runSpacing: 2,
-            children: [
-              if (category != null)
-                _Pill(text: category.name, color: AppTheme.parseHex(category.color) ?? colors.secondary),
-              for (final id in todo.tagIds)
-                if (tagById[id] != null) _Pill(text: tagById[id]!.name, color: AppTheme.parseHex(tagById[id]!.color) ?? colors.tertiary),
-              if (todo.type == TodoType.project) const _Pill(text: '项目'),
-              if (todo.priority == TodoPriority.urgent) const _Pill(text: '紧急', color: AppTheme.deadlineColor),
-              if (todo.estimatedMinutes != null) _Pill(text: '约${todo.estimatedMinutes}分钟'),
-              if (blocks.isNotEmpty)
-                _Pill(text: '${blocks.where((b) => b.status == BlockStatus.completed).length}/${blocks.length} 块'),
-            ],
-          ),
-          if (deadlineText != null)
-            Text('截止 $deadlineText',
-                style: TextStyle(fontSize: 12, color: _overdue(todo.deadlineAt!) ? AppTheme.deadlineColor : null)),
-        ],
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // One tap to schedule an existing todo: the same sheet the menu opens,
-          // without the two-level detour.
-          if (onManageBlocks != null)
-            IconButton(
-              icon: const Icon(Icons.more_time, size: 20),
-              tooltip: '排入日程',
-              onPressed: onManageBlocks,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          todo.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w600,
+                            color: done ? scheme.onSurfaceVariant : scheme.onSurface,
+                            decoration: done ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
+                      ),
+                      if (showPending) ...[
+                        const SizedBox(width: 6),
+                        const Icon(Icons.cloud_upload_outlined, size: 14, color: Colors.orange),
+                      ],
+                    ],
+                  ),
+                  if (todo.description != null && todo.description!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        todo.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  if (pills.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Wrap(spacing: 5, runSpacing: 4, children: pills),
+                    ),
+                ],
+              ),
             ),
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'delete') onDelete();
-              if (v == 'blocks') onManageBlocks?.call();
-            },
-            itemBuilder: (_) => [
-              if (onManageBlocks != null)
-                const PopupMenuItem(value: 'blocks', child: Text('时间块')),
-              const PopupMenuItem(value: 'delete', child: Text('删除', style: TextStyle(color: Colors.red))),
-            ],
-          ),
-        ],
+            const SizedBox(width: 2),
+            // Scheduling and block management live in the editor now, so the
+            // row keeps one action: delete (confirmed by the page first).
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 20),
+              tooltip: '删除',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+              padding: EdgeInsets.zero,
+              onPressed: onDelete,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -409,21 +518,29 @@ class _TodoTile extends StatelessWidget {
 }
 
 class _Pill extends StatelessWidget {
-  const _Pill({required this.text, this.color});
+  const _Pill({required this.text, this.color, this.background});
 
   final String text;
   final Color? color;
 
+  /// Explicit fill for semantic pills (priority containers); otherwise the
+  /// text colour is tinted to 14%.
+  final Color? background;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(top: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: (color ?? Colors.grey).withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
+        color: background ?? (color ?? Colors.grey).withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(text, style: TextStyle(fontSize: 10, color: color ?? Colors.grey)),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 11, color: color ?? Colors.grey),
+      ),
     );
   }
 }
@@ -435,16 +552,16 @@ class TodoEditorSheet extends ConsumerStatefulWidget {
     required this.tags,
     required this.categories,
     this.existing,
-    this.existingBlockCount = 0,
+    this.existingBlocks = const <TodoBlock>[],
   });
 
   final Todo? existing;
   final List<Tag> tags;
   final List<Category> categories;
 
-  /// How many blocks the edited todo already has. The sheet never loads them
-  /// (it stays a quick create sheet) — it only mentions the count.
-  final int existingBlockCount;
+  /// Windows already scheduled for [existing]. A one-off loads its single
+  /// window inline; a project hands them to TodoBlocksSheet.
+  final List<TodoBlock> existingBlocks;
 
   @override
   ConsumerState<TodoEditorSheet> createState() => _TodoEditorSheetState();
@@ -463,10 +580,25 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   late final List<Category> _categories;
 
   /// "排入日程时间表": draft windows written together with the todo on save.
-  /// Existing blocks are never loaded here; these are always new ones.
-  bool _scheduleEnabled = false;
+  /// Existing one-off windows are loaded into [_blocks]; a project's windows
+  /// stay in the mirror and are edited through TodoBlocksSheet.
+  late bool _scheduleEnabled;
   final List<_DraftBlock> _blocks = [];
+
+  /// Set when [_blocks] mirrors an already stored one-off window, so saving
+  /// updates it instead of creating a duplicate.
+  String? _replaceBlockId;
+
+  /// The windows currently stored for [TodoEditorSheet.existing]. Kept in
+  /// state because the project entry's subtitle and the "switch off" deletion
+  /// must follow the sheet's edits.
+  late List<TodoBlock> _persistedBlocks;
+
   bool _saving = false;
+
+  /// Whether the "tags & more" row shows its chips. Editing a todo that
+  /// already carries detail opens it, so nothing silently looks absent.
+  late bool _moreExpanded;
 
   @override
   void initState() {
@@ -481,6 +613,23 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
     _tagIds = {...(widget.existing?.tagIds ?? const [])};
     _tags = [...widget.tags];
     _categories = [...widget.categories];
+    _persistedBlocks = [...widget.existingBlocks];
+    _scheduleEnabled = widget.existingBlocks.isNotEmpty;
+    // A one-off owns exactly one window: show it inline and update that row on
+    // save. A project's windows are managed by TodoBlocksSheet instead.
+    if (_type == TodoType.oneOff && widget.existingBlocks.isNotEmpty) {
+      final block = widget.existingBlocks.first;
+      _blocks.add(_DraftBlock(
+        startUtc: block.startAt,
+        endUtc: block.endAt,
+        note: block.blockNote ?? '',
+      ));
+      _replaceBlockId = block.id;
+    }
+    _moreExpanded = widget.existing != null &&
+        (widget.existing!.categoryId != null ||
+            widget.existing!.tagIds.isNotEmpty ||
+            widget.existing!.type == TodoType.project);
   }
 
   @override
@@ -500,18 +649,12 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
     // Watched here so the build and the button agree; the picker handler
     // (_pickDeadline) stays a ref.read, as it runs outside build.
     final userTime = ref.watch(userTimeProvider);
-    // Editing a todo that already carries detail opens the folded section, so
-    // nothing silently looks absent.
-    final expandMore = isEdit &&
-        ((widget.existing!.description?.isNotEmpty ?? false) ||
-            widget.existing!.categoryId != null ||
-            widget.existing!.tagIds.isNotEmpty ||
-            widget.existing!.type == TodoType.project);
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 16,
+        left: 16,
+        right: 16,
+        top: 12,
         bottom: MediaQuery.of(context).viewInsets.bottom + 16,
       ),
       child: SingleChildScrollView(
@@ -519,16 +662,113 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(isEdit ? '编辑待办' : '新建待办', style: Theme.of(context).textTheme.titleMedium),
+            _buildHeader(isEdit),
             const SizedBox(height: 12),
-            // 1. What to do.
-            TextField(
-              controller: _title,
-              autofocus: !isEdit,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                hintText: '要做什么？（例如：完成高数作业第三章）',
-                suffixIcon: VoiceInputButton(
+            // Visual block 1: title + note fused into one borderless card.
+            _buildInputCard(scheme),
+            const SizedBox(height: 12),
+            // Visual block 2: time / reminder and scheduling.
+            AppSegmentedColumn(
+              children: [
+                _buildTimeItem(userTime, scheme),
+                _buildScheduleItem(isEdit, userTime, scheme),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Visual block 3: attributes.
+            AppSegmentedColumn(
+              children: [
+                _buildPriorityItem(scheme),
+                _buildCategoryItem(scheme),
+                _buildMoreItem(scheme, userTime),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Bottom save stays for one-handed use (and test compatibility).
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: const StadiumBorder(),
+              ),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 18sp title on the left, a rounded save capsule on the right.
+  Widget _buildHeader(bool isEdit) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            isEdit ? '编辑待办' : '新建待办',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          style: FilledButton.styleFrom(
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            shape: const StadiumBorder(),
+          ),
+          child: const Text('保存'),
+        ),
+      ],
+    );
+  }
+
+  /// Immersive input card: borderless title row + hairline + borderless note.
+  Widget _buildInputCard(ColorScheme scheme) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 2, 8, 4),
+      decoration: BoxDecoration(
+        // One tonal step above the sheet (which itself is container-high in
+        // dark mode), so the input card reads as its own surface.
+        color: dark
+            ? scheme.surfaceContainerHighest
+            : scheme.surfaceBright,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _title,
+                  autofocus: !(widget.existing != null),
+                  textInputAction: TextInputAction.next,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                  decoration: const InputDecoration(
+                    hintText: '准备做什么？',
+                    // The card is the visual container: no fill, and the
+                    // global focused ring must not draw a border inside it.
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              Container(
+                margin: const EdgeInsets.only(left: 4),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                  shape: BoxShape.circle,
+                ),
+                child: VoiceInputButton(
                   tooltip: '语音输入待办标题',
                   onText: (text) => setState(() {
                     _title.value = TextEditingValue(
@@ -538,350 +778,745 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
                   }),
                 ),
               ),
+            ],
+          ),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            indent: 8,
+            endIndent: 8,
+            color: scheme.outlineVariant.withValues(alpha: 0.35),
+          ),
+          TextField(
+            controller: _desc,
+            minLines: 1,
+            maxLines: 3,
+            style: const TextStyle(fontSize: 13.5),
+            decoration: InputDecoration(
+              hintText: '添加备注、要求或步骤（可选）…',
+              hintStyle: TextStyle(fontSize: 13.5, color: scheme.onSurfaceVariant),
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.only(top: 8, bottom: 8),
             ),
-            const SizedBox(height: 12),
-            // 2. Reminder (one-off) / deadline (project) plus quick picks.
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    // A one-off is a single moment (take out the trash), so its
-                    // time point reads as a reminder rather than a deadline.
-                    icon: Icon(_type == TodoType.oneOff
-                        ? Icons.notifications_none
-                        : Icons.schedule),
-                    label: Text(_deadlineLabel(userTime)),
-                    onPressed:
-                        userTime == null ? null : () => _pickDeadline(userTime),
-                  ),
-                ),
-                if (_deadline != null)
-                  IconButton(
-                    icon: const Icon(Icons.clear),
-                    tooltip: '清除时间',
-                    onPressed: () => setState(() => _deadline = null),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                ActionChip(
-                  label: const Text('今天 22:00'),
-                  onPressed: userTime == null
-                      ? null
-                      : () => setState(() => _deadline = _atDay(userTime, 0, 22, 0)),
-                ),
-                ActionChip(
-                  label: const Text('明天 18:00'),
-                  onPressed: userTime == null
-                      ? null
-                      : () => setState(() => _deadline = _atDay(userTime, 1, 18, 0)),
-                ),
-                ActionChip(
-                  label: const Text('周日 23:59'),
-                  onPressed: userTime == null
-                      ? null
-                      : () => setState(() => _deadline = _sundayAt(userTime, 23, 59)),
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.edit_calendar, size: 16),
-                  label: const Text('自定义'),
-                  onPressed: userTime == null ? null : () => _pickDeadline(userTime),
-                ),
-              ],
-            ),
-            if (userTime == null)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text(
-                  '用户时区未就绪，暂时无法设置或显示时间。',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ),
-            if (_type == TodoType.oneOff)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text(
-                  '提醒时间用于「到点做一下」的一次性事情（比如扔垃圾），不需要再分配时间块。',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ),
-            const SizedBox(height: 12),
-            // 3. Same-sheet scheduling: todo + blocks in one save.
-            _buildScheduleSection(isEdit, userTime),
-            const SizedBox(height: 12),
-            // 4. Priority in one row.
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                for (final p in TodoPriority.values)
-                  ChoiceChip(
-                    label: Text(_priorityLabel(p)),
-                    selected: _priority == p,
-                    onSelected: (_) => setState(() => _priority = p),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            // 5. Everything else stays available, one tap away.
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(bottom: 8),
-              title: const Text('更多选项：分类、标签、描述、类型', style: TextStyle(fontSize: 14)),
-              initiallyExpanded: expandMore,
-              children: [_buildMoreOptions()],
-            ),
-            const SizedBox(height: 8),
-            // 6. Save (todo + drafted blocks).
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: const Text('保存'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  /// The folded section: type, category, estimate, tags, description — the
-  /// fields that used to occupy the first screen.
-  Widget _buildMoreOptions() {
+  /// Row 1: icon tile + reminder/deadline button + clear; row 2: one line of
+  /// horizontally scrolling quick picks (never wraps).
+  Widget _buildTimeItem(UserTime? userTime, ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const AppIconTile(icon: Icons.event_available_outlined),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    // Not a bordered input: a soft filled capsule that still
+                    // is an OutlinedButton for the timezone tests.
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide.none,
+                      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                      disabledBackgroundColor:
+                          scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                      foregroundColor: scheme.onSurface,
+                      disabledForegroundColor: scheme.onSurfaceVariant,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      shape: const StadiumBorder(),
+                    ),
+                    icon: Icon(
+                      _type == TodoType.oneOff ? Icons.notifications_none : Icons.schedule,
+                      size: 18,
+                    ),
+                    label: Text(_deadlineLabel(userTime)),
+                    onPressed: userTime == null ? null : () => _pickDeadline(userTime),
+                  ),
+                ),
+              ),
+              if (_deadline != null)
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: '清除时间',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(() => _deadline = null),
+                ),
+            ],
+          ),
+          if (userTime == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '用户时区未就绪，暂时无法设置或显示时间。',
+                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+              ),
+            ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _actionChip(
+                  '今天 22:00',
+                  onPressed: userTime == null
+                      ? null
+                      : () => setState(() => _deadline = _atDay(userTime, 0, 22, 0)),
+                ),
+                const SizedBox(width: 6),
+                _actionChip(
+                  '明天 18:00',
+                  onPressed: userTime == null
+                      ? null
+                      : () => setState(() => _deadline = _atDay(userTime, 1, 18, 0)),
+                ),
+                const SizedBox(width: 6),
+                _actionChip(
+                  '周日 23:59',
+                  onPressed: userTime == null
+                      ? null
+                      : () => setState(() => _deadline = _sundayAt(userTime, 23, 59)),
+                ),
+                const SizedBox(width: 6),
+                _actionChip(
+                  '自定义',
+                  onPressed: userTime == null ? null : () => _pickDeadline(userTime),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Switch row plus the windows it controls.
+  ///
+  /// A one-off always has exactly one inline window and no add/remove action.
+  /// An existing project opens TodoBlocksSheet (its windows must survive a
+  /// cancelled editor); a project being created still drafts its windows here
+  /// because they must be written together with the todo.
+  Widget _buildScheduleItem(bool isEdit, UserTime? userTime, ColorScheme scheme) {
+    final enabled = userTime != null;
+    final oneOff = _type == TodoType.oneOff;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(children: [
-          Expanded(
-            child: SegmentedButton<TodoType>(
-              segments: const [
-                ButtonSegment(value: TodoType.oneOff, label: Text('一次性')),
-                ButtonSegment(value: TodoType.project, label: Text('项目')),
+        InkWell(
+          onTap: enabled ? () => _setSchedule(!_scheduleEnabled, userTime) : null,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(
+              children: [
+                const AppIconTile(icon: Icons.more_time_rounded),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '排入日程时间表',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: enabled
+                              ? scheme.onSurface
+                              : scheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '在课表/周视图中预留专门的执行时间段',
+                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Opacity(
+                  opacity: enabled ? 1 : 0.5,
+                  child: AppSwitch(
+                    value: _scheduleEnabled,
+                    onChanged: (v) {
+                      if (userTime != null) _setSchedule(v, userTime);
+                    },
+                  ),
+                ),
               ],
-              selected: {_type},
-              onSelectionChanged: (s) => setState(() => _type = s.first),
             ),
           ),
-        ]),
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            // A one-off is a single errand / meeting / shopping list: at
-            // most one block, plus an optional reminder time.
-            _type == TodoType.oneOff
-                ? '临时活动、会议或购物清单：最多 1 个时间块，可设提醒时间'
-                : '多阶段任务：可拆成多个时间块，可设截止时间',
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
-          ),
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: DropdownButtonFormField<String?>(
-                initialValue: _categoryId,
-                decoration: const InputDecoration(labelText: '分类'),
-                items: [
-                  const DropdownMenuItem<String?>(value: null, child: Text('无')),
-                  for (final c in _categories)
-                    DropdownMenuItem(value: c.id, child: Text(c.name)),
+        if (_scheduleEnabled && userTime != null)
+          if (oneOff)
+            if (_blocks.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 12, 8),
+                child: _buildBlockEditor(
+                  0,
+                  userTime,
+                  scheme,
+                  canRemove: false,
+                ),
+              )
+            else
+              const SizedBox.shrink()
+          else if (isEdit)
+            _buildProjectBlocksEntry(userTime, scheme)
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 12, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < _blocks.length; i++)
+                    _buildBlockEditor(i, userTime, scheme, canRemove: true),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('添加执行时间段'),
+                      onPressed: () => _addBlock(userTime),
+                    ),
+                  ),
                 ],
-                onChanged: (v) => setState(() => _categoryId = v),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.add),
-              tooltip: '新建分类',
-              onPressed: _createCategory,
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _est,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: '预计时长（分钟，可选）', suffixText: '分'),
-        ),
-        Wrap(
-          spacing: 6,
-          children: [
-            for (final minutes in const [30, 60, 120])
-              ActionChip(
-                label: Text('$minutes分'),
-                onPressed: () => setState(() => _est.text = '$minutes'),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (_tags.isNotEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Text('标签', style: TextStyle(fontSize: 12, color: Colors.grey)),
-          ),
-        Wrap(
-          spacing: 6,
-          runSpacing: 4,
-          children: [
-            for (final t in _tags)
-              FilterChip(
-                label: Text(t.name),
-                selected: _tagIds.contains(t.id),
-                onSelected: (v) => setState(() {
-                  if (v) {
-                    _tagIds.add(t.id);
-                  } else {
-                    _tagIds.remove(t.id);
-                  }
-                }),
-              ),
-            ActionChip(
-              avatar: const Icon(Icons.add, size: 16),
-              label: const Text('新建标签'),
-              onPressed: _createTag,
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _desc,
-          maxLines: 2,
-          decoration: const InputDecoration(hintText: '描述（可选）'),
-        ),
       ],
     );
   }
 
-  /// The schedule card: one switch, then the draft windows it will write.
-  Widget _buildScheduleSection(bool isEdit, UserTime? userTime) {
+  /// Existing project: its windows live in the mirror, so the editor only
+  /// links to the manager sheet and re-reads the count when it closes.
+  Widget _buildProjectBlocksEntry(UserTime userTime, ColorScheme scheme) {
+    return ListTile(
+      contentPadding: const EdgeInsets.fromLTRB(16, 0, 12, 6),
+      leading: const AppIconTile(icon: Icons.more_time_rounded),
+      title: const Text(
+        '编辑时间块',
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+      ),
+      subtitle: Text(
+        '已安排 ${_persistedBlocks.length} 个时间块',
+        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+      ),
+      trailing: Icon(Icons.chevron_right, size: 20, color: scheme.onSurfaceVariant),
+      onTap: () => _openBlocksSheet(userTime),
+    );
+  }
+
+  /// One drafted window as a soft inner card: date / range / duration pills and
+  /// a borderless note field.
+  Widget _buildBlockEditor(
+    int index,
+    UserTime userTime,
+    ColorScheme scheme, {
+    required bool canRemove,
+  }) {
+    final block = _blocks[index];
+    final startLocal = userTime.localFromUtc(block.startUtc);
+    final endLocal = userTime.localFromUtc(block.endUtc);
     return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 4),
       decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(12),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SwitchListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            title: const Text('排入日程时间表', style: TextStyle(fontSize: 14)),
-            subtitle: const Text('保存时一并创建时间块', style: TextStyle(fontSize: 11)),
-            value: _scheduleEnabled,
-            onChanged: userTime == null
-                ? null
-                : (v) => setState(() {
-                      _scheduleEnabled = v;
-                      if (v && _blocks.isEmpty) {
-                        _blocks.add(_defaultBlock(userTime));
-                      }
-                    }),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _actionChip(
+                        _blockDateLabel(userTime, startLocal),
+                        icon: Icons.event,
+                        onPressed: () => _pickBlockDate(index, userTime),
+                      ),
+                      _actionChip(
+                        '${_hhmm(startLocal)} – ${_hhmm(endLocal)}',
+                        onPressed: () => _pickBlockStart(index, userTime),
+                      ),
+                      for (final minutes in const [45, 60, 120])
+                        _actionChip(
+                          _durationLabel(minutes),
+                          onPressed: () => setState(
+                            () => block.endUtc = _endOnSameDay(
+                              userTime,
+                              block.startUtc,
+                              Duration(minutes: minutes),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if (canRemove)
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: '删除这一段',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _removeBlock(index),
+                ),
+            ],
           ),
-          if (isEdit && widget.existingBlockCount > 0)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-              child: Text(
-                '已有 ${widget.existingBlockCount} 个时间块（在待办菜单中管理）',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+          Padding(
+            padding: const EdgeInsets.only(right: 6, bottom: 2),
+            child: TextField(
+              controller: block.note,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: '这一段具体做什么？（如：查文献）',
+                hintStyle: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
               ),
             ),
-          if (_scheduleEnabled && userTime != null) ...[
-            if (isEdit)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: Text(
-                  '将新增 ${_blocks.length} 个时间块',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ),
-            for (var i = 0; i < _blocks.length; i++) _buildBlockEditor(i, userTime),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-                child: TextButton.icon(
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('添加执行时间段'),
-                  onPressed: () => _addBlock(userTime),
-                ),
-              ),
-            ),
-          ],
+          ),
         ],
       ),
     );
   }
 
-  /// One drafted window: date, start/end wall clock, note, quick durations.
-  Widget _buildBlockEditor(int index, UserTime userTime) {
-    final block = _blocks[index];
-    final startLocal = userTime.localFromUtc(block.startUtc);
-    final endLocal = userTime.localFromUtc(block.endUtc);
+  /// Four priority capsules; the selected one takes its semantic container.
+  Widget _buildPriorityItem(ColorScheme scheme) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    ActionChip(
-                      avatar: const Icon(Icons.event, size: 16),
-                      label: Text(_blockDateLabel(userTime, startLocal)),
-                      onPressed: () => _pickBlockDate(index, userTime),
-                    ),
-                    ActionChip(
-                      label: Text('开始 ${_hhmm(startLocal)}'),
-                      onPressed: () =>
-                          _pickBlockTime(index, userTime, isStart: true),
-                    ),
-                    ActionChip(
-                      label: Text('结束 ${_hhmm(endLocal)}'),
-                      onPressed: () =>
-                          _pickBlockTime(index, userTime, isStart: false),
-                    ),
+          const AppIconTile(icon: Icons.flag_outlined),
+          const SizedBox(width: 12),
+          Text(
+            '优先级',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: scheme.onSurface),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final p in TodoPriority.values) ...[
+                    if (p != TodoPriority.values.first) const SizedBox(width: 6),
+                    _priorityChip(p, scheme),
                   ],
-                ),
+                ],
               ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                tooltip: '删除这一段',
-                onPressed: () => _removeBlock(index),
-              ),
-            ],
-          ),
-          TextField(
-            controller: block.note,
-            decoration: const InputDecoration(
-              isDense: true,
-              hintText: '这一时段准备完成什么？',
             ),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            children: [
-              for (final minutes in const [45, 60, 120])
-                ActionChip(
-                  label: Text(minutes == 60 ? '1小时' : (minutes == 120 ? '2小时' : '$minutes分')),
-                  onPressed: () => setState(
-                    () => block.endUtc = _endOnSameDay(
-                        userTime, block.startUtc, Duration(minutes: minutes)),
-                  ),
-                ),
-            ],
           ),
         ],
       ),
     );
+  }
+
+  Widget _priorityChip(TodoPriority priority, ColorScheme scheme) {
+    final selected = _priority == priority;
+    final (bg, fg) = switch (priority) {
+      TodoPriority.low => (scheme.secondaryContainer, scheme.onSecondaryContainer),
+      TodoPriority.normal => (scheme.primaryContainer, scheme.onPrimaryContainer),
+      TodoPriority.high => (scheme.tertiaryContainer, scheme.onTertiaryContainer),
+      TodoPriority.urgent => (scheme.errorContainer, scheme.onErrorContainer),
+    };
+    return _choiceChip(
+      _priorityLabel(priority),
+      selected: selected,
+      selectedColor: bg,
+      selectedForeground: fg,
+      onTap: () => setState(() => _priority = priority),
+      scheme: scheme,
+    );
+  }
+
+  /// Category is picked by tapping a capsule; there is no dropdown any more.
+  Widget _buildCategoryItem(ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      child: Row(
+        children: [
+          const AppIconTile(icon: Icons.folder_outlined),
+          const SizedBox(width: 12),
+          Text(
+            '分类',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: scheme.onSurface),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _categoryChip(null, '无', scheme),
+                  for (final c in _categories) ...[
+                    const SizedBox(width: 6),
+                    _categoryChip(
+                      c.id,
+                      c.name,
+                      scheme,
+                      dot: AppTheme.parseHex(c.color) ?? scheme.primary,
+                    ),
+                  ],
+                  const SizedBox(width: 6),
+                  _actionChip('新建', icon: Icons.add, onPressed: _createCategory),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _categoryChip(String? id, String label, ColorScheme scheme, {Color? dot}) {
+    final selected = _categoryId == id;
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      avatar: dot == null
+          ? null
+          : Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+            ),
+      onSelected: (_) => setState(() => _categoryId = id),
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+      selectedColor: scheme.primaryContainer,
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+      ),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+    );
+  }
+
+  /// Tags, estimate and type behind one quiet summary row.
+  Widget _buildMoreItem(ColorScheme scheme, UserTime? userTime) {
+    final estimate = int.tryParse(_est.text.trim());
+    final summary = <String>[
+      if (_tagIds.isNotEmpty) '${_tagIds.length} 个标签',
+      if (estimate != null) '约$estimate分钟',
+      if (_type == TodoType.project) '项目',
+    ].join(' · ');
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _moreExpanded = !_moreExpanded),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(
+              children: [
+                const AppIconTile(icon: Icons.sell_outlined),
+                const SizedBox(width: 12),
+                Text(
+                  '标签与更多',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: scheme.onSurface),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      summary.isEmpty ? '标签 · 时长 · 类型' : summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+                Icon(
+                  _moreExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_moreExpanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final t in _tags)
+                      FilterChip(
+                        label: Text(t.name),
+                        selected: _tagIds.contains(t.id),
+                        onSelected: (v) => setState(() {
+                          if (v) {
+                            _tagIds.add(t.id);
+                          } else {
+                            _tagIds.remove(t.id);
+                          }
+                        }),
+                      ),
+                    _actionChip('新建标签', icon: Icons.add, onPressed: _createTag),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text('预计时长', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final minutes in const [30, 60, 120])
+                      _choiceChip(
+                        '$minutes分',
+                        selected: estimate == minutes,
+                        selectedColor: scheme.primaryContainer,
+                        selectedForeground: scheme.onPrimaryContainer,
+                        onTap: () => setState(() => _est.text = '$minutes'),
+                        scheme: scheme,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text('类型', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    _choiceChip(
+                      '一次性',
+                      selected: _type == TodoType.oneOff,
+                      selectedColor: scheme.primaryContainer,
+                      selectedForeground: scheme.onPrimaryContainer,
+                      onTap: () => _setType(TodoType.oneOff, userTime),
+                      scheme: scheme,
+                    ),
+                    _choiceChip(
+                      '项目',
+                      selected: _type == TodoType.project,
+                      selectedColor: scheme.primaryContainer,
+                      selectedForeground: scheme.onPrimaryContainer,
+                      onTap: () => _setType(TodoType.project, userTime),
+                      scheme: scheme,
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    // A one-off is a single errand / meeting / shopping list:
+                    // at most one block, plus an optional reminder time.
+                    _type == TodoType.oneOff
+                        ? '临时活动、会议或购物清单：最多 1 个时间块，可设提醒时间'
+                        : '多阶段任务：可拆成多个时间块，可设截止时间',
+                    style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Borderless capsule chip for quick picks and inline actions.
+  Widget _actionChip(String label, {VoidCallback? onPressed, IconData? icon}) {
+    final scheme = Theme.of(context).colorScheme;
+    return ActionChip(
+      avatar: icon == null ? null : Icon(icon, size: 16),
+      label: Text(label),
+      labelStyle: const TextStyle(fontSize: 12),
+      onPressed: onPressed,
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+    );
+  }
+
+  /// Selected-state capsule (priority, estimate, type).
+  Widget _choiceChip(
+    String label, {
+    required bool selected,
+    required Color selectedColor,
+    required Color selectedForeground,
+    required VoidCallback onTap,
+    required ColorScheme scheme,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      onSelected: (_) => onTap(),
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+      backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.7),
+      selectedColor: selectedColor,
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        color: selected ? selectedForeground : scheme.onSurfaceVariant,
+      ),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+    );
+  }
+
+  /// `45分` / `1小时` / `2小时`.
+  String _durationLabel(int minutes) => switch (minutes) {
+        45 => '45分',
+        60 => '1小时',
+        120 => '2小时',
+        _ => '$minutes分',
+      };
+
+  /// Toggles scheduling. Turning it off for a todo that already owns windows
+  /// asks first, because confirming deletes them; a never-saved draft simply
+  /// disappears.
+  Future<void> _setSchedule(bool value, UserTime userTime) async {
+    if (value == _scheduleEnabled) return;
+    if (value) {
+      setState(() {
+        _scheduleEnabled = true;
+        if (_type == TodoType.oneOff) {
+          // A one-off owns exactly one window.
+          if (_blocks.length > 1) {
+            for (final b in _blocks.skip(1)) {
+              b.dispose();
+            }
+            _blocks.removeRange(1, _blocks.length);
+          }
+          if (_blocks.isEmpty) _blocks.add(_defaultBlock(userTime));
+        }
+      });
+      return;
+    }
+
+    final persisted = _persistedBlocks;
+    if (widget.existing != null && persisted.isNotEmpty) {
+      final confirmed = await showAppDialog<bool>(
+        context: context,
+        title: '关闭排入日程时间表？',
+        content: Text('关闭后会删除已安排的 ${persisted.length} 个时间块。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context, rootNavigator: true).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context, rootNavigator: true).pop(true),
+            child: const Text('关闭'),
+          ),
+        ],
+      );
+      if (confirmed != true || !mounted) return;
+      final repo = ref.read(servicesProvider).repo;
+      for (final block in persisted) {
+        await repo.localDelete(
+          entityType: EntityTypes.todoBlock,
+          entityId: block.id,
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _persistedBlocks = [];
+        _replaceBlockId = null;
+        _scheduleEnabled = false;
+        for (final b in _blocks) {
+          b.dispose();
+        }
+        _blocks.clear();
+      });
+      return;
+    }
+
+    setState(() {
+      _scheduleEnabled = false;
+      for (final b in _blocks) {
+        b.dispose();
+      }
+      _blocks.clear();
+    });
+  }
+
+  /// Switching type keeps the window UI coherent: a one-off can hold only the
+  /// first drafted window and always shows one while scheduling is on.
+  void _setType(TodoType type, UserTime? userTime) {
+    setState(() {
+      _type = type;
+      if (type == TodoType.oneOff) {
+        if (_blocks.length > 1) {
+          for (final b in _blocks.skip(1)) {
+            b.dispose();
+          }
+          _blocks.removeRange(1, _blocks.length);
+        }
+        if (_scheduleEnabled && _blocks.isEmpty && userTime != null) {
+          _blocks.add(_defaultBlock(userTime));
+        }
+      }
+    });
+  }
+
+  /// Existing project: windows are edited in the manager sheet, then re-read
+  /// from the mirror. Closing it empty turns scheduling back off.
+  Future<void> _openBlocksSheet(UserTime userTime) async {
+    final todo = widget.existing;
+    if (todo == null) return;
+    await showAppBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => TodoBlocksSheet(todo: todo, userTime: userTime),
+    );
+    if (!mounted) return;
+    final snap = ref.read(snapshotProvider).value;
+    final blocks = snap == null
+        ? <TodoBlock>[]
+        : liveBlocks(snap, todoId: todo.id).map((e) => e.value).toList();
+    setState(() {
+      _persistedBlocks = blocks;
+      if (blocks.isEmpty) _scheduleEnabled = false;
+    });
   }
 
   String _priorityLabel(TodoPriority p) => switch (p) {
@@ -923,16 +1558,16 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
   }
 
   void _addBlock(UserTime userTime) {
-    setState(() {
-      _blocks.add(_defaultBlock(userTime));
-      // More than one window means a multi-stage task: upgrade silently, the
-      // user should not have to reason about the type up front.
-      if (_blocks.length > 1) _type = TodoType.project;
-    });
+    setState(() => _blocks.add(_defaultBlock(userTime)));
   }
 
   void _removeBlock(int index) {
-    setState(() => _blocks.removeAt(index).dispose());
+    setState(() {
+      _blocks.removeAt(index).dispose();
+      // No drafts left means nothing to schedule: do not leave a switch on
+      // for an empty list.
+      if (_blocks.isEmpty) _scheduleEnabled = false;
+    });
   }
 
   String _blockDateLabel(UserTime userTime, DateTime local) {
@@ -980,38 +1615,22 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
         local.year, local.month, local.day, 23, 59);
   }
 
-  Future<void> _pickBlockTime(
-    int index,
-    UserTime userTime, {
-    required bool isStart,
-  }) async {
+  Future<void> _pickBlockStart(int index, UserTime userTime) async {
     final block = _blocks[index];
-    final anchor = userTime.localFromUtc(isStart ? block.startUtc : block.endUtc);
+    final startLocal = userTime.localFromUtc(block.startUtc);
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay(hour: anchor.hour, minute: anchor.minute),
+      initialTime: TimeOfDay(hour: startLocal.hour, minute: startLocal.minute),
     );
     if (time == null || !mounted) return;
-    final startLocal = userTime.localFromUtc(block.startUtc);
     setState(() {
-      if (isStart) {
-        final duration = block.endUtc.difference(block.startUtc);
-        block.startUtc = userTime.utcFromLocalParts(startLocal.year,
-            startLocal.month, startLocal.day, time.hour, time.minute);
-        block.endUtc = _endOnSameDay(userTime, block.startUtc,
-            duration.isNegative || duration == Duration.zero
-                ? const Duration(hours: 1)
-                : duration);
-      } else {
-        block.endUtc = userTime.utcFromLocalParts(startLocal.year,
-            startLocal.month, startLocal.day, time.hour, time.minute);
-        // A block must run forward inside one local day; a same-day end at or
-        // before the start is read as a mis-tap and pushed an hour on.
-        if (!block.endUtc.isAfter(block.startUtc)) {
-          block.endUtc = _endOnSameDay(
-              userTime, block.startUtc, const Duration(hours: 1));
-        }
-      }
+      final duration = block.endUtc.difference(block.startUtc);
+      block.startUtc = userTime.utcFromLocalParts(startLocal.year,
+          startLocal.month, startLocal.day, time.hour, time.minute);
+      block.endUtc = _endOnSameDay(userTime, block.startUtc,
+          duration.isNegative || duration == Duration.zero
+              ? const Duration(hours: 1)
+              : duration);
     });
   }
 
@@ -1135,7 +1754,10 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
     final title = _title.text.trim();
     if (title.isEmpty || _saving) return;
     setState(() => _saving = true);
-    final newBlocks = _scheduleEnabled
+    final isEdit = widget.existing != null;
+    // Blocks are written together with a new todo. An existing todo's blocks
+    // are reconciled below instead, so they are never created twice.
+    final newBlocks = !isEdit && _scheduleEnabled
         ? <NewTodoBlock>[
             for (final b in _blocks)
               (
@@ -1161,9 +1783,58 @@ class _TodoEditorSheetState extends ConsumerState<TodoEditorSheet> {
             estimatedMinutes: int.tryParse(_est.text.trim()),
             newBlocks: newBlocks,
           );
+      if (isEdit) await _saveExistingBlocks();
       if (mounted) Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Existing todo only: a one-off's single window is updated or created, and
+  /// switching scheduling off removes anything still stored. A project's
+  /// windows belong to TodoBlocksSheet and are left untouched here.
+  Future<void> _saveExistingBlocks() async {
+    final todo = widget.existing;
+    if (todo == null || _type == TodoType.project) return;
+    final repo = ref.read(servicesProvider).repo;
+    if (!_scheduleEnabled) {
+      // Defensive: the toggle already deleted them, but a stale window must
+      // never outlive a switched-off schedule.
+      for (final block in _persistedBlocks) {
+        await repo.localDelete(
+          entityType: EntityTypes.todoBlock,
+          entityId: block.id,
+        );
+      }
+      _persistedBlocks = [];
+      return;
+    }
+    if (_blocks.isEmpty) return;
+    final draft = _blocks.first;
+    final note = draft.note.text.trim();
+    final blockNote = note.isEmpty ? null : note;
+    final replaceId = _replaceBlockId;
+    if (replaceId != null) {
+      await repo.localUpdate(
+        entityType: EntityTypes.todoBlock,
+        entityId: replaceId,
+        changes: {
+          'startAt': draft.startUtc,
+          'endAt': draft.endUtc,
+          'blockNote': blockNote,
+        },
+      );
+    } else {
+      await repo.localCreate(
+        entityType: EntityTypes.todoBlock,
+        snapshot: {
+          'todoId': todo.id,
+          'startAt': draft.startUtc,
+          'endAt': draft.endUtc,
+          'blockNote': blockNote,
+          'status': BlockStatus.scheduled.wire,
+        },
+      );
     }
   }
 }

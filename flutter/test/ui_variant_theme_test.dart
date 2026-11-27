@@ -53,9 +53,10 @@ void main() {
   });
 
   group('AppTheme variants', () {
-    test('hyperOS light carries its tokens and grey canvas', () {
+    test('hyperOS light carries its tokens and tonal canvas', () {
       final theme = AppTheme.light(UiVariant.hyperOS);
       final tokens = theme.extension<AppStyleTokens>();
+      final seeded = ColorScheme.fromSeed(seedColor: AppTheme.seed);
 
       expect(tokens, isNotNull);
       expect(tokens!.variant, UiVariant.hyperOS);
@@ -63,7 +64,10 @@ void main() {
       expect(tokens.buttonRadius, 999);
       expect(tokens.useElevation, isFalse);
       expect(tokens.topBarBlur, isTrue);
-      expect(theme.scaffoldBackgroundColor, const Color(0xFFF2F3F5));
+      // The canvas is the scheme's tonal container, not a hard-coded grey.
+      expect(theme.scaffoldBackgroundColor, seeded.surfaceContainer);
+      expect(theme.scaffoldBackgroundColor, isNot(Colors.white));
+      expect(theme.colorScheme.surface, seeded.surfaceBright);
       expect(
         theme.scaffoldBackgroundColor,
         isNot(AppTheme.light().scaffoldBackgroundColor),
@@ -72,14 +76,20 @@ void main() {
       expect(theme.appBarTheme.scrolledUnderElevation, 0);
     });
 
-    test('hyperOS dark paints a black canvas with near-black cards', () {
+    test('hyperOS dark paints a tonal canvas with container-high cards', () {
       final theme = AppTheme.dark(UiVariant.hyperOS);
       final tokens = theme.extension<AppStyleTokens>();
+      final seeded = ColorScheme.fromSeed(
+        seedColor: AppTheme.seed,
+        brightness: Brightness.dark,
+      );
 
       expect(tokens, isNotNull);
       expect(tokens!.variant, UiVariant.hyperOS);
-      expect(theme.scaffoldBackgroundColor, const Color(0xFF000000));
-      expect(theme.colorScheme.surfaceContainerLow, const Color(0xFF1C1C1E));
+      expect(theme.scaffoldBackgroundColor, seeded.surfaceContainerLowest);
+      expect(theme.scaffoldBackgroundColor, isNot(Colors.black));
+      expect(theme.colorScheme.surface, seeded.surfaceContainerHigh);
+      expect(theme.colorScheme.surfaceContainerLow, seeded.surfaceContainerLow);
       expect(
         theme.scaffoldBackgroundColor,
         isNot(AppTheme.dark().scaffoldBackgroundColor),

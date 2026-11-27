@@ -13,6 +13,7 @@ import '../../data/local/view_models.dart';
 import '../../domain/calendar_event.dart';
 import '../../domain/todo.dart';
 import '../../state/calendar_controller.dart';
+import '../../state/now_ticker.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../state/sync_controller.dart';
@@ -84,15 +85,74 @@ class WeekPage extends ConsumerStatefulWidget {
   ConsumerState<WeekPage> createState() => _WeekPageState();
 }
 
-class _WeekPageState extends ConsumerState<WeekPage> {
+class _WeekPageState extends ConsumerState<WeekPage> with WidgetsBindingObserver {
   late DateTime _anchor; // any instant whose local date is inside the shown week
   bool _dragActive = false;
+
+  /// One scroll controller per shown period. The switcher keeps the outgoing
+  /// page alive for its 220 ms transition, so a single shared controller would
+  /// be attached to two scroll views at once — and `position` asserts on that.
+  /// Keyed by page key, so returning to a week keeps its scroll offset.
+  final Map<String, ScrollController> _timelineScrolls = {};
+
+  /// Timeline metrics captured during layout, used by [_centerTimelineOnNow].
+  double _timelineViewport = 0;
+  double _timelineTotalHeight = 0;
+
+  /// Page key of the timeline currently on screen.
+  String? _timelineKey;
+
+  /// The freshest server clock the page can read without subscribing to a
+  /// per-minute rebuild: the 1 Hz ticker first, the minute stream second.
+  DateTime? _currentNowUtc() =>
+      ref.read(nowTickerProvider).value ?? ref.read(serverNowProvider).value;
+
+  /// Page key already scrolled onto "now": centering happens once per shown
+  /// week (and on foreground return), never on every rebuild or user scroll.
+  String? _centeredTimelineKey;
+
+  /// Number of extra frames spent waiting for the scroll view to report real
+  /// metrics. The first post-frame after inserting a page can still see a zero
+  /// `maxScrollExtent`; retrying a few frames is enough.
+  int _timelineCenterRetries = 0;
+
+  /// The first frame is built before the server clock answers; the page then
+  /// anchors on the device clock. Align the shown week once the real "now"
+  /// arrives, so a wrong device clock cannot open the page on the wrong week.
+  bool _alignedToServerNow = false;
 
   @override
   void initState() {
     super.initState();
     _anchor = DateTime.now().toUtc();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToTodayIfNeeded());
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_jumpToTodayIfNeeded()) _centerTimelineOnNow();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    for (final controller in _timelineScrolls.values) {
+      controller.dispose();
+    }
+    _timelineScrolls.clear();
+    super.dispose();
+  }
+
+  /// Coming back from the background: the clock may be hours stale and the
+  /// timeline was scrolled long ago. Re-read the clock (the ticker re-emits at
+  /// once), make sure this week is on screen, then re-center on "now".
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    ref.read(clockRevisionProvider.notifier).bump();
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_jumpToTodayIfNeeded()) _centerTimelineOnNow();
+    });
   }
 
   /// Switch view mode without touching [_anchor]: the same period (week or
@@ -103,17 +163,112 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     ref.read(weekViewModeProvider.notifier).set(mode.name);
   }
 
-  void _jumpToTodayIfNeeded() {
+  /// Re-anchor on the week containing "now" when the page opened on another
+  /// week (wrong device clock, or a long sleep). Returns true when the anchor
+  /// moved: a fresh page is about to build and will center itself.
+  bool _jumpToTodayIfNeeded() {
     final userTime = ref.read(userTimeProvider);
-    if (userTime == null) return;
-    final local = userTime.localFromUtc(ref.read(serverNowProvider).value ?? DateTime.now().toUtc());
+    if (userTime == null) return false;
+    final local = userTime.localFromUtc(_currentNowUtc() ?? DateTime.now().toUtc());
     final anchorLocal = userTime.localFromUtc(_anchor);
     if (_weekStart(local) != _weekStart(anchorLocal)) {
       setState(() => _anchor = local);
+      return true;
     }
+    return false;
   }
 
   tz.TZDateTime _weekStart(DateTime local) => mondayOf(ref.read(userTimeProvider)!, local);
+
+  /// Scroll controller for the timeline page [pageKey] (created on demand).
+  ScrollController _timelineScrollFor(String pageKey) =>
+      _timelineScrolls.putIfAbsent(pageKey, ScrollController.new);
+
+  /// Scroll the timeline so the current-time line sits mid-viewport, once the
+  /// page for [pageKey] has been laid out. A no-op when this page is already
+  /// centered, so ordinary rebuilds and user scrolling keep their position.
+  void _scheduleTimelineCenter(String pageKey) {
+    if (_centeredTimelineKey == pageKey) return;
+    _timelineCenterRetries = 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _centerTimelineOnNow();
+    });
+  }
+
+  /// A freshly inserted page may not have attached its scroll view (or
+  /// reported metrics) in the first post-frame; retry a few frames.
+  void _retryCenterSoon() {
+    if (_timelineCenterRetries >= 8) return;
+    _timelineCenterRetries++;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _centerTimelineOnNow();
+    });
+  }
+
+  /// Put "now" in the middle of the timeline viewport. Called on the first
+  /// frame of a shown week, when switching back to 时间轴, and on foreground
+  /// return — never from a plain rebuild.
+  void _centerTimelineOnNow() {
+    if (!mounted) return;
+    final key = _timelineKey;
+    if (key == null) return;
+    if (_viewModeFromPref(ref.read(weekViewModeProvider)) != WeekViewMode.timeline) {
+      return;
+    }
+    final controller = _timelineScrolls[key];
+    // Exactly one client: during a fast mode toggle the same page key may still
+    // be attached to the outgoing scroll view for a moment.
+    if (controller == null || !controller.hasClients || controller.positions.length != 1) {
+      _retryCenterSoon();
+      return;
+    }
+    final userTime = ref.read(userTimeProvider);
+    if (userTime == null) return;
+    // Freshest server clock available without a per-minute subscription.
+    final nowUtc = _currentNowUtc();
+    if (nowUtc == null) {
+      _retryCenterSoon();
+      return;
+    }
+    final local = userTime.localFromUtc(nowUtc);
+    final weekStart = _weekStart(userTime.localFromUtc(_anchor));
+    final today = tz.TZDateTime(userTime.location, local.year, local.month, local.day);
+    final weekEnd = userTime.addLocalDays(weekStart, 7);
+    // Centering another week on "now" would jump the user somewhere arbitrary.
+    if (today.isBefore(weekStart) || !today.isBefore(weekEnd)) {
+      // The page may still be anchored on the device clock because the server
+      // clock had not answered when initState ran. Align once, then center the
+      // fresh page; a user-chosen week is never moved.
+      if (!_alignedToServerNow && _jumpToTodayIfNeeded()) {
+        _alignedToServerNow = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _centerTimelineOnNow();
+        });
+        return;
+      }
+      // Nothing to center here; remember it so later builds stop retrying.
+      _centeredTimelineKey = key;
+      return;
+    }
+
+    final minute = local.hour * 60 + local.minute;
+    final position = controller.position;
+    if (position.maxScrollExtent <= 0 && _timelineTotalHeight > position.viewportDimension) {
+      // A freshly inserted page can report zero metrics for one frame.
+      _retryCenterSoon();
+      return;
+    }
+    final viewport =
+        _timelineViewport > 0 ? _timelineViewport : position.viewportDimension;
+    final totalHeight = _timelineTotalHeight > 0 ? _timelineTotalHeight : _hourPx * 24;
+    final target =
+        (minute / 1440 * totalHeight - viewport / 2).clamp(0.0, position.maxScrollExtent);
+    if ((position.pixels - target).abs() > 0.5) position.jumpTo(target);
+    _centeredTimelineKey = key;
+    _timelineCenterRetries = 0;
+    _alignedToServerNow = true;
+  }
 
   /// Which way the last period change went, so the slide runs the right way.
   int _slideDir = 1;
@@ -198,7 +353,9 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     );
   }
 
-  /// A day tapped in the month grid: anchor on it and show that week's 课表.
+  /// A day tapped in the month grid: keep 月 mode (the month view opens the
+  /// day sheet itself) and only re-anchor, so switching to 课表 afterwards
+  /// lands on that day's week.
   void _selectDayInMonth(DateTime localDay) {
     final userTime = ref.read(userTimeProvider);
     if (userTime == null) return;
@@ -207,7 +364,6 @@ class _WeekPageState extends ConsumerState<WeekPage> {
           .fromLocalParts(localDay.year, localDay.month, localDay.day, 12, 0)
           .toUtc();
     });
-    ref.read(weekViewModeProvider.notifier).set(WeekViewMode.grid.name);
   }
 
   @override
@@ -255,6 +411,25 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     );
 
     final pageKey = _pageKey(days, viewMode);
+    if (now != null && !_alignedToServerNow) {
+      _alignedToServerNow = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _jumpToTodayIfNeeded();
+      });
+    }
+    if (viewMode == WeekViewMode.timeline) {
+      if (_timelineKey != pageKey) {
+        // Another week, or the timeline coming back after 课表/月: this is a
+        // fresh page, so it may center itself on "now" again.
+        _centeredTimelineKey = null;
+      }
+      _timelineKey = pageKey;
+      _scheduleTimelineCenter(pageKey);
+    } else {
+      // Leaving the timeline: the next visit must recenter.
+      _timelineKey = null;
+    }
     final periodContent = viewMode == WeekViewMode.month
         ? MonthViewContent(
             // The pinned bar above already carries ‹ 今天 ›.
@@ -286,9 +461,11 @@ class _WeekPageState extends ConsumerState<WeekPage> {
                   _WeekHeader(
                     days: days,
                     todayLocal: now == null ? null : userTime.localFromUtc(now),
+                    hasBackground: hasBackground,
                   ),
                   Expanded(
-                    child: _buildGrid(userTime, days, events, now, cardStyle),
+                    child: _buildGrid(userTime, days, events, now, cardStyle,
+                        _timelineScrollFor(pageKey)),
                   ),
                 ],
               );
@@ -425,10 +602,14 @@ class _WeekPageState extends ConsumerState<WeekPage> {
     List<UiEvent> events,
     DateTime? now,
     CourseCardStyle style,
+    ScrollController timelineScroll,
   ) {
     return LayoutBuilder(builder: (context, constraints) {
       final dayWidth = math.max(56.0, (constraints.maxWidth - _timeGutter) / 7);
       final totalHeight = _hourPx * 24;
+      // Cached for [_centerTimelineOnNow], which runs outside the layout phase.
+      _timelineViewport = constraints.maxHeight;
+      _timelineTotalHeight = totalHeight;
       final nowLocal = now == null ? null : userTime.localFromUtc(now);
 
       // Everything (day columns, event layer, now line) lives inside ONE
@@ -442,6 +623,7 @@ class _WeekPageState extends ConsumerState<WeekPage> {
       // vertical-drag recogniser instead, which shares the scrollable's slop and
       // wins the arena because it is hit-tested first.
       return SingleChildScrollView(
+        controller: timelineScroll,
         // The floating nav bar overlaps the viewport (extendBody), so reserve
         // its height here: the 24h timeline must scroll clear of it.
         padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
@@ -723,17 +905,22 @@ class _WeekHeader extends StatelessWidget {
   const _WeekHeader({
     required this.days,
     required this.todayLocal,
+    this.hasBackground = false,
   });
 
   final List<tz.TZDateTime> days;
   final DateTime? todayLocal;
+
+  /// Whether a wallpaper is painted behind the page; the header then gets a
+  /// translucent tonal backdrop so the labels stay readable.
+  final bool hasBackground;
 
   static const _weekDays = ['一', '二', '三', '四', '五', '六', '日'];
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Column(
+    final header = Column(
       children: [
         Row(
           children: [
@@ -745,7 +932,11 @@ class _WeekHeader extends StatelessWidget {
                 child: Text(
                   weekGutterLabel(days),
                   textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 11, color: colors.outline),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: colors.primary,
+                  ),
                 ),
               ),
             ),
@@ -765,6 +956,11 @@ class _WeekHeader extends StatelessWidget {
         const Divider(height: 1),
       ],
     );
+    if (!hasBackground) return header;
+    return ColoredBox(
+      color: colors.surfaceContainer.withValues(alpha: 0.78),
+      child: header,
+    );
   }
 }
 
@@ -778,11 +974,19 @@ class _DayHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: colors.onSurface.withValues(alpha: 0.85),
+            ),
+          ),
           const SizedBox(height: 2),
           Container(
             padding: const EdgeInsets.all(4),
@@ -791,7 +995,7 @@ class _DayHeader extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: isToday ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                  color: isToday ? Colors.white : colors.onSurface,
                 )),
           ),
         ],
@@ -803,6 +1007,7 @@ class _DayHeader extends StatelessWidget {
 class _TimeAxis extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Column(
       children: [
         for (var h = 0; h < 24; h++)
@@ -812,7 +1017,10 @@ class _TimeAxis extends StatelessWidget {
               alignment: Alignment.topRight,
               child: Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Text('${h.toString().padLeft(2, '0')}:00', style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                child: Text(
+                  '${h.toString().padLeft(2, '0')}:00',
+                  style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+                ),
               ),
             ),
           ),
@@ -1114,8 +1322,8 @@ class _EventVisual extends StatelessWidget {
 }
 
 /// Current-time orange line (docs/ui-interaction.md §14). Watches
-/// [serverNowProvider] alone so its per-minute ticks rebuild only this small
-/// overlay — never the grid or the event layer.
+/// [nowTickerProvider] alone so its ticks rebuild only this small overlay —
+/// never the grid or the event layer.
 class _NowTicker extends ConsumerWidget {
   const _NowTicker({
     required this.days,
@@ -1129,7 +1337,18 @@ class _NowTicker extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final now = ref.watch(serverNowProvider).value;
+    // The line's position has minute resolution, so rebuild on a minute change
+    // only: a per-second rebuild would repaint the same pixels and would keep
+    // `pumpAndSettle` spinning in widget tests (the 1 Hz provider still ticks;
+    // this widget just does not need every beat).
+    final minuteKey = ref.watch(
+      nowTickerProvider.select((tick) {
+        final now = tick.value;
+        return now == null ? null : now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute;
+      }),
+    );
+    if (minuteKey == null) return const SizedBox.shrink();
+    final now = ref.read(nowTickerProvider).value;
     if (now == null) return const SizedBox.shrink();
     final userTime = ref.watch(userTimeProvider);
     if (userTime == null) return const SizedBox.shrink();

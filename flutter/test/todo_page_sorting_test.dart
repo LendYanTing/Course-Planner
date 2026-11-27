@@ -100,14 +100,14 @@ void main() {
     expect(dy(tester, '远端') < dy(tester, '紧急无截止'), isTrue);
 
     // The sorter control is present alongside the sync action.
-    expect(find.byIcon(Icons.sort), findsOneWidget);
+    expect(find.byIcon(Icons.tune), findsOneWidget);
   });
 
   testWidgets('choosing priority (high→low) reorders rows and groups',
       (tester) async {
     await pumpPage(tester);
 
-    await tester.tap(find.byIcon(Icons.sort));
+    await tester.tap(find.byIcon(Icons.tune));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(CheckedPopupMenuItem<Object>, '优先级（高→低）'));
     await tester.pumpAndSettle();
@@ -121,11 +121,11 @@ void main() {
   testWidgets('within-group scope keeps the category order', (tester) async {
     await pumpPage(tester);
 
-    await tester.tap(find.byIcon(Icons.sort));
+    await tester.tap(find.byIcon(Icons.tune));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(CheckedPopupMenuItem<Object>, '优先级（高→低）'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.sort));
+    await tester.tap(find.byIcon(Icons.tune));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(CheckedPopupMenuItem<Object>, '仅组内'));
     await tester.pumpAndSettle();
@@ -135,9 +135,10 @@ void main() {
     expect(dy(tester, '远端') < dy(tester, '紧急无截止'), isTrue);
   });
 
-  testWidgets('the 已完成 section stays the fixed trailing block', (tester) async {
-    // The completed todo has the nearest deadline, so a sorter that fed the
-    // 已完成 section through itself would lift it to the top. It must not.
+  testWidgets('completed todos have moved to their own page entry',
+      (tester) async {
+    // A completed item must not be rendered inline any more: the old
+    // "已完成" trailing block is gone and the menu links to the history page.
     final withCompleted = EntitiesSnapshot(
       rows: [
         category('c-work', '工作'),
@@ -149,17 +150,12 @@ void main() {
     );
     await pumpPage(tester, snap: withCompleted);
 
-    // Overflow menu -> 包含已完成.
-    await tester.tap(find.descendant(
-      of: find.byType(AppBar),
-      matching: find.byType(PopupMenuButton<String>),
-    ));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('包含已完成'));
-    await tester.pumpAndSettle();
+    expect(find.text('已完成'), findsNothing);
+    expect(find.text('已完成最早'), findsNothing);
 
-    expect(find.text('已完成'), findsOneWidget); // the section header
-    expect(dy(tester, '远端') < dy(tester, '已完成最早'), isTrue);
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    expect(find.text('已完成任务'), findsOneWidget);
   });
 
   testWidgets('with no user timezone the list prints no deadline wall clock',

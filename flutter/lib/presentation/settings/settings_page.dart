@@ -114,19 +114,7 @@ class SettingsPage extends ConsumerWidget {
     final session = ref.watch(sessionControllerProvider);
     final profile = session.profile;
     final sync = ref.watch(syncCoordinatorProvider);
-    final activeId = ref.watch(activeSemesterProvider);
     final syncEnabled = ref.watch(syncEnabledProvider);
-
-    // Active semester (and its course count) feeds the two row subtitles.
-    AcademicCalendar? semester;
-    var courseCount = 0;
-    final snap = ref.watch(snapshotProvider).value;
-    if (snap != null) {
-      for (final cal in liveCalendars(snap)) {
-        if (cal.value.id == activeId) semester = cal.value;
-      }
-      courseCount = liveCourses(snap, calendarId: semester?.id).length;
-    }
 
     final username = profile?.username ?? '';
     final timezone = profile?.timezone ?? '—';
@@ -176,50 +164,20 @@ class SettingsPage extends ConsumerWidget {
           ),
 
           // ---- 1. courses & semesters -------------------------------------
+          // One entry: the five sub-pages live on their own second-level page
+          // so the hub stays short.
           _SettingsGroup(
             title: '课程与学期',
             tiles: [
               ListTile(
-                leading: const Icon(Icons.calendar_view_month),
-                title: const Text('学期管理'),
-                subtitle: Text(semester == null
-                    ? '创建学期与节次模板'
-                    : '${semester.name} · ${semester.totalWeeks} 周'),
+                leading: const AppIconTile(icon: Icons.school_outlined),
+                title: const Text('课程与学期'),
+                subtitle: const Text('学期、课程、周期安排与导入'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/settings/semesters'),
+                onTap: () => context.push('/settings/course-hub'),
               ),
               ListTile(
-                leading: const Icon(Icons.school_outlined),
-                title: const Text('课程管理'),
-                subtitle: Text(semester == null
-                    ? '维护课程与每周上课安排'
-                    : '本学期 $courseCount 门课程'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/settings/courses'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.event_repeat),
-                title: const Text('周期安排'),
-                subtitle: const Text('自定义重复日程（非课程）'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/settings/schedules'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.upload_file),
-                title: const Text('导入课程'),
-                subtitle: const Text('本地 CSV 导入'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/settings/import'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.travel_explore),
-                title: const Text('从教务系统导入'),
-                subtitle: const Text('AI 解析 / 网页提取'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/settings/edu-import'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.label_outline),
+                leading: const AppIconTile(icon: Icons.label_outline),
                 title: const Text('标签与分类'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/settings/tags'),
@@ -232,7 +190,7 @@ class SettingsPage extends ConsumerWidget {
             title: '外观与个性化',
             tiles: [
               ListTile(
-                leading: const Icon(Icons.palette_outlined),
+                leading: const AppIconTile(icon: Icons.palette_outlined),
                 title: const Text('外观与课表定制'),
                 subtitle: const Text('主题、底栏、课表显示'),
                 trailing: const Icon(Icons.chevron_right),
@@ -246,14 +204,14 @@ class SettingsPage extends ConsumerWidget {
             title: 'AI 助手与连接',
             tiles: [
               ListTile(
-                leading: const Icon(Icons.auto_awesome),
+                leading: const AppIconTile(icon: Icons.auto_awesome),
                 title: const Text('内置 AI 助手'),
                 subtitle: const Text('配置大模型，直接对话排期（无需外部 MCP）'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/settings/agent'),
               ),
               ListTile(
-                leading: const Icon(Icons.smart_toy_outlined),
+                leading: const AppIconTile(icon: Icons.smart_toy_outlined),
                 title: const Text('连接到 MCP'),
                 subtitle: const Text('让 Agent 通过 MCP 读取/修改课表与待办'),
                 trailing: const Icon(Icons.chevron_right),
@@ -267,7 +225,7 @@ class SettingsPage extends ConsumerWidget {
             title: '数据与云同步',
             tiles: [
               ListTile(
-                leading: const Icon(Icons.cloud_sync_outlined),
+                leading: const AppIconTile(icon: Icons.cloud_sync_outlined),
                 title: const Text('云同步与服务器'),
                 subtitle: Text(session.isLocalMode
                     ? '数据保存在本机；登录云端账号后可开启云同步'
@@ -276,13 +234,13 @@ class SettingsPage extends ConsumerWidget {
                 onTap: () => context.push('/settings/sync'),
               ),
               ListTile(
-                leading: const Icon(Icons.archive_outlined),
+                leading: const AppIconTile(icon: Icons.archive_outlined),
                 title: const Text('导出完整备份'),
                 subtitle: const Text('将所有本地数据与登录凭据导出为 JSON 文件'),
                 onTap: () => _exportBackup(context, ref),
               ),
               ListTile(
-                leading: const Icon(Icons.unarchive_outlined),
+                leading: const AppIconTile(icon: Icons.unarchive_outlined),
                 title: const Text('导入/恢复备份'),
                 subtitle: const Text('可选导入服务器、登录凭据、学期课程、待办等'),
                 trailing: const Icon(Icons.chevron_right),
@@ -296,7 +254,7 @@ class SettingsPage extends ConsumerWidget {
             title: '关于',
             tiles: [
               ListTile(
-                leading: const Icon(Icons.info_outline),
+                leading: const AppIconTile(icon: Icons.info_outline),
                 title: const Text('关于 Course Planner'),
                 subtitle: const Text('版本、检查更新、项目主页'),
                 trailing: const Icon(Icons.chevron_right),
@@ -324,6 +282,8 @@ class SettingsPage extends ConsumerWidget {
             ),
 
           const SizedBox(height: 12),
+          // Signing out lives on the sync page: it is an account action, not a
+          // hub-wide one.
           if (session.isLocalMode)
             AppCard(
               padding: EdgeInsets.zero,
@@ -335,19 +295,6 @@ class SettingsPage extends ConsumerWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.go('/login'),
               ),
-            )
-          else
-            AppCard(
-              padding: EdgeInsets.zero,
-              margin: const EdgeInsets.symmetric(horizontal: 12),
-              child: ListTile(
-                leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
-                title: Text('退出登录',
-                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                onTap: () async {
-                  await ref.read(sessionControllerProvider.notifier).logout();
-                },
-              ),
             ),
           const SizedBox(height: 24),
           const Center(child: Text('Course Planner · Flutter', style: TextStyle(color: Colors.grey, fontSize: 12))),
@@ -357,7 +304,9 @@ class SettingsPage extends ConsumerWidget {
   }
 }
 
-/// One titled group of settings rows, rendered as a single [AppCard].
+/// One titled group of settings rows, rendered as a SukiSU-style segmented
+/// column: adjacent rows are separated by a 2 dp gap, the outer corners are
+/// 24 dp and the inner ones 6 dp.
 class _SettingsGroup extends StatelessWidget {
   const _SettingsGroup({required this.title, required this.tiles});
 
@@ -366,26 +315,10 @@ class _SettingsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
-          child: Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-        ),
-        AppCard(
-          padding: EdgeInsets.zero,
-          margin: const EdgeInsets.symmetric(horizontal: 12),
-          child: Column(children: tiles),
-        ),
-      ],
+    return AppSegmentedColumn(
+      title: title,
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      children: tiles,
     );
   }
 }

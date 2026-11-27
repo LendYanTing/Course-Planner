@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,6 +8,7 @@ import '../../agent/agent_prompts.dart';
 import '../../agent/local_agent_tools.dart';
 import '../../state/agent_controller.dart';
 import '../adaptive/adaptive.dart';
+import '../widgets/app_markdown.dart';
 import '../widgets/voice_input_button.dart';
 
 /// Built-in agent chat panel (docs/plans/v1/phase-5-builtin-agent.md Step 4).
@@ -15,6 +17,10 @@ import '../widgets/voice_input_button.dart';
 /// quick-prompt chips, and the single Change Set confirmation card that
 /// [AgentController] keeps until the user confirms or cancels it. Nothing is
 /// written locally before that confirmation (docs/agent-behavior.md).
+///
+/// The conversation itself lives in [AgentChatBody], which is shared with the
+/// full-screen agent tab (`AgentChatPage`); this widget only adds the sheet
+/// chrome (drag-to-fill height, rounded top, header with a close button).
 class AgentChatSheet extends ConsumerStatefulWidget {
   const AgentChatSheet({super.key});
 
@@ -43,28 +49,6 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scroll.hasClients) return;
-      _scroll.jumpTo(_scroll.position.maxScrollExtent);
-    });
-  }
-
-  /// Sends the current input. Ignored while a request runs or a change set
-  /// still waits for confirmation — the controller also guards this, but the
-  /// input is cleared only for a request that really starts.
-  Future<void> _submit() async {
-    final text = _input.text.trim();
-    if (text.isEmpty) return;
-    final config = ref.read(agentConfigProvider);
-    final state = ref.read(agentControllerProvider);
-    if (!config.isConfigured || state.busy || state.pendingChangeSet != null) {
-      return;
-    }
-    _input.clear();
-    await ref.read(agentControllerProvider.notifier).send(text);
-  }
-
   Future<void> _confirmReset() async {
     final confirmed = await showAppDialog<bool>(
       context: context,
@@ -91,17 +75,6 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
     final scheme = Theme.of(context).colorScheme;
     final tokens = context.tokens;
     final state = ref.watch(agentControllerProvider);
-    final config = ref.watch(agentConfigProvider);
-    final pending = state.pendingChangeSet;
-    final canSend =
-        config.isConfigured && !state.busy && pending == null;
-
-    // Follow the conversation: a new bubble or the start of a request scrolls
-    // to the bottom once the frame has laid the new row out.
-    ref.listen<AgentState>(agentControllerProvider, (previous, next) {
-      final grew = next.messages.length != (previous?.messages.length ?? 0);
-      if (grew || (next.busy && previous?.busy != true)) _scrollToBottom();
-    });
 
     return Padding(
       // The sheet itself is bottom-aligned, so lifting it by the keyboard inset
@@ -122,9 +95,9 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
               children: [
                 _buildHeader(context, state),
                 Divider(height: 1, color: scheme.outlineVariant),
-                Expanded(child: _buildMessages(context, state)),
-                if (!config.isConfigured) _buildSetupGuide(context),
-                _buildInput(context, state, canSend: canSend),
+                Expanded(
+                  child: AgentChatBody(input: _input, scroll: _scroll),
+                ),
               ],
             ),
           ),
@@ -164,12 +137,107 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
       ),
     );
   }
+}
+
+/// The shared chat core: message list, welcome card, Change Set card and the
+/// input row.
+///
+/// Rendered by both [AgentChatSheet] and the full-screen `AgentChatPage`, so the
+/// two entry points never drift apart. The text and scroll controllers are
+/// owned by the host page/sheet because a host may need to clear the draft
+/// (the "清空对话" action lives in their header/top bar).
+class AgentChatBody extends ConsumerStatefulWidget {
+  const AgentChatBody({
+    super.key,
+    required this.input,
+    required this.scroll,
+    this.bottomPadding = 0,
+  });
+
+  final TextEditingController input;
+  final ScrollController scroll;
+
+  /// Extra room below the input row (and under the list) reserved for a
+  /// floating bottom bar the host page draws on top of the body.
+  final double bottomPadding;
+
+  @override
+  ConsumerState<AgentChatBody> createState() => _AgentChatBodyState();
+}
+
+class _AgentChatBodyState extends ConsumerState<AgentChatBody> {
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.scroll.hasClients) return;
+      widget.scroll.jumpTo(widget.scroll.position.maxScrollExtent);
+    });
+  }
+
+  /// Sends the current input. Ignored while a request runs or a change set
+  /// still waits for confirmation — the controller also guards this, but the
+  /// input is cleared only for a request that really starts.
+  Future<void> _submit() async {
+    final text = widget.input.text.trim();
+    if (text.isEmpty) return;
+    final config = ref.read(agentConfigProvider);
+    final state = ref.read(agentControllerProvider);
+    if (!config.isConfigured || state.busy || state.pendingChangeSet != null) {
+      return;
+    }
+    widget.input.clear();
+    await ref.read(agentControllerProvider.notifier).send(text);
+  }
+
+  Future<void> _sendPrompt(String prompt) async {
+    final state = ref.read(agentControllerProvider);
+    if (!ref.read(agentConfigProvider).isConfigured ||
+        state.busy ||
+        state.pendingChangeSet != null) {
+      return;
+    }
+    await ref.read(agentControllerProvider.notifier).send(prompt);
+  }
+
+  /// Assistant text is plain-text copyable: long-press anywhere on the bubble
+  /// puts the whole reply on the clipboard. Selectable spans are disabled while
+  /// rendering (see [_buildMessage]) so the long press is not stolen by text
+  /// selection.
+  Future<void> _copyMessage(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已复制'), duration: Duration(seconds: 2)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(agentControllerProvider);
+    final config = ref.watch(agentConfigProvider);
+    final pending = state.pendingChangeSet;
+    final canSend = config.isConfigured && !state.busy && pending == null;
+
+    // Follow the conversation: a new bubble or the start of a request scrolls
+    // to the bottom once the frame has laid the new row out.
+    ref.listen<AgentState>(agentControllerProvider, (previous, next) {
+      final grew = next.messages.length != (previous?.messages.length ?? 0);
+      if (grew || (next.busy && previous?.busy != true)) _scrollToBottom();
+    });
+
+    return Column(
+      children: [
+        Expanded(child: _buildMessages(context, state)),
+        if (!config.isConfigured) _buildSetupGuide(context),
+        _buildInput(context, state, canSend: canSend),
+      ],
+    );
+  }
 
   Widget _buildMessages(BuildContext context, AgentState state) {
     final pending = state.pendingChangeSet;
     return ListView(
-      controller: _scroll,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      controller: widget.scroll,
+      padding: EdgeInsets.fromLTRB(16, 10, 16, 8 + widget.bottomPadding),
       children: [
         if (state.messages.isEmpty && !state.busy) _buildWelcome(context),
         for (final message in state.messages) _buildMessage(context, message),
@@ -232,16 +300,6 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
     );
   }
 
-  Future<void> _sendPrompt(String prompt) async {
-    final state = ref.read(agentControllerProvider);
-    if (!ref.read(agentConfigProvider).isConfigured ||
-        state.busy ||
-        state.pendingChangeSet != null) {
-      return;
-    }
-    await ref.read(agentControllerProvider.notifier).send(prompt);
-  }
-
   Widget _buildMessage(BuildContext context, AgentMessage message) {
     if (message.toolLabel != null || message.role == AgentRole.tool) {
       return _ToolRow(message: message);
@@ -255,6 +313,22 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
         ? scheme.onPrimary
         : (message.isError ? scheme.onErrorContainer : scheme.onSurface);
     final radius = Radius.circular(14);
+    // Assistant replies are Markdown (headings, lists, tables, code blocks);
+    // user text stays literal so what was typed is what is shown.
+    final content = isUser
+        ? Text(
+            message.text,
+            style: TextStyle(color: foreground, fontSize: 14, height: 1.4),
+          )
+        : GestureDetector(
+            onLongPress: () => _copyMessage(message.text),
+            child: AppMarkdownContent(
+              data: message.text,
+              textColor: foreground,
+              // Long-press copies the whole reply; selection would consume it.
+              selectable: false,
+            ),
+          );
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -272,10 +346,7 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
             bottomRight: isUser ? const Radius.circular(4) : radius,
           ),
         ),
-        child: Text(
-          message.text,
-          style: TextStyle(color: foreground, fontSize: 14, height: 1.4),
-        ),
+        child: content,
       ),
     );
   }
@@ -362,13 +433,13 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
         ? '请先确认或取消上面的修改'
         : '告诉我你想怎么安排…';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+      padding: EdgeInsets.fromLTRB(12, 6, 12, 12 + widget.bottomPadding),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
             child: TextField(
-              controller: _input,
+              controller: widget.input,
               enabled: config.isConfigured,
               minLines: 1,
               maxLines: 4,
@@ -395,9 +466,9 @@ class _AgentChatSheetState extends ConsumerState<AgentChatSheet> {
           VoiceInputButton(
             tooltip: '语音输入消息',
             onText: (text) {
-              final current = _input.text;
+              final current = widget.input.text;
               final next = current.isEmpty ? text : '$current$text';
-              _input.value = TextEditingValue(
+              widget.input.value = TextEditingValue(
                 text: next,
                 selection: TextSelection.collapsed(offset: next.length),
               );

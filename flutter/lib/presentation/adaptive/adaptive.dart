@@ -8,7 +8,9 @@ import '../../app/theme.dart';
 import '../../state/prefs.dart';
 
 export 'app_card.dart';
+export 'app_capsule_slider.dart';
 export 'app_dialog.dart';
+export 'app_segmented.dart';
 export 'app_sheet.dart';
 export 'app_switch.dart';
 export 'app_top_bar.dart';

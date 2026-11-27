@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../presentation/agent/agent_chat_page.dart';
 import '../presentation/auth/auth_pages.dart';
 import '../presentation/calendar/week_page.dart';
 import '../presentation/home_shell.dart';
 import '../presentation/settings/agent_settings_page.dart';
 import '../presentation/settings/appearance_settings_page.dart';
+import '../presentation/settings/course_settings_page.dart';
 import '../presentation/settings/courses_page.dart';
 import '../presentation/settings/edu_import_page.dart';
 import '../presentation/settings/import_page.dart';
@@ -18,6 +20,7 @@ import '../presentation/settings/server_page.dart';
 import '../presentation/settings/settings_page.dart';
 import '../presentation/settings/sync_settings_page.dart';
 import '../presentation/settings/tags_page.dart';
+import '../presentation/todo/completed_todos_page.dart';
 import '../presentation/todo/todo_page.dart';
 import '../state/prefs.dart';
 import '../state/session.dart';
@@ -87,11 +90,25 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
+              path: '/home/agent',
+              pageBuilder: (context, state) => const MaterialPage(child: AgentChatPage()),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
               path: '/home/settings',
               pageBuilder: (context, state) => const MaterialPage(child: SettingsPage()),
             ),
           ]),
         ],
+      ),
+      GoRoute(
+        path: '/todo/completed',
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const CompletedTodosPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
       ),
       GoRoute(
         path: '/settings/conflicts',
@@ -114,6 +131,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => buildAdaptivePage(
           key: state.pageKey,
           child: const SyncSettingsPage(),
+          variant: ref.read(uiVariantProvider),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/course-hub',
+        pageBuilder: (context, state) => buildAdaptivePage(
+          key: state.pageKey,
+          child: const CourseSettingsPage(),
           variant: ref.read(uiVariantProvider),
         ),
       ),

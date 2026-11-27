@@ -19,6 +19,13 @@ Future<T?> showAppBottomSheet<T>({
   final tokens = AppStyleTokens.of(context);
   final hyper = tokens.variant == UiVariant.hyperOS;
   final scheme = Theme.of(context).colorScheme;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  // In dark mode the card and segmented rows sit on container-high, so the
+  // sheet itself steps down to `surfaceContainer`; otherwise the rows and the
+  // sheet share one tone and the segmented card disappears.
+  final hyperSheetColor = isDark
+      ? scheme.surfaceContainer
+      : scheme.surfaceContainerHigh;
 
   return showModalBottomSheet<T>(
     context: context,
@@ -39,7 +46,7 @@ Future<T?> showAppBottomSheet<T>({
         : null,
     clipBehavior: hyper ? Clip.antiAlias : null,
     showDragHandle: hyper ? true : null,
-    backgroundColor: hyper ? scheme.surfaceContainerHigh : null,
+    backgroundColor: hyper ? hyperSheetColor : null,
     sheetAnimationStyle: hyper ? AnimationStyle(curve: tokens.motionCurve) : null,
   );
 }

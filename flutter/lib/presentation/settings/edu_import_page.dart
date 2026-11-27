@@ -1,17 +1,21 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../agent/agent_config.dart';
 import '../../agent/llm_client.dart';
 import '../../app/theme.dart';
+import '../../core/edu/edu_webview_bridge.dart';
 import '../../core/theme/course_palette.dart';
 import '../../data/api/import_api.dart';
 import '../../data/local/view_models.dart';
 import '../../domain/calendar.dart';
 import '../../domain/edu_import/edu_ai_extractor.dart';
 import '../../domain/edu_import/edu_html_parser.dart';
+import '../../domain/edu_import/school_catalog.dart';
 import '../../domain/entities.dart';
 import '../../domain/local_csv_import.dart';
 import '../../state/app_services.dart';
@@ -46,6 +50,8 @@ class _EduImportPageState extends ConsumerState<EduImportPage> {
   String? _calendarId;
   final TextEditingController _raw = TextEditingController();
   final TextEditingController _url = TextEditingController();
+
+  SchoolEntry? _school;
 
   _SourceMode _mode = _SourceMode.paste;
   List<ParsedCsvCourse> _courses = const [];
@@ -98,6 +104,174 @@ class _EduImportPageState extends ConsumerState<EduImportPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Like [_snack], but with a shortcut into the agent settings.
+  void _snackWithConfigAction(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: SnackBarAction(
+            label: '去配置',
+            onPressed: () => context.push('/settings/agent'),
+          ),
+        ),
+      );
+  }
+
+  bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  /// Opens the searchable school picker and adopts the chosen entry.
+  Future<void> _pickSchool() async {
+    final catalog = ref.read(schoolCatalogProvider.future);
+    final entry = await showAppBottomSheet<SchoolEntry>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SchoolPickerSheet(catalog: catalog),
+    );
+    if (entry == null || !mounted) return;
+    setState(() {
+      _school = entry;
+      if (entry.hasUsableUrl) {
+        _url.text = entry.normalizedUrl;
+        _mode = _SourceMode.url;
+      } else {
+        _url.clear();
+        _mode = _SourceMode.paste;
+      }
+    });
+    if (!entry.hasUsableUrl) {
+      _snack('该校未收录教务网址，请手动输入后重试');
+    }
+  }
+
+  void _clearSchool() {
+    setState(() {
+      _school = null;
+      _url.clear();
+    });
+  }
+
+  String get _schoolUrl {
+    final schoolUrl = _school?.normalizedUrl.trim() ?? '';
+    return schoolUrl.isNotEmpty ? schoolUrl : _url.text.trim();
+  }
+
+  /// Opens the native education-system browser (Android) and adopts its capture.
+  Future<void> _openEduWebView() async {
+    final url = _schoolUrl;
+    if (url.isEmpty) {
+      _snack('请先选择学校或输入教务网址');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _busyLabel = '正在打开教务浏览器…';
+    });
+    try {
+      final result = await ref
+          .read(eduWebViewBridgeProvider)
+          .open(
+            url: url,
+            schoolName: _school?.name ?? '',
+            parserType: _school?.parser ?? '',
+            desktopMode: _school?.mode == 'pc',
+          );
+      if (!mounted) return;
+      if (result == null) {
+        _snack('未提取到数据；可改用粘贴网页/文本导入');
+        return;
+      }
+      await _handleWebViewResult(result);
+    } on Object catch (e) {
+      _snack('打开教务浏览器失败: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _busyLabel = null;
+        });
+      }
+    }
+  }
+
+  /// Non-Android fallback: open the login page in the system browser.
+  Future<void> _launchExternal() async {
+    final url = _schoolUrl;
+    final uri = url.isEmpty ? null : Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      _snack('请先选择学校或输入教务网址');
+      return;
+    }
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      _snack(opened ? '登录后复制课表页面源码，粘贴到下方' : '无法打开浏览器，请手动复制教务网址');
+    } on Object {
+      _snack('无法打开浏览器，请手动复制教务网址');
+    }
+  }
+
+  /// Three-stage funnel: local rules, then the configured LLM, then paste.
+  Future<void> _handleWebViewResult(EduWebViewResult result) async {
+    for (final candidate in [
+      result.extractedData,
+      result.bestTableHtml,
+      result.rawHtml,
+    ]) {
+      if (candidate.trim().isEmpty) continue;
+      final parsed = EduHtmlParser.parse(candidate);
+      if (parsed.courses.isNotEmpty) {
+        _adoptCourses(parsed.courses, '内置浏览器');
+        return;
+      }
+    }
+
+    // Local rules missed (or the school is marked AI-fallback): compress the
+    // best table and hand it to the built-in agent.
+    final best = result.bestTableHtml.trim().isNotEmpty
+        ? result.bestTableHtml
+        : result.rawHtml;
+    final compressed = EduHtmlParser.compressHtmlForAi(best);
+    final config = ref.read(agentConfigProvider);
+
+    if (!config.isConfigured) {
+      if (compressed.isNotEmpty && mounted) {
+        setState(() {
+          _raw.text = compressed;
+          _mode = _SourceMode.paste;
+        });
+      }
+      _snackWithConfigAction('本地规则未命中，请配置 AI 助手后点击「使用 AI 深度解析」');
+      return;
+    }
+
+    if (compressed.isEmpty) {
+      _snack('未提取到可解析的课表内容；可改用粘贴网页/文本导入');
+      return;
+    }
+
+    setState(() => _busyLabel = 'AI 正在解析课表…');
+    try {
+      final courses = await EduAiExtractor(
+        client: LlmClient(),
+        config: config,
+      ).extract(compressed);
+      if (!mounted) return;
+      if (courses.isEmpty) {
+        _snack('AI 没有提取到课程，请检查页面内容或更换模型');
+        return;
+      }
+      _adoptCourses(courses, 'AI 兜底');
+    } on LlmException catch (e) {
+      _snack(e.message);
+    } on Object catch (e) {
+      _snack('AI 解析失败: $e');
+    }
   }
 
   String _describe(ParsedCsvCourse course) {
@@ -295,7 +469,7 @@ class _EduImportPageState extends ConsumerState<EduImportPage> {
     try {
       final extractor = EduAiExtractor(client: LlmClient(), config: config);
       final courses = await extractor.extract(
-        EduHtmlParser.stripHtmlForAi(raw),
+        EduHtmlParser.compressHtmlForAi(raw),
       );
       if (!mounted) return;
       if (courses.isEmpty) {
@@ -565,7 +739,98 @@ class _EduImportPageState extends ConsumerState<EduImportPage> {
             ),
           ),
 
-          // ---- 2. source ---------------------------------------------------
+          // ---- 2. school / education system --------------------------------
+          AppCard(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const _SectionTitle('选择学校 / 教务系统'),
+                const SizedBox(height: 8),
+                if (_school == null)
+                  Text(
+                    '搜索全国 3570 所高校，或直接使用下方粘贴/网址导入。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  )
+                else ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _school!.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _VendorTag(label: _school!.vendorLabel),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _school!.normalizedUrl.isEmpty
+                              ? '未收录教务网址'
+                              : _school!.normalizedUrl,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _busy ? null : _clearSchool,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          minimumSize: const Size(0, 28),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text('清除', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 10),
+                FilledButton.tonalIcon(
+                  onPressed: _busy ? null : _pickSchool,
+                  icon: const Icon(Icons.search),
+                  label: const Text('搜索全国高校（3570 所）'),
+                ),
+                const SizedBox(height: 8),
+                if (_isAndroid)
+                  FilledButton.icon(
+                    onPressed: _busy || !(_school?.hasUsableUrl ?? false)
+                        ? null
+                        : _openEduWebView,
+                    icon: const Icon(Icons.travel_explore),
+                    label: const Text('打开教务网登录并提取'),
+                  )
+                else
+                  FilledButton.icon(
+                    onPressed: _busy || !(_school?.hasUsableUrl ?? false)
+                        ? null
+                        : _launchExternal,
+                    icon: const Icon(Icons.open_in_browser),
+                    label: const Text('在浏览器打开教务网'),
+                  ),
+              ],
+            ),
+          ),
+
+          // ---- 3. source ---------------------------------------------------
           AppCard(
             margin: const EdgeInsets.only(bottom: 12),
             child: Column(
@@ -668,7 +933,7 @@ class _EduImportPageState extends ConsumerState<EduImportPage> {
             ),
           ),
 
-          // ---- 3. preview --------------------------------------------------
+          // ---- 4. preview --------------------------------------------------
           if (_courses.isNotEmpty)
             AppCard(
               margin: const EdgeInsets.only(bottom: 12),
@@ -752,7 +1017,7 @@ class _EduImportPageState extends ConsumerState<EduImportPage> {
               ),
             ),
 
-          // ---- 4. confirm --------------------------------------------------
+          // ---- 5. confirm --------------------------------------------------
           if (_courses.isNotEmpty)
             AppCard(
               margin: EdgeInsets.zero,
@@ -781,6 +1046,202 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+    );
+  }
+}
+
+/// Small pill showing the vendor family (`正方教务`, `AI 智能解析`, …).
+class _VendorTag extends StatelessWidget {
+  const _VendorTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, color: scheme.onSecondaryContainer),
+      ),
+    );
+  }
+}
+
+/// Searchable sheet over the bundled 3570-school catalog.
+///
+/// The only search field in the flow lives here: the import page itself keeps
+/// a single paste field so its layout and tests stay stable.
+class SchoolPickerSheet extends StatefulWidget {
+  const SchoolPickerSheet({super.key, required this.catalog});
+
+  /// Loaded catalog; the sheet shows a progress bar until this resolves.
+  final Future<SchoolCatalog> catalog;
+
+  @override
+  State<SchoolPickerSheet> createState() => _SchoolPickerSheetState();
+}
+
+class _SchoolPickerSheetState extends State<SchoolPickerSheet> {
+  static const _resultLimit = 50;
+
+  /// Shown before the user types: real universities rather than the manifest's
+  /// leading parser-template rows.
+  static const _popularNames = [
+    '清华大学',
+    '北京大学',
+    '浙江大学',
+    '复旦大学',
+    '上海交通大学',
+    '南京大学',
+    '武汉大学',
+    '中山大学',
+    '四川大学',
+    '华中科技大学',
+    '西安交通大学',
+    '哈尔滨工业大学',
+    '天津大学',
+    '同济大学',
+    '东南大学',
+    '山东大学',
+  ];
+
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.8,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              controller: _search,
+              autofocus: true,
+              textInputAction: TextInputAction.search,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.search),
+                hintText: '搜索学校名称，如：安徽、理工、研究生',
+              ),
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<SchoolCatalog>(
+              future: widget.catalog,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: LinearProgressIndicator(),
+                    ),
+                  );
+                }
+                final catalog =
+                    snapshot.data ?? SchoolCatalog.fromEntries(const []);
+                return _buildList(catalog, scheme);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildList(SchoolCatalog catalog, ColorScheme scheme) {
+    final query = _query.trim();
+    if (query.isNotEmpty) {
+      final results = catalog.search(query, limit: _resultLimit);
+      if (results.isEmpty) {
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            Text(
+              '没有匹配的学校，可改用下方粘贴/网址导入',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+          ],
+        );
+      }
+      return ListView.builder(
+        padding: const EdgeInsets.only(bottom: 24),
+        itemCount: results.length,
+        itemBuilder: (context, index) => _tile(results[index]),
+      );
+    }
+
+    final schools = <SchoolEntry>[];
+    for (final name in _popularNames) {
+      final entry = catalog.byName(name);
+      if (entry != null && !schools.any((e) => e.name == entry.name)) {
+        schools.add(entry);
+      }
+    }
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        const _PickerGroupTitle('通用教务系统'),
+        for (final entry in catalog.featured) _tile(entry),
+        if (schools.isNotEmpty) ...[
+          const _PickerGroupTitle('热门高校'),
+          for (final entry in schools) _tile(entry),
+        ],
+      ],
+    );
+  }
+
+  Widget _tile(SchoolEntry entry) {
+    final hasUrl = entry.hasUsableUrl;
+    return ListTile(
+      dense: true,
+      title: Text(entry.name),
+      subtitle: Text(
+        hasUrl ? entry.normalizedUrl : '未收录教务网址',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11),
+      ),
+      trailing: _VendorTag(label: entry.vendorLabel),
+      onTap: () => Navigator.of(context).pop(entry),
+    );
+  }
+}
+
+class _PickerGroupTitle extends StatelessWidget {
+  const _PickerGroupTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }

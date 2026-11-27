@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
+import '../../core/media/wallpaper_picker.dart';
 import '../../state/prefs.dart';
 import '../adaptive/adaptive.dart';
 import '../widgets/calendar_background.dart';
@@ -314,12 +317,14 @@ Widget _backgroundSection(
   final muted = scheme.onSurfaceVariant;
   final hasImage = config.imagePath?.isNotEmpty ?? false;
 
-  return _SectionCard(
+  // SukiSU-style segmented card: one 2 dp-separated block per wallpaper row.
+  return AppSegmentedColumn(
     title: '背景壁纸',
-    icon: Icons.wallpaper_outlined,
+    titleIcon: Icons.wallpaper_outlined,
+    margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
     children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
         child: Wrap(
           spacing: 8,
           runSpacing: 10,
@@ -353,15 +358,26 @@ Widget _backgroundSection(
         ),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         child: Text(
           hasImage
               ? '当前使用本地图片，选择预设会替换它。'
-              : '预设壁纸立即生效；Windows 可直接粘贴绝对路径，Android 请先用系统文件管理器复制图片路径。',
+              : '预设壁纸立即生效；也可以从相册选图，图片会复制到应用私有目录。',
           style: TextStyle(fontSize: 11, color: muted),
         ),
       ),
-      const _LocalImagePathField(),
+      _WallpaperImageActions(config: config),
+      ExpansionTile(
+        key: const ValueKey('wallpaper-advanced-path'),
+        leading: const AppIconTile(icon: Icons.edit_note_outlined),
+        title: const Text(
+          '高级：手动输入图片路径',
+          style: TextStyle(fontSize: 12),
+        ),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        children: const [_LocalImagePathField()],
+      ),
       _SliderTile(
         title: '背景模糊',
         valueLabel: '${config.blurSigma.round()}',
@@ -386,9 +402,127 @@ Widget _backgroundSection(
         onChanged: (value) =>
             ref.read(backgroundConfigProvider.notifier).setScrimOpacity(value),
       ),
-      const SizedBox(height: 4),
     ],
   );
+}
+
+/// The primary wallpaper action: pick from the gallery / a native file dialog,
+/// plus the current private-image thumbnail and its clear button.
+class _WallpaperImageActions extends ConsumerWidget {
+  const _WallpaperImageActions({required this.config});
+
+  final BackgroundConfig config;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final path = config.imagePath;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const AppIconTile(icon: Icons.add_photo_alternate_outlined),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  key: const ValueKey('wallpaper-pick-button'),
+                  onPressed: () => _chooseWallpaperImage(context, ref),
+                  icon: const Icon(
+                    Icons.add_photo_alternate_outlined,
+                    size: 18,
+                  ),
+                  label: const Text('从相册 / 本地选择图片'),
+                ),
+              ),
+            ],
+          ),
+          if (path != null && path.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _LocalWallpaperThumbnail(path: path),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '图片已复制到应用私有目录，重启后依然有效。',
+                    style: TextStyle(fontSize: 11, color: muted),
+                  ),
+                ),
+                TextButton.icon(
+                  key: const ValueKey('wallpaper-image-clear'),
+                  onPressed: () =>
+                      ref.read(backgroundConfigProvider.notifier).clear(),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('清除图片'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 64 × 44 preview of the stored private wallpaper; a placeholder is shown when
+/// the file disappears (cleared app data, uninstalled storage, …).
+class _LocalWallpaperThumbnail extends StatelessWidget {
+  const _LocalWallpaperThumbnail({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final placeholder = Container(
+      width: 64,
+      height: 44,
+      color: scheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.image_not_supported_outlined,
+        size: 18,
+        color: scheme.onSurfaceVariant,
+      ),
+    );
+    final file = File(path);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        key: const ValueKey('wallpaper-image-thumbnail'),
+        width: 64,
+        height: 44,
+        child: file.existsSync()
+            ? Image.file(
+                file,
+                width: 64,
+                height: 44,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => placeholder,
+              )
+            : placeholder,
+      ),
+    );
+  }
+}
+
+/// Opens the native picker and stores the returned private copy.
+Future<void> _chooseWallpaperImage(BuildContext context, WidgetRef ref) async {
+  final messenger = ScaffoldMessenger.of(context);
+  // Captured before the await: the system dialog can outlive this page.
+  final background = ref.read(backgroundConfigProvider.notifier);
+  final picked = await ref.read(wallpaperPickerProvider).pickWallpaper();
+  if (picked == null || picked.isEmpty) {
+    messenger.showSnackBar(
+      const SnackBar(content: Text('未选择图片或该平台不支持')),
+    );
+    return;
+  }
+  await background.setImagePath(picked);
+  messenger.showSnackBar(const SnackBar(content: Text('已设置壁纸')));
 }
 
 Widget _courseSection(
@@ -738,6 +872,7 @@ class _WallpaperChoice extends StatelessWidget {
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 160),
+              width: 52,
               height: 44,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
@@ -795,11 +930,30 @@ class _LocalImagePathFieldState extends ConsumerState<_LocalImagePathField> {
     super.dispose();
   }
 
-  void _apply() {
-    ref
-        .read(backgroundConfigProvider.notifier)
-        .setImagePath(_controller.text.trim());
+  Future<void> _apply() async {
     FocusScope.of(context).unfocus();
+    final raw = _controller.text;
+    final messenger = ScaffoldMessenger.of(context);
+    // Captured before the await: the platform copy can outlive this page.
+    final background = ref.read(backgroundConfigProvider.notifier);
+    if (raw.trim().isEmpty) {
+      await background.setImagePath(null);
+      return;
+    }
+    // Typed paths are imported into the private folder first, so the same path
+    // keeps working on Android's scoped storage and after the source moves.
+    final imported =
+        await ref.read(wallpaperPickerProvider).importFromFilePath(raw);
+    if (!mounted) return;
+    if (imported == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('找不到图片文件，或无法复制到应用目录')),
+      );
+      return;
+    }
+    await background.setImagePath(imported);
+    if (!mounted) return;
+    messenger.showSnackBar(const SnackBar(content: Text('已设置壁纸')));
   }
 
   @override
@@ -839,7 +993,7 @@ class _LocalImagePathFieldState extends ConsumerState<_LocalImagePathField> {
           ),
           const SizedBox(height: 6),
           Text(
-            '应用后会立即替换预设壁纸；留空并应用可移除背景。',
+            '应用后会复制到应用私有目录并替换预设壁纸；留空并应用可移除背景。',
             style: TextStyle(fontSize: 11, color: muted),
           ),
         ],

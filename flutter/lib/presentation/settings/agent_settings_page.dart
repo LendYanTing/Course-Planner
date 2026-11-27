@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../agent/agent_config.dart';
 import '../../agent/llm_client.dart';
 import '../../core/voice/voice_config.dart';
+import '../../state/prefs.dart';
 import '../adaptive/adaptive.dart';
 
 /// Built-in agent settings (docs/plans/v1/phase-5-builtin-agent.md Step 3/4).
@@ -186,6 +187,19 @@ class _AgentSettingsPageState extends ConsumerState<AgentSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
         children: [
+          // ---- bottom-bar visibility ---------------------------------------
+          AppCard(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: EdgeInsets.zero,
+            child: SwitchListTile(
+              value: ref.watch(agentTabEnabledProvider),
+              onChanged: ref.read(agentTabEnabledProvider.notifier).set,
+              secondary: const Icon(Icons.space_dashboard_outlined),
+              title: const Text('在底栏显示 AI 助手'),
+              subtitle: const Text('关闭后底栏只保留日程、待办、设置'),
+            ),
+          ),
+
           // ---- provider ----------------------------------------------------
           AppCard(
             margin: const EdgeInsets.only(bottom: 12),

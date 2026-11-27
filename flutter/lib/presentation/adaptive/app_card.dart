@@ -28,15 +28,23 @@ class AppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppStyleTokens.of(context);
-    if (tokens.variant != UiVariant.hyperOS) return _material(tokens);
+    if (tokens.variant != UiVariant.hyperOS) return _material(context, tokens);
     return _hyper(context, tokens);
   }
 
-  Widget _material(AppStyleTokens tokens) {
+  /// Tonal card fill: bright in light mode, container-high in dark mode.
+  static Color _surfaceFor(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.brightness == Brightness.dark
+        ? theme.colorScheme.surfaceContainerHigh
+        : theme.colorScheme.surfaceBright;
+  }
+
+  Widget _material(BuildContext context, AppStyleTokens tokens) {
     final radius = BorderRadius.circular(tokens.cardRadius);
     return Card(
       margin: margin,
-      color: color,
+      color: color ?? _surfaceFor(context),
       elevation: tokens.cardElevation,
       shape: RoundedRectangleBorder(borderRadius: radius),
       child: InkWell(
@@ -48,12 +56,11 @@ class AppCard extends StatelessWidget {
   }
 
   Widget _hyper(BuildContext context, AppStyleTokens tokens) {
-    final scheme = Theme.of(context).colorScheme;
     final radius = BorderRadius.circular(tokens.cardRadius);
     final surface = ClipRSuperellipse(
       borderRadius: radius,
       child: Material(
-        color: color ?? scheme.surfaceContainerHigh,
+        color: color ?? _surfaceFor(context),
         child: InkWell(
           onTap: onTap,
           child: Padding(padding: padding, child: child),

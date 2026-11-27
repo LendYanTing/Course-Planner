@@ -197,6 +197,18 @@ class SyncSettingsPage extends ConsumerWidget {
               ],
             ),
           ),
+          // Signing out is an account action, so it sits here rather than on
+          // the settings hub. A local session has nothing to sign out of.
+          if (!session.isLocalMode)
+            AppCard(
+              padding: EdgeInsets.zero,
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: ListTile(
+                leading: Icon(Icons.logout, color: errorColor),
+                title: Text('退出登录', style: TextStyle(color: errorColor)),
+                onTap: () => _confirmLogout(context, ref),
+              ),
+            ),
         ],
       ),
     );
@@ -206,6 +218,28 @@ class SyncSettingsPage extends ConsumerWidget {
 String _time(DateTime utc) {
   final l = utc.toLocal();
   return '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}:${l.second.toString().padLeft(2, '0')}';
+}
+
+/// Asks before signing out: local data stays on the device, but the cloud
+/// account has to log in again before it can sync.
+Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
+  final ok = await showAppDialog<bool>(
+    context: context,
+    title: '退出登录？',
+    content: const Text('本地数据会保留，云端账号需要重新登录才能同步。'),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context, rootNavigator: true).pop(false),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.of(context, rootNavigator: true).pop(true),
+        child: const Text('退出'),
+      ),
+    ],
+  );
+  if (ok != true || !context.mounted) return;
+  await ref.read(sessionControllerProvider.notifier).logout();
 }
 
 /// Drops the current connections and re-syncs. The same thing happens

@@ -7,11 +7,25 @@
          bridge (course_planner/speech) both need the microphone. Requested at
          runtime; a denial only disables voice input. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Wallpaper picking: the system image picker returns a temporary
+         content:// URI. READ_MEDIA_IMAGES covers Android 13+, the legacy
+         storage permission covers Android 12 and below. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <application
         android:label="Course Planner"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round">
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:usesCleartextTraffic="true">
+        <!-- 1261 of the 3570 catalogued schools still serve their timetable
+             over plain http://; without cleartext traffic Android 9+ refuses
+             to load them at all. -->
+        <activity
+            android:name=".EduWebViewActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
