@@ -39,6 +39,9 @@ class _AboutPageState extends ConsumerState<AboutPage> {
           await ref.read(servicesProvider).githubApi.latestRelease(AppInfo.latestReleaseApi);
       if (!mounted) return;
       setState(() => _release = release);
+    } on GithubApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
