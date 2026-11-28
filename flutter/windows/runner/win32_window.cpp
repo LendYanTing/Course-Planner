@@ -1,5 +1,6 @@
 #include "win32_window.h"
 
+#include <algorithm>
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
@@ -122,7 +123,8 @@ Win32Window::~Win32Window() {
 
 bool Win32Window::Create(const std::wstring& title,
                          const Point& origin,
-                         const Size& size) {
+                         const Size& size,
+                         bool origin_and_size_are_physical) {
   Destroy();
 
   const wchar_t* window_class =
@@ -132,12 +134,33 @@ bool Win32Window::Create(const std::wstring& title,
                               static_cast<LONG>(origin.y)};
   HMONITOR monitor = MonitorFromPoint(target_point, MONITOR_DEFAULTTONEAREST);
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
-  double scale_factor = dpi / 96.0;
+  // Saved placements are stored in physical pixels; only the first-run
+  // default is logical and needs the monitor scale.
+  double scale_factor = origin_and_size_are_physical ? 1.0 : dpi / 96.0;
+
+  // Restore the saved (logical) placement, but never open larger than the
+  // monitor's work area or with the title bar off-screen.
+  MONITORINFO monitor_info = {};
+  monitor_info.cbSize = sizeof(monitor_info);
+  ::GetMonitorInfo(monitor, &monitor_info);
+  const int work_width =
+      monitor_info.rcWork.right - monitor_info.rcWork.left;
+  const int work_height =
+      monitor_info.rcWork.bottom - monitor_info.rcWork.top;
+  int window_width =
+      std::min(static_cast<int>(Scale(size.width, scale_factor)), work_width);
+  int window_height =
+      std::min(static_cast<int>(Scale(size.height, scale_factor)), work_height);
+  int window_x = static_cast<int>(Scale(origin.x, scale_factor));
+  int window_y = static_cast<int>(Scale(origin.y, scale_factor));
+  window_x = std::clamp(window_x, static_cast<int>(monitor_info.rcWork.left),
+                        static_cast<int>(monitor_info.rcWork.right) - window_width);
+  window_y = std::clamp(window_y, static_cast<int>(monitor_info.rcWork.top),
+                        static_cast<int>(monitor_info.rcWork.bottom) - window_height);
 
   HWND window = CreateWindow(
       window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
-      Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
-      Scale(size.width, scale_factor), Scale(size.height, scale_factor),
+      window_x, window_y, window_width, window_height,
       nullptr, nullptr, GetModuleHandle(nullptr), this);
 
   if (!window) {
@@ -186,6 +209,7 @@ Win32Window::MessageHandler(HWND hwnd,
         PostQuitMessage(0);
       }
       return 0;
+
 
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
